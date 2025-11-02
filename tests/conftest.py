@@ -73,5 +73,7 @@ def ctx_basic():
         "nan_policy": "propagate",
         "ci_method": "auto",
         "percentiles": (5, 25, 50, 75, 95),
+        "target": 0.0,
+        "eps": 0.5,
     }
 

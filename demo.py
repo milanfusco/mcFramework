@@ -385,7 +385,7 @@ def main():
                                  ci_method="auto",
                                  extra_context={"target": float(19_671.51),
                                                 # used by bias/mse/markov
-                                                "eps"   : 100.0,
+                                                "eps"   : 1,
                                                 # tolerance for Markov + req_n
                                                 }, )
     

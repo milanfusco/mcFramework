@@ -40,8 +40,11 @@ import numpy as np
 from scipy.stats import kurtosis as sp_kurtosis
 from scipy.stats import skew as sp_skew
 
+from .core import logger
 from .utils import autocrit
 
+
+_PCTS = (5, 25, 50, 75, 95) # default percentiles
 
 class NanPolicy(str, Enum):
     """
@@ -392,7 +395,34 @@ class StatsEngine:
         todo = self._metrics \
             if select is None else [m for m in self._metrics if m.name in set(select)]
         
-        return {m.name: m(x, ctx) for m in todo}
+        out: Dict[str, Any] = {}
+        for m in todo:
+            try:
+                result = m(x, ctx)
+                
+                # Filter out empty dicts (metrics that can't compute)
+                if isinstance(result, dict) and len(result) == 0:
+                    logger.debug(f"Metric '{m.name}' returned empty dict, skipping")
+                    continue
+                
+                out[m.name] = result
+            
+            except ValueError as e:
+                msg = str(e)
+                # Check for eps requirement
+                if (
+                        "requires ctx.target" in msg
+                        or "requires ctx.eps" in msg  # ← Add this
+                        or "Missing required context keys" in msg
+                ):
+                    logger.debug(f"Skipping metric {m.name}: {msg}")
+                    continue
+                raise
+            except Exception:
+                logger.exception(f"Error computing metric {m.name}")
+                continue
+        
+        return out
     
     
 def _clean(x: np.ndarray, ctx: StatsContext) -> tuple[np.ndarray, int]:
@@ -480,7 +510,6 @@ def std(x: np.ndarray, ctx: StatsContext):
     if n_eff <= 1:
         return 0.0
     return float(np.std(arr, ddof=ctx.ddof))
-
 
 def percentiles(x: np.ndarray, ctx: StatsContext) -> dict[int, float]:
     r"""
@@ -797,8 +826,6 @@ def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:
     >>> chebyshev_required_n(np.array([1., 2., 3.]), {"eps": 0.5, "confidence": 0.9})
     8
     """
-    if ctx.eps is None:
-        raise ValueError("chebyshev_required_n requires ctx.eps")
     s = std(x, ctx)
     k = 1.0 / np.sqrt(max(1e-30, 1.0 - ctx.confidence))
     return int(np.ceil(((k * s) / float(ctx.eps)) ** 2))

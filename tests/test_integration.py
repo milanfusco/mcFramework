@@ -47,8 +47,10 @@ class TestIntegration:
             annual_return=0.07,
             volatility=0.2,
             years=10,
-            parallel=False
+            parallel=False,
+            eps=0.05,
         )
+        
 
         assert result.n_simulations == 500
         assert result.mean > 0
@@ -108,7 +110,8 @@ class TestIntegration:
             n_workers=2,
             n_points=1000,
             compute_stats=True,
-            confidence=0.95
+            confidence=0.95,
+            eps=0.05,
         )
 
         assert result.n_simulations == 10000

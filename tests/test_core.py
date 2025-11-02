@@ -155,6 +155,8 @@ class TestMonteCarloSimulation:
             parallel=False,
             compute_stats=True,
             confidence=0.95,
+            eps=0.05,
+
         )
         assert "mean" in result.stats
         assert "std" in result.stats
@@ -331,6 +333,7 @@ class TestMonteCarloFramework:
                 n_points=5000,
                 percentiles=[10],  # User requests 10
                 compute_stats=True,  # Engine adds 5, 25, 50, 75, 95
+                eps=0.05,
             )
             
             # Should have both user-requested and engine percentiles

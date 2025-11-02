@@ -44,12 +44,12 @@ class TestStatsEngine:
     def test_engine_without_dist_free(self):
         """Test building engine without distribution-free metrics"""
         engine = build_default_engine(include_dist_free=False)
-        result = engine.compute(np.array([1, 2, 3]), n=3, confidence=0.95)
+        result = engine.compute(np.array([1, 2, 3]), n=3, confidence=0.95, target=0.0, eps=0.05)
         assert "ci_mean_chebyshev" not in result
 
     def test_engine_without_target_bounds(self):
         """Test building engine without target bounds"""
         engine = build_default_engine(include_target_bounds=False)
-        result = engine.compute(np.array([1, 2, 3]), n=3, confidence=0.95)
+        result = engine.compute(np.array([1, 2, 3]), n=3, confidence=0.95, target=0.0, eps=0.05)
         assert "bias_to_target" not in result
 

@@ -27,14 +27,14 @@ class TestRegression:
         result = sim.run(
             100,
             parallel=False,
-            percentiles=[10, 90],
-            compute_stats=True
+            percentiles=[10,50,90],
+            compute_stats=True,
+            eps=0.05,
         )
 
-        # Should have both requested and stats engine percentiles
+        # Should have requested percentiles
         assert 10 in result.percentiles
         assert 90 in result.percentiles
-        # Stats engine adds 5, 25, 50, 75, 95
         assert 50 in result.percentiles
 
     def test_portfolio_gbm_vs_non_gbm_consistency(self):

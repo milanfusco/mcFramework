@@ -51,7 +51,7 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional
 
 import numpy as np
 
-from .stats_engine import DEFAULT_ENGINE, StatsEngine
+from .stats_engine import DEFAULT_ENGINE, StatsEngine, StatsContext, CIMethod, BootstrapMethod, NanPolicy
 from .utils import autocrit
 
 logger = logging.getLogger(__name__)  # pragma: no cover
@@ -441,39 +441,59 @@ class MonteCarloSimulation(ABC):
             self._engine_defaults_used_for_last_run = False
 
             return self._create_result(results, n_simulations, exec_time, percentile_map, stats)
-
+        
         stats: Dict[str, Any] = {}
         if compute_stats:
+            # Compute stats with engine
             eng = stats_engine or DEFAULT_ENGINE
             if eng is not None:
                 engine_defaults = self._PCTS
-                ctx: Dict[str, Any] = {
+                
+                # Build context dictionary
+                ctx_dict = {
                     "n": n_simulations,
                     "percentiles": engine_defaults,
                     "confidence": confidence,
                     "ci_method": ci_method,
                 }
+                
+                # Merge extra_context if provided
                 if extra_context:
-                    ctx.update(dict(extra_context))
+                    ctx_dict.update(dict(extra_context))
+                
+                # Create StatsContext object
                 try:
-                    stats = eng.compute(results, **ctx)
-                except Exception as e:  # pragma: no cover
-                    logger.warning(f"Stats engine failed: {e}")
+                    ctx = StatsContext(**ctx_dict)
+                except (TypeError, ValueError) as e:
+                    # Handle case where extra_context has invalid fields
+                    logger.warning(f"Invalid context parameters: {e}. Using defaults.")
+                    ctx = StatsContext(
+                        n=n_simulations,
+                        percentiles=engine_defaults,
+                        confidence=confidence,
+                        ci_method=ci_method,
+                    )
+                
+                # Compute stats - pass StatsContext object
+                try:
+                    stats = eng.compute(results, ctx)
+                except Exception as e:
+                    logger.error(f"Stats engine failed: {e}")
                     stats = {}
-
+                
                 # Start with engine-provided percentiles if present
                 engine_perc = {}
                 if isinstance(stats, dict) and "percentiles" in stats:
                     engine_perc = stats.pop("percentiles") or {}
-
+                
                 percentile_map = dict((int(k), float(v)) for k, v in engine_perc.items())
                 if user_pcts:
                     user_map = self._percentiles(results, user_pcts)
                     percentile_map.update(user_map)
-
+                
                 self._requested_percentiles_for_last_run = list(user_pcts)
                 self._engine_defaults_used_for_last_run = bool(compute_stats)
-
+        
         return self._create_result(results, n_simulations, exec_time, percentile_map, stats)
 
     def _run_sequential(
