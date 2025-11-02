@@ -471,7 +471,7 @@ class MonteCarloSimulation(ABC):
                         n=n_simulations,
                         percentiles=engine_defaults,
                         confidence=confidence,
-                        ci_method=ci_method,
+                        ci_method=CIMethod(ci_method),
                     )
                 
                 # Compute stats - pass StatsContext object

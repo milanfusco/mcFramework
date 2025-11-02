@@ -4,6 +4,7 @@ import pytest
 from mcframework import MonteCarloFramework, MonteCarloSimulation, PiEstimationSimulation, PortfolioSimulation
 
 
+
 class TestIntegration:
     """Integration tests for complete workflows"""
 
@@ -48,6 +49,7 @@ class TestIntegration:
             volatility=0.2,
             years=10,
             parallel=False,
+            percentiles=[5, 95],
             eps=0.05,
         )
         
@@ -111,16 +113,16 @@ class TestIntegration:
             n_points=1000,
             compute_stats=True,
             confidence=0.95,
-            eps=0.05,
+            extra_context={"target": float(np.pi), "eps": 0.01}
         )
-
-        assert result.n_simulations == 10000
-        assert len(result.results) == 10000
+        ci = getattr(result, "stats")["ci_mean"]
+        low, high = ci["low"], ci["high"]
+        ci_width = high - low
 
         # Should have tight confidence interval with large n
-        ci = result.stats["ci_mean"]
-        ci_width = ci["high"] - ci["low"]
         assert ci_width < 0.02  # Should be quite narrow
+        assert result.n_simulations == 10000
+        assert len(result.results) == 10000
 
     def test_custom_simulation_integration(self):
         """Test custom simulation integration"""
