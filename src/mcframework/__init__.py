@@ -10,6 +10,7 @@ from .stats_engine import (
     DEFAULT_ENGINE,
     FnMetric,
     StatsEngine,
+    StatsContext
 )
 from .utils import autocrit, t_crit, z_crit
 
@@ -20,6 +21,7 @@ __all__ = [
     "PiEstimationSimulation",
     "PortfolioSimulation",
     "StatsEngine",
+    "StatsContext",
     "FnMetric",
     "DEFAULT_ENGINE",
     "z_crit",

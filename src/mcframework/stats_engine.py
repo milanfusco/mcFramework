@@ -1,17 +1,22 @@
 r"""
 mcframework.stats_engine
-================
+========================
 Statistical metrics and the engine used by the Monte Carlo framework.
 
-This module exposes a small protocol for metrics (:class:`Metric`), a light adapter
-(:class:`FnMetric`), and a coordinator (:class:`StatsEngine`) that evaluates multiple
-metrics over an input array. Common metrics include mean, standard deviation,
-percentiles, skew, kurtosis, and several confidence-interval and target-aware
-utilities.
+This module defines:
+
+- :class:`StatsContext`: a typed, explicit configuration object shared by all metrics.
+- :class:`FnMetric`: a frozen adapter that names a metric function.
+- :class:`StatsEngine`: an orchestrator that evaluates one or more metrics.
+
+Common metrics include :func:`mean`, :func:`std`, :func:`percentiles`,
+:func:`skew`, :func:`kurtosis`, and confidence intervals such as
+:func:`ci_mean`, :func:`ci_mean_bootstrap`, and :func:`ci_mean_chebyshev`.
 
 See Also
 --------
-:py:mod:`mcframework.utils` : Critical values and the CI selector :func:`mcframework.utils.autocrit`.
+mcframework.utils.autocrit
+    Selects a z/t critical value for a target confidence level and effective sample size.
 """
 
 
@@ -26,8 +31,10 @@ See Also
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, Literal, Protocol
+from dataclasses import dataclass, field, replace
+from typing import (Any, Callable, Dict, Iterable, Literal, Protocol,
+                    Generic, TypeVar, Sequence, Optional, Tuple, Union)
+from enum import Enum
 
 import numpy as np
 from scipy.stats import kurtosis as sp_kurtosis
@@ -36,50 +43,258 @@ from scipy.stats import skew as sp_skew
 from .utils import autocrit
 
 
-NanPolicy = Literal["propagate", "omit"]
+class NanPolicy(str, Enum):
+    """
+    Enum class for NaN handling policies.
+    Attributes
+    ----------
+    propagate : str
+        Propagate NaNs in computations.
+    omit : str
+        Omit non-finite values before computations.
+    """
+    propagate = "propagate"
+    omit = "omit"
+    
+    
+class CIMethod(str, Enum):
+    """
+    Enum class for confidence interval methods.
+    Attributes
+    ----------
+    auto : str
+        Automatically select method based on effective sample size.
+    z : str
+        Use normal z critical values.
+    t : str
+        Use Student-t critical values.
+    bootstrap : str
+        Use bootstrap methods.
+    """
+    auto = "auto"
+    z = "z"
+    t = "t"
+    bootstrap = "bootstrap"
+
+
+class BootstrapMethod(str, Enum):
+    
+    percentile = "percentile"
+    bca = "bca"
+
+
+@dataclass(slots=True)
+class StatsContext:
+    r"""
+    Shared, explicit configuration for statistic and CI computations.
+
+    Attributes
+    ----------
+    n : int
+        Declared sample size (fallback when NaNs are not omitted).
+    confidence : float, default 0.95
+        Confidence level in :math:`(0, 1)`.
+    ci_method : {"auto", "z", "t", "bootstrap"}, default "auto"
+        Strategy for :func:`ci_mean`.
+        If ``"auto"``, use Student-t when :math:`n_\text{eff} < 30` else normal z.
+    percentiles : tuple of int, default ``(5, 25, 50, 75, 95)``
+        Percentiles to compute in :func:`percentiles`.
+    nan_policy : {"propagate", "omit"}, default "propagate"
+        If ``"omit"``, drop non-finite values before all computations.
+    target : float, optional
+        Optional target value (e.g., true mean) for bias/MSE/Markov metrics.
+    eps : float, optional
+        Tolerance used by Chebyshev sizing and Markov bounds, when required.
+    ddof : int, default 1
+        Degrees of freedom for :func:`std` (1 => Bessel correction).
+    ess : int, optional
+        Effective sample size override (e.g., from MCMC diagnostics).
+    rng : int or numpy.random.Generator, optional
+        Seed or Generator used by bootstrap methods for reproducibility.
+    n_bootstrap : int, default 10000
+        Number of bootstrap resamples for :func:`ci_mean_bootstrap`.
+    bootstrap : {"percentile", "bca"}, default "percentile"
+        Bootstrap flavor for :func:`ci_mean_bootstrap`.
+    block_size : int, optional
+        Reserved for future block bootstrap support.
+
+    Notes
+    -----
+    The context is immutable by convention at runtime; prefer :meth:`with_overrides`
+    to construct a modified copy with a small set of changed fields.
+
+    Examples
+    --------
+    >>> ctx = StatsContext(n=5000, confidence=0.95, ci_method=CIMethod.auto, nan_policy=NanPolicy.omit)
+    >>> round(ctx.alpha, 2)
+    0.05
+    """
+    n: int
+    confidence: float = 0.95
+    ci_method: CIMethod = "auto"
+    percentiles: Tuple[int, ...] = (5, 25, 50, 75, 95)
+    nan_policy: NanPolicy = "propagate"
+    target: Optional[float] = None
+    eps: Optional[float] = None
+    ddof: int = 1
+    ess: Optional[int] = None
+    rng: Optional[Union[int, np.random.Generator]] = None
+    n_bootstrap: int = 10_000
+    bootstrap: BootstrapMethod = "percentile"
+    block_size: Optional[int] = None  # future: block bootstrap
+    
+    # ergonomics
+    def with_overrides(self, **changes) -> "StatsContext":
+        r"""
+        Return a shallow copy with selected fields replaced.
+
+        Returns
+        -------
+        StatsContext
+            Modified copy.
+
+        Examples
+        --------
+        >>> ctx = StatsContext(n=1000)
+        >>> ctx2 = ctx.with_overrides(confidence=0.9, n_bootstrap=2000)
+        """
+        return replace(self, **changes)
+    
+    @property
+    def alpha(self) -> float:
+        r"""
+        One-sided tail probability :math:`\alpha = 1 - \text{confidence}`.
+
+        Returns
+        -------
+        float
+        """
+        return 1.0 - self.confidence
+    
+    def q_bound(self) -> Tuple[float, float]:
+        r"""
+        Percentile bounds corresponding to the current confidence.
+
+        For :math:`\alpha = 1 - \text{confidence}`, returns
+        :math:`(100\alpha/2,\; 100(1-\alpha/2))`.
+
+        Returns
+        -------
+        tuple of float
+            (lower_percentile, upper_percentile)
+        """
+        alpha = self.alpha
+        return 100.0 * (alpha / 2), 100.0 * (1 - alpha / 2)
+    
+    def eff_n(self, observed_len: int, finite_count: Optional[int] = None) -> int:
+        r"""
+        Effective sample size :math:`n_\text{eff}` used by CI calculations.
+
+        Priority is:
+        1) explicit :attr:`ess`; 2) count of finite values if ``nan_policy="omit"``;
+        3) declared :attr:`n` (fallback); else ``observed_len``.
+
+        Parameters
+        ----------
+        observed_len : int
+            Raw length of the input array.
+        finite_count : int, optional
+            Count of finite values (used when ``nan_policy="omit"``).
+
+        Returns
+        -------
+        int
+        """
+        if self.ess is not None:
+            return int(self.ess)
+        if self.nan_policy == "omit" and finite_count is not None:
+            return int(finite_count)
+        return int(self.n or observed_len)
+    
+    def get_generators(self) -> np.random.Generator:
+        r"""
+        Return a NumPy :class:`~numpy.random.Generator` initialized from :attr:`rng`.
+
+        Returns
+        -------
+        numpy.random.Generator
+        """
+        if isinstance(self.rng, np.random.Generator) :
+            return self.rng
+        if isinstance(self.rng, (int, np.integer)):
+            return np.random.default_rng(int(self.rng))
+        return np.random.default_rng()
+    
+    def __post_init__(self) -> None:
+        r"""
+        Validate field ranges (confidence, percentiles, n_bootstrap, ddof).
+
+        Raises
+        ------
+        ValueError
+            If any field is outside its allowed range.
+        """
+        if not (0.0 < self.confidence < 1.0):
+            raise ValueError("confidence must be in (0,1)")
+        if any(p < 0 or p > 100 for p in self.percentiles):
+            raise ValueError("percentiles must be in [0,100]")
+        if self.n_bootstrap <= 0:
+            raise ValueError("n_bootstrap must be > 0")
+        if self.ddof < 0:
+            raise ValueError("ddof must be >= 0")
+
+
 
 
 class Metric(Protocol):
     r"""
     Protocol for metric callables used by :class:`StatsEngine`.
 
-    A metric exposes a ``name`` attribute and a ``__call__`` that accepts
-    the data array and a context mapping.
+    A metric exposes a ``name`` attribute and is callable as:
+
+    ``metric(x: numpy.ndarray, ctx: StatsContext) -> Any``
 
     Attributes
     ----------
     name : str
         Human-readable key under which the metric's value is returned.
-
-    Notes
-    -----
-    The callable signature is::
-
-        __call__(x: np.ndarray, ctx: Dict[str, Any]) -> Any
     """
 
     name: str
 
-    def __call__(self, x: np.ndarray, ctx: Dict[str, Any]) -> Any: ...
+    def __call__(self, x: np.ndarray, ctx: StatsContext, /) -> Any: ...
+
+
+T = TypeVar("T") # abc
 
 
 @dataclass(frozen=True)
-class FnMetric:
+class FnMetric(Generic[T]):
     r"""
-    Lightweight adapter: give any ``fn(x, ctx)`` a ``name`` so engines can collect it.
+    Lightweight adapter that binds a human-readable ``name`` to a metric function.
 
-    Attributes
+    Parameters
     ----------
     name : str
-        Key under which the metric result is stored.
+        Key under which the metric result is stored in :meth:`StatsEngine.compute`.
     fn : callable
-        Function with signature ``fn(x: ndarray, ctx: dict) -> Any``.
+        Function with signature ``fn(x: ndarray, ctx: StatsContext) -> T``.
+    doc : str, optional
+        Short description displayed by UIs or docs.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> m = FnMetric("mean", lambda a, ctx: float(np.mean(a)))
+    >>> m(np.array([1, 2, 3]), StatsContext(n=3))
+    2.0
     """
 
     name: str
-    fn: Callable[[np.ndarray, Dict[str, Any]], Any]
+    fn: Callable[[np.ndarray, StatsContext], T]
+    doc: str = ""
 
-    def __call__(self, x: np.ndarray, ctx: Dict[str, Any]) -> Any:
+    def __call__(self, x: np.ndarray, ctx: StatsContext) -> T:
         r"""
         Compute the metric.
 
@@ -87,7 +302,7 @@ class FnMetric:
         ----------
         x : ndarray
             Input sample.
-        ctx : dict
+        ctx : StatsContext
             Context parameters (see individual metric docs).
 
         Returns
@@ -114,24 +329,39 @@ def _validate_ctx(ctx: Dict[str, Any], required: set[str], optional: set[str]):
 
 class StatsEngine:
     r"""
-    Small orchestrator that computes a dictionary of metrics over an array.
+    Orchestrator that evaluates a set of metrics over an input array.
 
     Parameters
     ----------
     metrics : iterable of Metric
-        Callables with a ``name`` attribute and signature ``m(x, ctx)``.
+        Callables with a ``name`` and signature ``metric(x, ctx)``.
+
+    Notes
+    -----
+    All metrics receive the *same* :class:`StatsContext`. Prefer field names that
+    read well across multiple metrics and avoid collisions.
 
     Examples
     --------
     >>> eng = StatsEngine([FnMetric("mean", mean), FnMetric("std", std)])
-    >>> eng.compute(np.array([1, 2, 3]), n=3)
+    >>> x = np.array([1., 2., 3.])
+    >>> eng.compute(x, StatsContext(n=len(x)))
     {'mean': 2.0, 'std': 1.0}
     """
 
     def __init__(self, metrics: Iterable[Metric]):
         self._metrics = list(metrics)
-
-    def compute(self, x: np.ndarray, **ctx) -> Dict[str, Any]:
+    
+    def available(self) -> tuple[str, ...]:
+        return tuple(m.name for m in self._metrics)
+        
+    def compute(
+            self,
+            x: np.ndarray,
+            ctx: Optional[StatsContext] = None,
+            select: Sequence[str] | None = None,
+            **kwargs: Any,
+    ) -> Dict[str, Any]:
         r"""
         Evaluate all registered metrics on ``x``.
 
@@ -139,26 +369,41 @@ class StatsEngine:
         ----------
         x : ndarray
             Sample values.
-        **ctx
-            Extra keyword arguments forwarded to each metric.
+        ctx : StatsContext, optional
+            Context parameters. If None, one is built from **kwargs.
+        select : sequence of str, optional
+            If given, compute only the metrics with these names.
+        **kwargs :
+            Used to build a StatsContext if ctx is None.
+            Required: 'n' (int)
+            Optional: 'confidence', 'ci_method', 'percentiles', etc.
 
         Returns
         -------
         dict
             Mapping from metric name to computed value.
-
-        Notes
-        -----
-        The same context is passed to every metric. Choose distinct names if you
-        add custom metric-specific parameters.
         """
-        out: Dict[str, Any] = {}
-        for m in self._metrics:
-            out[m.name] = m(x, ctx)  # type: ignore[arg-type]
-        return out
+        # Build context if not provided
+        if ctx is None:
+            if 'n' not in kwargs:
+                raise ValueError("Either provide 'ctx' or include 'n' in kwargs")
+            ctx = StatsContext(**kwargs)
+        
+        todo = self._metrics \
+            if select is None else [m for m in self._metrics if m.name in set(select)]
+        
+        return {m.name: m(x, ctx) for m in todo}
+    
+    
+def _clean(x: np.ndarray, ctx: StatsContext) -> tuple[np.ndarray, int]:
+    arr = np.asarray(x, dtype=float)
+    if ctx.nan_policy == "omit":
+        finite = np.isfinite(arr)
+        return arr[finite], int(finite.sum())
+    return arr, arr.size
 
 
-def _effective_sample_size(x: np.ndarray, ctx: Dict[str, Any]) -> int:
+def _effective_sample_size(x: np.ndarray, ctx: StatsContext) -> int:
     r"""
     Effective sample size used by CI calculations.
 
@@ -178,14 +423,11 @@ def _effective_sample_size(x: np.ndarray, ctx: Dict[str, Any]) -> int:
     int
         Effective ``n``.
     """
-    _validate_ctx(ctx, required=set(), optional={"nan_policy", "n"})
-    nan_policy = ctx.get("nan_policy", "propagate")
-    if nan_policy == "omit":
-        return int(np.isfinite(x).sum())  # sum of non-nan entries
-    return int(ctx.get("n", x.size))
+    arr, finite = _clean(x, ctx)
+    return ctx.eff_n(observed_len=arr.size, finite_count=finite)
 
 
-def mean(x, ctx):
+def mean(x: np.ndarray, ctx: StatsContext):
     r"""
     Sample mean.
 
@@ -193,62 +435,54 @@ def mean(x, ctx):
     ----------
     x : ndarray
         Input sample.
-    ctx : dict
-        Context; if ``nan_policy='omit'``, NaNs are ignored.
+    ctx : StatsContext
+        If ``nan_policy="omit"``, non-finite values are excluded.
 
     Returns
     -------
     float
         :math:`\bar X = \frac{1}{n}\sum_i x_i`.
-
-    Notes
-    -----
-    If ``nan_policy='omit'``, the effective size :math:`n` counts finite entries only.
-
+        
     Examples
     --------
-    >>> mean(np.array([1, 2, 3]), {})
+    >>> mean(np.array([1, 2, 3]))
     2.0
     """
-    _validate_ctx(ctx, required=set(), optional={"nan_policy"})
-    if ctx.get("nan_policy") == "omit":
-        return float(np.nanmean(x))
-    return float(np.mean(x))
+    arr, _ = _clean(x, ctx)
+    if arr.size == 0:
+        return float("nan")
+    return float(np.mean(arr))
 
 
-def std(x, ctx):
+def std(x: np.ndarray, ctx: StatsContext):
     r"""
-    Sample standard deviation with Bessel's correction.
-    
+    Sample standard deviation with Bessel correction.
+
     Parameters
     ----------
     x : ndarray
         Input sample.
-    ctx : dict
-        Context; if ``nan_policy='omit'``, NaNs are ignored.
-
+    ctx : StatsContext
+        Uses :attr:`StatsContext.ddof` (default 1).
+        If ``nan_policy="omit"``, non-finite values are excluded.
     Returns
     -------
     float
-        :math:`s = \sqrt{\frac{1}{n-1}\sum_i (x_i-\bar X)^2}` (``0.0`` if ``n<=1``).
+        :math:`s = \sqrt{\frac{1}{n-1}\sum_i (x_i-\bar X)^2}` (returns ``0.0`` if :math:`n_\text{eff} \le 1`).
 
     Examples
     --------
     >>> std(np.array([1, 2, 3]), {})
     1.0
     """
-    _validate_ctx(ctx, required=set(), optional={"nan_policy"})
-    if ctx.get("nan_policy") == "omit":
-        n_eff = int(np.isfinite(x).sum())
-        if n_eff <= 1:
-            return 0.0
-        return float(np.nanstd(x, ddof=1))
-    if np.asarray(x).size <= 1:
+    arr, finite = _clean(x, ctx)
+    n_eff = ctx.eff_n(observed_len=arr.size, finite_count=finite)
+    if n_eff <= 1:
         return 0.0
-    return float(np.std(x, ddof=1))
+    return float(np.std(arr, ddof=ctx.ddof))
 
 
-def percentiles(x, ctx):
+def percentiles(x: np.ndarray, ctx: StatsContext) -> dict[int, float]:
     r"""
     Percentiles of the sample.
 
@@ -256,11 +490,9 @@ def percentiles(x, ctx):
     ----------
     x : ndarray
         Input sample.
-    ctx : dict
-        - ``percentiles`` : iterable of int, default ``(5, 25, 50, 75, 95)``
-        - ``percentile_method`` : str, optional
-          Method for :func:`numpy.percentile` (e.g. ``"linear"``, ``"median_unbiased"``).
-        - ``nan_policy`` : {"propagate", "omit"}, default "propagate"
+    ctx : StatsContext
+        Uses :attr:`StatsContext.percentiles` and :attr:`StatsContext.nan_policy`.
+
 
     Returns
     -------
@@ -272,30 +504,15 @@ def percentiles(x, ctx):
     >>> percentiles(np.array([0., 1., 2., 3.]), {"percentiles": (50, 75)})
     {50: 1.5, 75: 2.25}
     """
-    _validate_ctx(
-        ctx,
-        required=set(),
-        optional={"percentiles", "percentile_method", "nan_policy"}
-    )
-    ps = tuple(ctx.get("percentiles", (5, 25, 50, 75, 95)))
-    if any((not np.isfinite(p)) or (p < 0) or (p > 100) for p in ps):
-        raise ValueError(f"percentiles must be in [0,100], got {ps}")
-    arr = np.asarray(x)
-    if ctx.get("nan_policy") == "omit":
-        arr = arr[np.isfinite(arr)]
+    arr, _ = _clean(x, ctx)
     if arr.size == 0:
-        return {p: float("nan") for p in ps}
-    method = ctx.get("percentile_method")
-    if method is None:
-        return {p: float(np.percentile(arr, p)) for p in ps}
-    return {p: float(np.percentile(arr, p, method=method)) for p in ps}
+        return {p: float("nan") for p in ctx.percentiles}
+    vals = np.percentile(arr, ctx.percentiles)
+    return dict(zip(ctx.percentiles, map(float, vals)))
 
-
-def skew(x, ctx):
+def skew(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
-    Unbiased sample skewness.
-
-    Uses :func:`scipy.stats.skew` with ``bias=False``.
+    Unbiased sample skewness (Fisher–Pearson standardized third central moment).
 
     Parameters
     ----------
@@ -308,28 +525,24 @@ def skew(x, ctx):
     -------
     float
         Fisher–Pearson standardized third central moment (0.0 if ``n<=2``).
+        
+    Notes
+    -----
+    Uses :func:`scipy.stats.skew` with ``bias=False``.
 
     Examples
     --------
     >>> round(skew(np.array([1, 2, 3, 10.0]), {}), 3) > 0
     True
     """
-    _validate_ctx(ctx, required=set(), optional={"nan_policy"})
-    if ctx.get("nan_policy") == "omit":
-        n_eff = int(np.isfinite(x).sum())
-        if n_eff <= 2:
-            return 0.0
-        return float(sp_skew(x, bias=False, nan_policy="omit")) # type: ignore[arg-type]
-    if np.asarray(x).size <= 2:
-        return 0.0
-    return float(sp_skew(x, bias=False)) # type: ignore[arg-type]
+    arr, _ = _clean(x, ctx)
+    if arr.size == 0:
+        return float("nan")
+    return float(sp_skew(arr, bias=False)) # type: ignore[arg-type]
 
-
-def kurtosis(x, ctx):
+def kurtosis(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
     Unbiased sample **excess** kurtosis (Fisher definition).
-
-    Uses :func:`scipy.stats.kurtosis` with ``fisher=True, bias=False``.
 
     Parameters
     ----------
@@ -342,63 +555,49 @@ def kurtosis(x, ctx):
     -------
     float
         Excess kurtosis (0.0 if ``n<=3``).
+        
+    Notes
+    -----
+    Uses :func:`scipy.stats.kurtosis` with ``fisher=True, bias=False``.
 
     Examples
     --------
     >>> round(kurtosis(np.array([1, 2, 3, 4.0]), {}), 6)
     -1.200000
     """
-
-    _validate_ctx(ctx, required=set(), optional={"nan_policy"})
-    if ctx.get("nan_policy") == "omit":
-        n_eff = int(np.isfinite(x).sum())
-        if n_eff <= 3:
-            return 0.0
-        return float(sp_kurtosis(x, fisher=True, bias=False, nan_policy="omit"))
-    if np.asarray(x).size <= 3:
-        return 0.0
-    return float(sp_kurtosis(x, fisher=True, bias=False))
+    arr, _ = _clean(x, ctx)
+    if arr.size == 0:
+        return float("nan")
+    return float(sp_kurtosis(arr, fisher=True, bias=False))
 
 
-def ci_mean(x, ctx):
+def ci_mean(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str]:
     r"""
-    Confidence interval for :math:`\E[X]` using z/t critical values.
+    Parametric CI for :math:`\mathbb{E}[X]` using z/t critical values.
 
-    Let :math:`\Xbar` be the sample mean and :math:`\SE = s/\sqrt{n_{\text{eff}}}`.
-    The CI is
+    Let :math:`\bar X` be the sample mean and :math:`SE = s/\sqrt{n_\text{eff}}`.
+    The interval is
 
     .. math::
-       \Xbar \pm c\,\SE,
+       \bar X \pm c \cdot SE,
 
-    where :math:`c` is chosen by :func:`mcframework.utils.autocrit`.
-
-    Parameters
-    ----------
-    x : ndarray
-        Input sample.
-    ctx : dict
-        ``confidence`` (float, default ``0.95``),
-        ``ci_method`` ({``"auto"``, ``"z"``, ``"t"``}, default ``"auto"``),
-        ``nan_policy`` ({``"propagate"``, ``"omit"``}, default ``"propagate"``).
+    where :math:`c` is selected by :func:`mcframework.utils.autocrit` according to
+    ``ci_method`` and :math:`n_\text{eff}`.
 
     Returns
     -------
-    dict or None
-        ``{"confidence","method","se","crit","low","high"}`` or ``None`` if ``n_eff < 2``.
-
-
+    dict
+        ``{"confidence","method","se","crit","low","high"}``.
     """
-    _validate_ctx(ctx, required=set(), optional={"confidence", "ci_method", "nan_policy"})
     n_eff = _effective_sample_size(x, ctx)
     if n_eff < 2:
-        return None
-    confidence = float(ctx.get("confidence", 0.95))
-    s = std(x, ctx) # type: ignore[arg-type]
+        return {}
+    s = std(x, ctx)
     se = s / np.sqrt(n_eff)
-    crit, kind = autocrit(confidence, n_eff, ctx.get("ci_method", "auto"))
+    crit, kind = autocrit(ctx.confidence, n_eff, ctx.ci_method)
     mu = mean(x, ctx)
     return {
-        "confidence": confidence,
+        "confidence": ctx.confidence,
         "method": kind,
         "se": float(se),
         "crit": float(crit),
@@ -407,8 +606,26 @@ def ci_mean(x, ctx):
     }
 
 
+def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.ndarray:
+    r"""
+    Bootstrap CI for :math:`\mathbb{E}[X]` (percentile or BCa).
 
-def ci_mean_bootstrap(x, ctx):
+    Draws ``n_bootstrap`` resamples (with replacement) and computes bootstrap
+    means :math:`\{\bar X_b^*\}`. Returns a percentile CI or BCa CI depending on
+    :attr:`StatsContext.bootstrap`.
+
+    Returns
+    -------
+    dict
+        ``{"confidence","method","low","high"}``.
+    """
+    n = arr.size
+    idx = rng.integers(0, n, size=(B, n), endpoint=False)
+    return arr[idx].mean(axis=1)
+
+
+
+def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str]:
     r"""
     Bootstrap confidence interval for :math:`\mathbb{E}[X]` via resampling.
 
@@ -473,133 +690,121 @@ def ci_mean_bootstrap(x, ctx):
     >>> 1.5 < result["low"] < result["high"] < 4.5
     True
     """
-
-    _validate_ctx(
-        ctx,
-        required=set(),
-        optional={"confidence", "n_bootstrap", "nan_policy", "random_state"})
-    confidence = float(ctx.get("confidence", 0.95))
-    n_bootstrap = int(ctx.get("n_bootstrap", 10_000))
-    
-    arr = np.asarray(x)
-    if ctx.get("nan_policy") == "omit":
-        x = arr[np.isfinite(arr)]
-        
-    n = np.asarray(x).size
-    if n == 0:
+    arr, _ = _clean(x, ctx)
+    if arr.size == 0:
+        return {}
+    B = int(ctx.n_bootstrap)
+    g = ctx.get_generators()
+    means = _bootstrap_means(arr, B, g)
+    loq, hiq = ctx.q_bound()
+    method = ctx.bootstrap
+    if method == "percentile" or arr.size < 3:
+        low, high = np.percentile(means, [loq, hiq])
         return {
-            "confidence": confidence,
-            "method": "bootstrap",
-            "low": float("nan"),
-            "high": float("nan"),
+            "confidence": ctx.confidence,
+            "method": "bootstrap-percentile",
+            "low": float(low),
+            "high": float(high),
         }
-    
-    rng = np.random.default_rng(ctx.get("random_state"))
-    bootstrap_means = np.array([rng.choice(x, size=n, replace=True).mean()
-                                for _ in range(n_bootstrap)])
-    
-    alpha = 1 - confidence
-    low, high = np.percentile(bootstrap_means, [100*alpha/2, 100*(1-alpha/2)])
-    
+
+    # BCa
+    from scipy.stats import norm
+    m_hat = float(np.mean(arr))
+    prop = float(np.sum(means < m_hat)) / B
+    prop = np.clip(prop, 1e-12, 1 - 1e-12)
+    z0 = float(np.sqrt(2) * np.erfinv(2 * prop - 1))
+
+    s = np.sum(arr, dtype=float)
+    jack = (s - arr) / (arr.size - 1)
+    d = jack - float(np.mean(jack))
+    a = float(np.sum(d ** 3)) / (6.0 * (np.sum(d ** 2) ** 1.5) + 1e-30)
+
+    zlo = float(norm.ppf((1 - ctx.confidence) / 2))
+    zhi = float(norm.ppf(1 - (1 - ctx.confidence) / 2))
+
+    def _adj(z: float) -> float:
+        num = z0 + z
+        den = 1.0 - a * num
+        return float(norm.cdf(z0 + num / den)) * 100.0
+
+    p_lo, p_hi = np.clip(_adj(zlo), 0, 100), np.clip(_adj(zhi), 0, 100)
+    low, high = np.percentile(means, [p_lo, p_hi])
     return {
-        "confidence": confidence,
-        "method": "bootstrap",
+        "confidence": ctx.confidence,
+        "method": "bootstrap-bca",
         "low": float(low),
         "high": float(high),
     }
 
 
-def ci_mean_chebyshev(x, ctx):
+def ci_mean_chebyshev(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str]:
     r"""
     Distribution-free CI for :math:`\mathbb{E}[X]` via Chebyshev’s inequality.
 
-    This is a conservative, distribution-free alternative to :func:`ci_mean`
-    that requires no assumptions beyond finite variance. It is typically
-    much wider than a normal/t CI, but it is valid for any distribution.
-
-    For :math:`\delta = 1-\text{confidence}`, choose
-    :math:`z = 1/\sqrt{\delta}` so that
+    For :math:`\delta = 1 - \text{confidence}`, choose :math:`z=1/\sqrt{\delta}`
+    so that
 
     .. math::
        \Pr\!\left(\,|\bar X - \mu| \ge z\,SE\,\right) \le \delta,
-       \qquad SE = \frac{s}{\sqrt{n}}.
-
-    Parameters
-    ----------
-    x : `ndarray`
-        Input sample.
-    ctx : dict
-        - ``n`` : `int`
-            Effective sample size to use for the bound.
-        - ``confidence`` : float, default ``0.95``
+       \qquad SE = \frac{s}{\sqrt{n_\text{eff}}}.
 
     Returns
     -------
-    dict or None
-        Same keys as :func:`ci_mean`, with ``method="chebyshev"``.
+    dict
+        ``{"confidence","method","low","high"}``.
     """
 
-    _validate_ctx(ctx, required={"n"}, optional={"confidence"})
-    n = int(ctx["n"])
-    if n <= 0:
-        return None
-    confidence = float(ctx.get("confidence", 0.95))
-    delta = max(1e-12, 1.0 - confidence)
-    s = float(np.std(x, ddof=1)) if np.asarray(x).size > 1 else 0.0
-    se = s / np.sqrt(max(1, n))
-    z = 1.0 / np.sqrt(delta)
-    mu_hat = float(np.mean(x))
+    n_eff = _effective_sample_size(x, ctx)
+    if n_eff < 2:
+        return {}
+    mu = mean(x, ctx)
+    s = std(x, ctx)
+    k = 1.0 / np.sqrt(max(1e-30, 1.0 - ctx.confidence))  # 1/sqrt(alpha)
+    half = k * s / np.sqrt(n_eff)
     return {
-        "confidence": confidence,
+        "confidence": ctx.confidence,
         "method": "chebyshev",
-        "se": float(se),
-        "crit": float(z),  # so half-width = crit * SE
-        "low": float(mu_hat - z * se),
-        "high": float(mu_hat + z * se),
+        "low": float(mu - half),
+        "high": float(mu + half),
     }
 
 
-def chebyshev_required_n(x, ctx):
+def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:
     r"""
-    Required :math:`n` for Chebyshev CI half-width :math:`\le \varepsilon`.
+    Required :math:`n` to achieve Chebyshev CI half-width :math:`\le \varepsilon`.
 
-    The half-width is :math:`z\,SE = \dfrac{s}{\sqrt{n\delta}}` with
-    :math:`z = 1/\sqrt{\delta}` and :math:`\delta = 1-\text{confidence}`. Solve:
-
-    .. math::
-       n \;\ge\; \frac{s^2}{\varepsilon^2\,\delta}.
-
+    With :math:`\delta = 1 - \text{confidence}`, the half-width is
+    :math:`z\,SE = \dfrac{s}{\sqrt{n_\text{eff}\,\delta}}` where :math:`z=1/\sqrt{\delta}`.
+    Solve :math:`n_\text{eff} \ge \dfrac{s^2}{\varepsilon^2\,\delta}`.
+    
     Parameters
     ----------
     x : ndarray
         Input sample.
-    ctx : dict
+    ctx : StatsContext
         - ``eps`` : float
-            Target half-width :math:`\varepsilon` (must be > 0).
-        - ``confidence`` : float, default ``0.95``
+            Target half-width :math:`\varepsilon` (> 0).
+        - ``confidence`` : float
+            Confidence level in :math:`(0, 1)`.
 
     Returns
     -------
-    int or None
-        Minimum required :math:`n` (ceiled), or ``None`` if ``eps`` invalid.
-
+    int
+        Minimum integer :math:`n_\text{eff}`.
+        
     Examples
     --------
     >>> chebyshev_required_n(np.array([1., 2., 3.]), {"eps": 0.5, "confidence": 0.9})
     8
     """
-    _validate_ctx(ctx, required={"eps"}, optional={"confidence"})
-    eps = ctx.get("eps")
-    if eps is None or eps <= 0:
-        return None
-    confidence = float(ctx.get("confidence", 0.95))
-    delta = max(1e-12, 1.0 - confidence)
-    s = float(np.std(x, ddof=1)) if np.asarray(x).size > 1 else 0.0
-    n_req = int(np.ceil((s * s) / (eps * eps * delta)))
-    return n_req
+    if ctx.eps is None:
+        raise ValueError("chebyshev_required_n requires ctx.eps")
+    s = std(x, ctx)
+    k = 1.0 / np.sqrt(max(1e-30, 1.0 - ctx.confidence))
+    return int(np.ceil(((k * s) / float(ctx.eps)) ** 2))
 
 
-def markov_error_prob(x, ctx):
+def markov_error_prob(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
     Markov bound on error probability for target :math:`\theta`.
 
@@ -614,7 +819,7 @@ def markov_error_prob(x, ctx):
     ----------
     x : ndarray
         Input sample.
-    ctx : dict
+    ctx : StatsContext
         - ``target`` : float
             The true/reference value :math:`\theta`.
         - ``eps`` : float
@@ -627,23 +832,12 @@ def markov_error_prob(x, ctx):
     float or None
         Upper bound in :math:`[0,1]`, or ``None`` if inputs missing/invalid.
     """
-    _validate_ctx(ctx, required={"target", "eps", "n"}, optional=set())
-    theta = ctx.get("target")
-    eps = ctx.get("eps")
-    if theta is None or eps is None or eps <= 0:
-        return None
-    n = int(ctx["n"])
-    mu_hat = float(np.mean(x))
-    s = float(np.std(x, ddof=1)) if np.asarray(x).size > 1 else 0.0
-    bias2 = (mu_hat - float(theta)) ** 2
-    mse = (s * s) / max(1, n) + bias2
-    bound = float(min(1.0, mse / (eps * eps)))
-    if bound >= 0.95:
-        logging.warning(f"Markov bound {bound} >= 0.95, very loose estimate")
-    return bound
+    if ctx.target is None:
+        raise ValueError("mse_to_target requires ctx.target")
+    arr, _ = _clean(x, ctx)
+    return float(np.mean((arr - ctx.target) ** 2))
 
-
-def bias_to_target(x, ctx):
+def bias_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
     Bias of the sample mean relative to a target :math:`\theta`.
 
@@ -659,14 +853,12 @@ def bias_to_target(x, ctx):
     float or None
         :math:`\Xbar - \theta`, or ``None`` if ``target`` is missing.
     """
-    _validate_ctx(ctx, required={"target"}, optional=set())
-    theta = ctx.get("target")
-    if theta is None:
-        return None
-    return float(np.mean(x) - theta)
+    if ctx.target is None:
+        raise ValueError("bias_to_target requires ctx.target")
+    return float(mean(x, ctx) - ctx.target)
 
 
-def mse_to_target(x, ctx):
+def mse_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
     Mean squared error of :math:`\Xbar` relative to a target :math:`\theta`.
 
@@ -688,14 +880,10 @@ def mse_to_target(x, ctx):
     float or None
         Estimated MSE, or ``None`` if ``target`` is missing.
     """
-    _validate_ctx(ctx, required={"target", "n"}, optional=set())
-    theta = ctx.get("target")
-    if theta is None:
-        return None
-    n = int(ctx["n"])
-    s2 = float(np.var(x, ddof=1)) if len(x) > 1 else 0.0 # type: ignore[arg-type]
-    bias2 = (float(np.mean(x)) - theta) ** 2
-    return float(s2 / max(1, n) + bias2)
+    if ctx.target is None:
+        raise ValueError("mse_to_target requires ctx.target")
+    arr, _ = _clean(x, ctx)
+    return float(np.mean((arr - ctx.target) ** 2))
 
 
 def build_default_engine(
@@ -703,56 +891,55 @@ def build_default_engine(
     include_target_bounds: bool = True,
 ) -> StatsEngine:
     r"""
-    Build a ready-to-use :class:`StatsEngine` with common metrics.
+    Construct a :class:`StatsEngine` with a practical set of metrics.
 
     Parameters
     ----------
     include_dist_free : bool, default True
-        Include Chebyshev-based bounds/requirements.
+        Include Chebyshev-based CI and sizing.
     include_target_bounds : bool, default True
-        Include target-aware metrics (bias/MSE/Markov bound).
+        Include :func:`bias_to_target`, :func:`mse_to_target`, :func:`markov_error_prob`.
 
     Returns
     -------
     StatsEngine
-        Configured engine.
-
-    Examples
-    --------
-    >>> eng = build_default_engine()
-    >>> sorted(eng.compute(np.array([0., 1., 2.]), n=3).keys())[:3]
-    ['ci_mean', 'kurtosis', 'mean']
     """
-    metrics = [
-        FnMetric("mean", mean),
-        FnMetric("std", std),
-        FnMetric("percentiles", percentiles),
-        FnMetric("skew", skew),
-        FnMetric("kurtosis", kurtosis),
-        FnMetric("ci_mean", ci_mean),  # z/t/auto from your utils
+    include_dist_free: bool
+    include_target_bounds: bool
+
+    metrics: list[Metric] = [
+        FnMetric("mean", mean, "Sample mean"),
+        FnMetric("std", std, "Sample standard deviation"),
+        FnMetric("percentiles", percentiles, "Percentiles over the sample"),
+        FnMetric("skew", skew, "Fisher skewness (unbiased)"),
+        FnMetric("kurtosis", kurtosis, "Excess kurtosis (unbiased)"),
+        FnMetric("ci_mean", ci_mean, "z/t CI for the mean"),
+        FnMetric("ci_mean_bootstrap", ci_mean_bootstrap, "Bootstrap CI for the mean"),
     ]
     if include_dist_free:
-        metrics += [
-            FnMetric("ci_mean_chebyshev", ci_mean_chebyshev),
-            FnMetric("chebyshev_required_n", chebyshev_required_n),
-        ]
+        metrics.extend([
+            FnMetric("ci_mean_chebyshev", ci_mean_chebyshev, "Chebyshev bound CI for the mean"),
+            FnMetric("chebyshev_required_n", chebyshev_required_n, "Required n under Chebyshev to reach eps"),
+        ])
     if include_target_bounds:
-        metrics += [
-            FnMetric("bias_to_target", bias_to_target),
-            FnMetric("mse_to_target", mse_to_target),
-            FnMetric("markov_error_prob", markov_error_prob),
-        ]
+        metrics.extend([
+            FnMetric("markov_error_prob", markov_error_prob, "Markov bound P(|X-target|>=eps)"),
+            FnMetric("bias_to_target", bias_to_target, "Bias relative to target"),
+            FnMetric("mse_to_target", mse_to_target, "Mean squared error to target"),
+        ])
     return StatsEngine(metrics)
-
-
-DEFAULT_ENGINE = build_default_engine()
-
+    
+# Build a default engine at import time
+DEFAULT_ENGINE = build_default_engine(
+    include_dist_free=True,
+    include_target_bounds=True,
+)
 
 __all__ = [
-    "StatsEngine",
-    "FnMetric",
-    "DEFAULT_ENGINE",
+    "StatsContext",
     "Metric",
+    "FnMetric",
+    "StatsEngine",
     "mean",
     "std",
     "percentiles",
@@ -766,4 +953,5 @@ __all__ = [
     "bias_to_target",
     "mse_to_target",
     "build_default_engine",
+    "DEFAULT_ENGINE",
 ]

@@ -379,7 +379,15 @@ def main():
                                  volatility=0.20,
                                  years=10,
                                  parallel=True,
-                                 progress_callback=progress, )
+                                 progress_callback=progress,
+                                 compute_stats=True,
+                                 confidence=0.95,
+                                 ci_method="auto",
+                                 extra_context={"target": float(19_671.51),
+                                                # used by bias/mse/markov
+                                                "eps"   : 100.0,
+                                                # tolerance for Markov + req_n
+                                                }, )
     
     print("\n" + "*" * 50)
     print("COMPARISON METRICS:")

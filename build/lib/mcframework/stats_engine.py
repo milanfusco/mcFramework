@@ -60,7 +60,7 @@ class Metric(Protocol):
 
     name: str
 
-    def __call__(self, x: np.ndarray, ctx: Dict[str, Any]) -> Any: ...
+    def __call__(self, x: np.ndarray, ctx: Stats) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -102,14 +102,6 @@ class FnMetric:
         2.0
         """
         return self.fn(x, ctx)
-
-
-def _validate_ctx(ctx: Dict[str, Any], required: set[str], optional: set[str]):
-    missing = required - ctx.keys()
-    if missing:
-        raise ValueError(f"Missing required context keys: {missing} \n "
-                         f"Optional keys are: {optional} \n "
-                         f"Provided keys are: {set(ctx.keys())}")
 
 
 class StatsEngine:
