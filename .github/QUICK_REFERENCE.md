@@ -198,13 +198,13 @@ python -c "import mcframework; print(mcframework.__version__)"
 ```markdown
 # Replace 'yourusername' with your GitHub username
 
-[![CI](https://github.com/yourusername/mcframework/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/mcframework/actions/workflows/ci.yml)
+[![CI](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml/badge.svg)](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml)
 
 # Customize branch
-[![CI](https://github.com/yourusername/mcframework/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/yourusername/mcframework/actions/workflows/ci.yml)
+[![CI](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml)
 
 # Codecov
-[![codecov](https://codecov.io/gh/yourusername/mcframework/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/mcframework)
+[![codecov](https://codecov.io/gh/milanfusco/mcframework/branch/main/graph/badge.svg)](https://codecov.io/gh/milanfusco/mcframework)
 ```
 
 ## 🔐 Managing Secrets
@@ -324,29 +324,6 @@ git commit -m "ci: Add Python 3.13 to test matrix"
 # Check: "Require status checks to pass before merging"
 # Select: Lint Code, Test Python 3.12
 ```
-
-## 📱 Notifications
-
-### Email Notifications
-
-**Configure in GitHub:**
-Settings → Notifications → Actions
-- Choose when to receive emails
-- Only failures, or all runs
-
-### Slack Integration (Optional)
-
-Add to workflow:
-
-```yaml
-- name: Notify Slack
-  if: failure()
-  uses: slackapi/slack-github-action@v1
-  with:
-    webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-```
-
-## 🆘 Help & Resources
 
 ### Useful Links
 
