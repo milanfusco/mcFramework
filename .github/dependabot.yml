@@ -1,0 +1,46 @@
+version: 2
+updates:
+  # Monitor GitHub Actions for updates
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    open-pull-requests-limit: 5
+
+  # Monitor pip dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "python"
+    open-pull-requests-limit: 5
+    # Group updates for better PR management
+    groups:
+      dev-dependencies:
+        patterns:
+          - "pylint*"
+          - "ruff*"
+          - "pytest*"
+        update-types:
+          - "minor"
+          - "patch"
+      docs-dependencies:
+        patterns:
+          - "sphinx*"
+          - "myst-parser"
+          - "numpydoc"
+        update-types:
+          - "minor"
+          - "patch"
+
