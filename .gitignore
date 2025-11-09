@@ -1,5 +1,23 @@
 *.log
 .idea
 trace
+build
 .DS_Store
 DS_Store
+.coverage
+coverage.xml
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.vscode
+.venv
+.env
+.env.*
+
+# Python bytecode
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.py[cod]
+*$py.class
