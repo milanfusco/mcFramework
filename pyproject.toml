@@ -16,20 +16,20 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "pylint>=3.2",
-  "pylint-exit>=1.2",
-  "ruff>=0.6",
+    "pylint>=3.2",
+    "pylint-exit>=1.2",
+    "ruff>=0.6",
 ]
 docs = [
-  "sphinx>=7.2",
-  "pydata-sphinx-theme>=0.15",
-  "myst-parser>=2.0",             # Markdown support
-  "sphinx-autodoc-typehints>=2.0",
-  "sphinx-copybutton>=0.5",
-  "sphinx-design>=0.6",
-  "numpydoc>=1.6",                # NumPy/SciPy-style docstrings
-  "sphinx-gallery>=0.16",         # optional: gallery of examples (plots!)
-  "matplotlib>=3.7",              # if we use sphinx-gallery with plots
+    "sphinx>=7.2",
+    "pydata-sphinx-theme>=0.15",
+    "myst-parser>=2.0", # Markdown support
+    "sphinx-autodoc-typehints>=2.0",
+    "sphinx-copybutton>=0.5",
+    "sphinx-design>=0.6",
+    "numpydoc>=1.6", # NumPy/SciPy-style docstrings
+    "sphinx-gallery>=0.16", # optional: gallery of examples (plots!)
+    "matplotlib>=3.7", # if we use sphinx-gallery with plots
 ]
 test = [
     "pytest>=7.2",
@@ -46,7 +46,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q"
+addopts = "--cov=src/mcframework --cov-report=term-missing --cov-report=xml"
 testpaths = [
     "tests",
 ]
@@ -57,19 +57,19 @@ init-hook = 'import sys, os; sys.path.insert(0, os.path.abspath("src"))'
 py-version = "3.12"
 jobs = 1                           # avoid parallel workers (simpler, fewer stacktraces)
 load-plugins = [
-  "pylint.extensions.docparams"    # nice docstring checks; optional
+    "pylint.extensions.docparams"    # nice docstring checks; optional
 ]
 ignore-paths = [
-  "\\.venv/.*",
-  "docs/_build/.*",
+    "\\.venv/.*",
+    "docs/_build/.*",
 ]
 
 [tool.pylint.messages_control]
 # Keep this conservative; we’ll use per-file overrides for tests below
 disable = [
-  "missing-module-docstring",
-  "missing-class-docstring",
-  "missing-function-docstring",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
 ]
 
 [tool.pylint.format]
@@ -79,15 +79,15 @@ max-line-length = 110
 max-args = 7
 
 [tool.pylint.basic]
-good-names = ["i","j","k","x","y","n","df","ps"]
+good-names = ["i", "j", "k", "x", "y", "n", "df", "ps"]
 
 # Per-file overrides (Pylint 3 feature) for the test suite
 [tool.pylint.overrides."**/tests/**"]
 disable = [
-  "unused-argument",
-  "unused-import",
-  "redefined-outer-name",
-  "protected-access",
+    "unused-argument",
+    "unused-import",
+    "redefined-outer-name",
+    "protected-access",
 ]
 
 [tool.ruff]
@@ -95,4 +95,4 @@ line-length = 110
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E","F","I"]     # pycodestyle/pyflakes/imports
+select = ["E", "F", "I"]     # pycodestyle/pyflakes/imports

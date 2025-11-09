@@ -20,11 +20,6 @@ class DeterministicSim(MonteCarloSimulation):
     def single_simulation(self, _rng=None, **kwargs):
         self.counter += 1
         return float(self.counter)
-    
-def test_parallel_cores(self):
-    """Ensure we have multiple CPU cores for parallel tests."""
-    available_cores = mp.cpu_count()
-    assert available_cores >= 2  # Ensure we have at least 2 cores for parallel tests
 
 
 @pytest.fixture(autouse=True)

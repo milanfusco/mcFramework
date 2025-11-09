@@ -9,8 +9,6 @@ that chooses between normal and t criticals in a reproducible way.
 
 from __future__ import annotations
 
-from typing import Tuple
-
 from scipy.stats import norm, t
 
 __all__ = ["z_crit", "t_crit", "autocrit"]
@@ -99,7 +97,7 @@ def t_crit(confidence: float, df: int) -> float:
     return float(t.ppf(1.0 - (1.0 - confidence) / 2.0, df))
 
 
-def autocrit(confidence: float, n: int, method: str = "auto") -> Tuple[float, str]:
+def autocrit(confidence: float, n: int, method: str = "auto") -> tuple[float, str]:
     r"""
     Select a critical value (z or t) for two-sided CIs.
 
