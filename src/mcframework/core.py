@@ -47,7 +47,7 @@ import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional
 
 import numpy as np
 
@@ -67,8 +67,8 @@ def _worker_run_chunk(
     sim: "MonteCarloSimulation",
     chunk_size: int,
     seed_seq: np.random.SeedSequence,
-    simulation_kwargs: Dict[str, Any],
-) -> List[float]:
+    simulation_kwargs: dict[str, Any],
+) -> list[float]:
     r"""
     Execute a small batch of single simulations in a **separate worker**.
 
@@ -160,9 +160,9 @@ class SimulationResult:
     execution_time: float
     mean: float
     std: float
-    percentiles: Dict[int, float]
-    stats: Dict[str, Any] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    percentiles: dict[int, float]
+    stats: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def result_to_string(
         self,
@@ -228,7 +228,7 @@ class SimulationResult:
             lines.append(f"  {k}: {v}")
 
         if self.metadata:
-            lines.append("<<DEBUG>> Metadata:")
+            lines.append("Metadata:")
         for k, v in self.metadata.items():
             lines.append(f"    {k}: {v}")
         lines.append("=" * 20 + " END " + "=" * 20)
@@ -271,6 +271,8 @@ class MonteCarloSimulation(ABC):
     """
 
     _PCTS = (5, 25, 50, 75, 95)  # Default percentiles for stats engine
+    _PARALLEL_THRESHOLD = 20_000  # Minimum simulations to use parallel execution
+    _CHUNKS_PER_WORKER = 8  # Number of chunks per worker for load balancing
 
     @staticmethod
     def _rng(
@@ -307,8 +309,6 @@ class MonteCarloSimulation(ABC):
         self.seed_seq: Optional[np.random.SeedSequence] = None
         self.rng = np.random.default_rng()
         self.parallel_backend: str = "auto"  # "auto" | "thread" | "process"
-        self._requested_percentiles_for_last_run = None
-        self._engine_defaults_used_for_last_run = None
 
     def __getstate__(self):
         """Avoid pickling the RNG (not pickleable)."""
@@ -414,6 +414,12 @@ class MonteCarloSimulation(ABC):
         """
         if n_simulations <= 0:
             raise ValueError("n_simulations must be positive")
+        if n_workers is not None and n_workers <= 0:
+            raise ValueError("n_workers must be positive")
+        if not 0.0 < confidence < 1.0:
+            raise ValueError("confidence must be in the interval (0, 1)")
+        if ci_method not in ("auto", "z", "t", "bootstrap"):
+            raise ValueError(f"ci_method must be one of 'auto', 'z', 't', 'bootstrap', got '{ci_method}'")
         t0 = time.time()
         if parallel:
             if n_workers is None:
@@ -427,8 +433,8 @@ class MonteCarloSimulation(ABC):
         exec_time = time.time() - t0
 
         # === Percentile and Stats handling ===
-        stats: Dict[str, Any] = {}
-        percentile_map: Dict[int, float] = {}
+        stats: dict[str, Any] = {}
+        percentile_map: dict[int, float] = {}
         user_percentiles_provided = percentiles is not None
         user_pcts: tuple[int, ...] = tuple(int(p) for p in (percentiles or ()))
         if not compute_stats:
@@ -437,64 +443,64 @@ class MonteCarloSimulation(ABC):
             else:
                 percentile_map = self._percentiles(results, user_pcts) if user_pcts else {}
 
-            self._requested_percentiles_for_last_run = list(user_pcts) if (user_percentiles_provided) else []
-            self._engine_defaults_used_for_last_run = False
-
-            return self._create_result(results, n_simulations, exec_time, percentile_map, stats)
+            requested_percentiles = list(user_pcts) if user_percentiles_provided else []
+            return self._create_result(
+                results, n_simulations, exec_time, percentile_map, stats,
+                requested_percentiles, engine_defaults_used=False
+            )
         
-        stats: Dict[str, Any] = {}
-        if compute_stats:
-            # Compute stats with engine
-            eng = stats_engine or DEFAULT_ENGINE
-            if eng is not None:
-                engine_defaults = self._PCTS
-                
-                # Build context dictionary
-                ctx_dict = {
-                    "n": n_simulations,
-                    "percentiles": engine_defaults,
-                    "confidence": confidence,
-                    "ci_method": ci_method,
-                }
-                
-                # Merge extra_context if provided
-                if extra_context:
-                    ctx_dict.update(dict(extra_context))
-                
-                # Create StatsContext object
-                try:
-                    ctx = StatsContext(**ctx_dict)
-                except (TypeError, ValueError) as e:
-                    # Handle case where extra_context has invalid fields
-                    logger.warning(f"Invalid context parameters: {e}. Using defaults.")
-                    ctx = StatsContext(
-                        n=n_simulations,
-                        percentiles=engine_defaults,
-                        confidence=confidence,
-                        ci_method=CIMethod(ci_method),
-                    )
-                
-                # Compute stats - pass StatsContext object
-                try:
-                    stats = eng.compute(results, ctx)
-                except Exception as e:
-                    logger.error(f"Stats engine failed: {e}")
-                    stats = {}
-                
-                # Start with engine-provided percentiles if present
-                engine_perc = {}
-                if isinstance(stats, dict) and "percentiles" in stats:
-                    engine_perc = stats.pop("percentiles") or {}
-                
-                percentile_map = dict((int(k), float(v)) for k, v in engine_perc.items())
-                if user_pcts:
-                    user_map = self._percentiles(results, user_pcts)
-                    percentile_map.update(user_map)
-                
-                self._requested_percentiles_for_last_run = list(user_pcts)
-                self._engine_defaults_used_for_last_run = bool(compute_stats)
+        # Compute stats with engine
+        eng = stats_engine or DEFAULT_ENGINE
+        if eng is not None:
+            engine_defaults = self._PCTS
+            
+            # Build context dictionary
+            ctx_dict = {
+                "n": n_simulations,
+                "percentiles": engine_defaults,
+                "confidence": confidence,
+                "ci_method": ci_method,
+            }
+            
+            # Merge extra_context if provided
+            if extra_context:
+                ctx_dict.update(dict(extra_context))
+            
+            # Create StatsContext object
+            try:
+                ctx = StatsContext(**ctx_dict)
+            except (TypeError, ValueError) as e:
+                # Handle case where extra_context has invalid fields
+                logger.warning(f"Invalid context parameters: {e}. Using defaults.")
+                ctx = StatsContext(
+                    n=n_simulations,
+                    percentiles=engine_defaults,
+                    confidence=confidence,
+                    ci_method=ci_method,  # Pass as string; StatsContext will validate
+                )
+            
+            # Compute stats - pass StatsContext object
+            try:
+                stats = eng.compute(results, ctx)
+            except Exception as e:
+                logger.error(f"Stats engine failed: {e}")
+                stats = {}
+            
+            # Start with engine-provided percentiles if present
+            engine_perc = {}
+            if isinstance(stats, dict) and "percentiles" in stats:
+                engine_perc = stats.pop("percentiles") or {}
+            
+            percentile_map = dict((int(k), float(v)) for k, v in engine_perc.items())
+            if user_pcts:
+                user_map = self._percentiles(results, user_pcts)
+                percentile_map.update(user_map)
         
-        return self._create_result(results, n_simulations, exec_time, percentile_map, stats)
+        requested_percentiles = list(user_pcts)
+        return self._create_result(
+            results, n_simulations, exec_time, percentile_map, stats,
+            requested_percentiles, engine_defaults_used=True
+        )
 
     def _run_sequential(
         self,
@@ -533,10 +539,10 @@ class MonteCarloSimulation(ABC):
             n_workers = mp.cpu_count()  # pragma: no cover
 
         # ---- Short-job fallback (cheap runs shouldn't pay parallel overhead) ----
-        if n_workers <= 1 or n_simulations < 20_000:
+        if n_workers <= 1 or n_simulations < self._PARALLEL_THRESHOLD:
             return self._run_sequential(n_simulations, progress_callback, **simulation_kwargs)
 
-        blocks = make_blocks(n_simulations, block_size=max(1, n_simulations // (n_workers * 8)))
+        blocks = make_blocks(n_simulations, block_size=max(1, n_simulations // (n_workers * self._CHUNKS_PER_WORKER)))
         if self.seed_seq is not None:
             child_seqs = self.seed_seq.spawn(len(blocks))
         else:
@@ -594,7 +600,7 @@ class MonteCarloSimulation(ABC):
         return results
 
     @staticmethod
-    def _percentiles(arr: np.ndarray, ps: Iterable[int]) -> Dict[int, float]:
+    def _percentiles(arr: np.ndarray, ps: Iterable[int]) -> dict[int, float]:
         """Return a ``{percentile: value}`` map computed via :func:`numpy.percentile`."""
         return {int(p): float(np.percentile(arr, int(p))) for p in ps}
 
@@ -603,15 +609,17 @@ class MonteCarloSimulation(ABC):
         results: np.ndarray,
         n_simulations: int,
         execution_time: float,
-        percentiles: Dict[int, float],
-        stats: Dict[str, Any],
+        percentiles: dict[int, float],
+        stats: dict[str, Any],
+        requested_percentiles: list[int],
+        engine_defaults_used: bool,
     ) -> SimulationResult:
         r"""
         Assemble a :class:`SimulationResult` and merge any stats-engine percentiles.
 
         Notes
         -----
-        Preserves the user’s requested percentiles in
+        Preserves the user's requested percentiles in
         ``metadata["requested_percentiles"]`` and whether engine defaults were used
         in ``metadata["engine_defaults_used"]``.
         """
@@ -626,16 +634,13 @@ class MonteCarloSimulation(ABC):
                 percentiles.setdefault(int(k), float(v))
 
         # Gather metadata and include user-requested percentiles
-        requested = getattr(self, "_requested_percentiles_for_last_run", None)
-        engine_used = getattr(self, "_engine_defaults_used_for_last_run", None)
-
         meta = {
             "simulation_name": self.name,
             "timestamp": time.time(),
             "n": n_simulations,
             "seed_entropy": self.seed_seq.entropy if self.seed_seq else None,
-            "requested_percentiles": requested if requested is not None else [],
-            "engine_defaults_used": bool(engine_used) if engine_used is not None else False,
+            "requested_percentiles": requested_percentiles,
+            "engine_defaults_used": engine_defaults_used,
         }
 
         return SimulationResult(
@@ -678,8 +683,8 @@ class MonteCarloFramework:
     """
 
     def __init__(self):
-        self.simulations: Dict[str, MonteCarloSimulation] = {}
-        self.results: Dict[str, SimulationResult] = {}
+        self.simulations: dict[str, MonteCarloSimulation] = {}
+        self.results: dict[str, SimulationResult] = {}
 
     def register_simulation(
         self,
@@ -732,7 +737,7 @@ class MonteCarloFramework:
         self,
         names: list[str],
         metric: str = "mean",
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         r"""
         Compare a metric across previously run simulations.
 
@@ -755,7 +760,7 @@ class MonteCarloFramework:
             set at run time (enforced via ``result.metadata["requested_percentiles"]``),
             or if the metric name is unknown.
         """
-        out: Dict[str, float] = {}
+        out: dict[str, float] = {}
         for name in names:
             if name not in self.results:
                 raise ValueError(f"No results found for simulation '{name}'")

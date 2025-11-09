@@ -32,16 +32,26 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field, replace
-from typing import (Any, Callable, Dict, Iterable, Literal, Protocol,
-                    Generic, TypeVar, Sequence, Optional, Tuple, Union)
+from typing import (Any, Callable, Iterable, Literal, Protocol,
+                    Generic, TypeVar, Sequence, Optional, Union)
 from enum import Enum
 
 import numpy as np
+import scipy
 from scipy.stats import kurtosis as sp_kurtosis
 from scipy.stats import skew as sp_skew
+from scipy.stats import norm
 
-from .core import logger
 from .utils import autocrit
+
+# Create local logger to avoid circular import with core
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 
 _PCTS = (5, 25, 50, 75, 95) # default percentiles
@@ -135,7 +145,7 @@ class StatsContext:
     n: int
     confidence: float = 0.95
     ci_method: CIMethod = "auto"
-    percentiles: Tuple[int, ...] = (5, 25, 50, 75, 95)
+    percentiles: tuple[int, ...] = (5, 25, 50, 75, 95)
     nan_policy: NanPolicy = "propagate"
     target: Optional[float] = None
     eps: Optional[float] = None
@@ -174,7 +184,7 @@ class StatsContext:
         """
         return 1.0 - self.confidence
     
-    def q_bound(self) -> Tuple[float, float]:
+    def q_bound(self) -> tuple[float, float]:
         r"""
         Percentile bounds corresponding to the current confidence.
 
@@ -245,6 +255,8 @@ class StatsContext:
             raise ValueError("n_bootstrap must be > 0")
         if self.ddof < 0:
             raise ValueError("ddof must be >= 0")
+        if self.eps is not None and self.eps <= 0:
+            raise ValueError("eps must be positive")
 
 
 
@@ -322,7 +334,7 @@ class FnMetric(Generic[T]):
         return self.fn(x, ctx)
 
 
-def _validate_ctx(ctx: Dict[str, Any], required: set[str], optional: set[str]):
+def _validate_ctx(ctx: dict[str, Any], required: set[str], optional: set[str]):
     missing = required - ctx.keys()
     if missing:
         raise ValueError(f"Missing required context keys: {missing} \n "
@@ -364,7 +376,7 @@ class StatsEngine:
             ctx: Optional[StatsContext] = None,
             select: Sequence[str] | None = None,
             **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         r"""
         Evaluate all registered metrics on ``x``.
 
@@ -392,11 +404,11 @@ class StatsEngine:
                 raise ValueError("Either provide 'ctx' or include 'n' in kwargs")
             ctx = StatsContext(**kwargs)
         
-        todo = self._metrics \
+        metrics_to_compute = self._metrics \
             if select is None else [m for m in self._metrics if m.name in set(select)]
         
-        out: Dict[str, Any] = {}
-        for m in todo:
+        out: dict[str, Any] = {}
+        for m in metrics_to_compute:
             try:
                 result = m(x, ctx)
                 
@@ -737,7 +749,6 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
         }
 
     # BCa
-    from scipy.stats import norm
     m_hat = float(np.mean(arr))
     prop = float(np.sum(means < m_hat)) / B
     prop = np.clip(prop, 1e-12, 1 - 1e-12)
@@ -826,6 +837,10 @@ def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:
     >>> chebyshev_required_n(np.array([1., 2., 3.]), {"eps": 0.5, "confidence": 0.9})
     8
     """
+    if ctx.eps is None:
+        raise ValueError("chebyshev_required_n requires ctx.eps")
+    if ctx.eps <= 0:
+        raise ValueError("ctx.eps must be positive")
     s = std(x, ctx)
     k = 1.0 / np.sqrt(max(1e-30, 1.0 - ctx.confidence))
     return int(np.ceil(((k * s) / float(ctx.eps)) ** 2))
@@ -931,9 +946,6 @@ def build_default_engine(
     -------
     StatsEngine
     """
-    include_dist_free: bool
-    include_target_bounds: bool
-
     metrics: list[Metric] = [
         FnMetric("mean", mean, "Sample mean"),
         FnMetric("std", std, "Sample standard deviation"),

@@ -2,6 +2,33 @@
 
 Lightweight, reproducible Monte Carlo simulation framework.
 
+## Installation
+
+### From Source (Development)
+
+Clone the repository and install in editable mode:
+
+```bash
+git clone https://github.com/yourusername/mcframework.git
+cd mcframework
+pip install -e .
+```
+
+### Dependencies
+
+The framework requires:
+- Python >= 3.10
+- numpy >= 1.24
+- scipy >= 1.10
+- matplotlib >= 3.7
+
+### Optional Dependencies
+
+For development:
+```bash
+pip install -e ".[dev,test,docs]"
+```
+
 ## Features
 
 - Simple base class (`MonteCarloSimulation`) for defining simulations by implementing `single_simulation`.
@@ -24,6 +51,8 @@ fw.register_simulation(sim)
 res = fw.run_simulation("Pi Estimation", 10000, n_points=5000, parallel=True)
 print(res.result_to_string())
 ```
+
+For a comprehensive example with visualizations, see [`demo.py`](demo.py) which demonstrates Pi estimation and portfolio simulations with detailed plots.
 
 ## Defining a Custom Simulation
 

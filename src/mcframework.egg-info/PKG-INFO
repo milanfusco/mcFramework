@@ -108,11 +108,11 @@ res = sim.run(10_000, compute_stats=False)
 
 ## Development
 
-Recommended dev dependencies (not yet pinned):
+Dev dependencies:
 
 ```
 pip install numpy scipy matplotlib \
-            pytest mypy ruff sphinx \
+            pytest pylint mypy ruff sphinx \
             sphinx-rtd-theme pytest-cov
 ```
 
