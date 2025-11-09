@@ -875,9 +875,14 @@ def markov_error_prob(x: np.ndarray, ctx: StatsContext) -> float:
         Upper bound in :math:`[0,1]`, or ``None`` if inputs missing/invalid.
     """
     if ctx.target is None:
-        raise ValueError("mse_to_target requires ctx.target")
+        raise ValueError("markov_error_prob requires ctx.target")
+    if ctx.eps is None:
+        raise ValueError("markov_error_prob requires ctx.eps")
+    if ctx.eps <= 0:
+        raise ValueError("ctx.eps must be positive")
     arr, _ = _clean(x, ctx)
-    return float(np.mean((arr - ctx.target) ** 2))
+    mse = float(np.mean((arr - ctx.target) ** 2))
+    return mse / (ctx.eps ** 2)
 
 def bias_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
