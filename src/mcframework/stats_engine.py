@@ -398,11 +398,15 @@ class StatsEngine:
         dict
             Mapping from metric name to computed value.
         """
-        # Build context if not provided
-        if ctx is None:
-            if "n" not in kwargs:
-                raise ValueError("Either provide 'ctx' or include 'n' in kwargs")
-            ctx = StatsContext(**kwargs)
+        if ctx is not None:
+            ctx = _ensure_ctx(ctx, x)
+        
+        # build context from kwargs
+        else:
+            base = dict(kwargs)
+            base.setdefault("n", int(np.asarray(x).size))
+            ctx = StatsContext(**base)
+
 
         metrics_to_compute = (
             self._metrics if select is None else [m for m in self._metrics if m.name in set(select)]
@@ -437,13 +441,56 @@ class StatsEngine:
 
         return out
 
+def _ensure_ctx(ctx: Any, x: np.ndarray) -> StatsContext:
+    """
+    Coerce ctx into a StatsContext.
+    - If ctx is None: build a minimal context with n = len(x).
+    - If ctx is a dict: merge with defaults; ensure 'n' (fallback len(x)).
+    - If ctx is already a StatsContext: return as-is.
+    - If ctx is an arbitrary object with attributes: pull __dict__ and coerce.
+    """
+    # ctx is a StatsContext
+    if isinstance(ctx, StatsContext):
+        return ctx
+    
+    arr_len = int(np.asarray(x).size) 
+    
+    # ctx is None
+    if ctx is None:
+        return StatsContext(n=arr_len)
+
+    # ctx is a dict
+    if isinstance(ctx, dict):
+        data = dict(ctx)
+        data.setdefault("n", arr_len)
+        return StatsContext(**data)
+
+    # Fallback: try to read attributes
+    try:
+        data = dict(vars(ctx))
+    except TypeError:
+        raise TypeError(
+            "ctx must be a StatsContext, dict, None, or an object with attributes"
+        )
+    data.setdefault("n", arr_len) 
+    return StatsContext(**data)
+
 
 def _clean(x: np.ndarray, ctx: StatsContext) -> tuple[np.ndarray, int]:
+    """
+    Returns (arr, finite_mask, ctx) where ctx is a normalized StatsContext.
+    """
+    ctx = _ensure_ctx(ctx, x)
     arr = np.asarray(x, dtype=float)
+    finite = np.isfinite(arr)
+
     if ctx.nan_policy == "omit":
-        finite = np.isfinite(arr)
-        return arr[finite], int(finite.sum())
-    return arr, arr.size
+        arr = arr[finite]
+        finite = finite[finite]  # keep shapes aligned if caller uses it
+    elif ctx.nan_policy not in ("omit", "propagate", "raise"):
+        raise ValueError(f"Unknown nan_policy: {ctx.nan_policy}")
+
+    return arr, finite, ctx
 
 
 def _effective_sample_size(x: np.ndarray, ctx: StatsContext) -> int:
@@ -491,7 +538,8 @@ def mean(x: np.ndarray, ctx: StatsContext):
     >>> mean(np.array([1, 2, 3]))
     2.0
     """
-    arr, _ = _clean(x, ctx)
+    arr, _, ctx = _clean(x, ctx)
+
     if arr.size == 0:
         return float("nan")
     return float(np.mean(arr))
@@ -518,7 +566,7 @@ def std(x: np.ndarray, ctx: StatsContext):
     >>> std(np.array([1, 2, 3]), {})
     1.0
     """
-    arr, finite = _clean(x, ctx)
+    arr, finite, ctx = _clean(x, ctx)
     n_eff = ctx.eff_n(observed_len=arr.size, finite_count=finite)
     if n_eff <= 1:
         return 0.0
@@ -547,7 +595,7 @@ def percentiles(x: np.ndarray, ctx: StatsContext) -> dict[int, float]:
     >>> percentiles(np.array([0., 1., 2., 3.]), {"percentiles": (50, 75)})
     {50: 1.5, 75: 2.25}
     """
-    arr, _ = _clean(x, ctx)
+    arr, _, ctx = _clean(x, ctx)
     if arr.size == 0:
         return {p: float("nan") for p in ctx.percentiles}
     vals = np.percentile(arr, ctx.percentiles)
@@ -579,9 +627,11 @@ def skew(x: np.ndarray, ctx: StatsContext) -> float:
     >>> round(skew(np.array([1, 2, 3, 10.0]), {}), 3) > 0
     True
     """
-    arr, _ = _clean(x, ctx)
+    arr, _, ctx = _clean(x, ctx)
     if arr.size == 0:
         return float("nan")
+    if arr.size < 3:
+        return 0.0
     return float(sp_skew(arr, bias=False))  # type: ignore[arg-type]
 
 
@@ -610,9 +660,11 @@ def kurtosis(x: np.ndarray, ctx: StatsContext) -> float:
     >>> round(kurtosis(np.array([1, 2, 3, 4.0]), {}), 6)
     -1.200000
     """
-    arr, _ = _clean(x, ctx)
+    arr, _, ctx = _clean(x, ctx)
     if arr.size == 0:
         return float("nan")
+    if arr.size < 4:
+        return 0.0
     return float(sp_kurtosis(arr, fisher=True, bias=False))
 
 
@@ -840,6 +892,7 @@ def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:
     >>> chebyshev_required_n(np.array([1., 2., 3.]), {"eps": 0.5, "confidence": 0.9})
     8
     """
+    ctx = _ensure_ctx(ctx, x)
     if ctx.eps is None:
         raise ValueError("chebyshev_required_n requires ctx.eps")
     if ctx.eps <= 0:
@@ -877,6 +930,7 @@ def markov_error_prob(x: np.ndarray, ctx: StatsContext) -> float:
     float or None
         Upper bound in :math:`[0,1]`, or ``None`` if inputs missing/invalid.
     """
+    ctx = _ensure_ctx(ctx, x)
     if ctx.target is None:
         raise ValueError("markov_error_prob requires ctx.target")
     if ctx.eps is None:
