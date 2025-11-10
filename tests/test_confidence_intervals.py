@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 
 from mcframework.stats_engine import ci_mean, ci_mean_chebyshev
@@ -28,11 +30,12 @@ class TestConfidenceIntervals:
         data = np.array([5.0])
         ctx = {"n": 1, "confidence": 0.95, "ci_method": "auto"}
         result = ci_mean(data, ctx)
-        assert result is None
+        assert math.isnan(result["low"])
+        assert math.isnan(result["high"])
 
     def test_ci_mean_chebyshev(self, sample_data):
         """Test Chebyshev CI calculation"""
-        ctx = {"n": len(sample_data), "confidence": 0.95}
+        ctx = {"n": len(sample_data), "confidence": 0.95, "nan_policy": "propagate"}
         result = ci_mean_chebyshev(sample_data, ctx)
         assert result is not None
         assert result["method"] == "chebyshev"

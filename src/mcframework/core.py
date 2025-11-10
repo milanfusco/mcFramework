@@ -51,7 +51,8 @@ from typing import Any, Callable, Iterable, Mapping, Optional
 
 import numpy as np
 
-from .stats_engine import DEFAULT_ENGINE, StatsEngine, StatsContext, CIMethod, BootstrapMethod, NanPolicy
+from .stats_engine import DEFAULT_ENGINE, StatsContext, StatsEngine, _ensure_ctx, ci_mean, mean, std
+from .stats_engine import percentiles as pct
 from .utils import autocrit
 
 logger = logging.getLogger(__name__)  # pragma: no cover
@@ -218,10 +219,8 @@ class SimulationResult:
         for p in sorted(self.percentiles):
             lines.append(f"    {p}th: {self.percentiles[p]:.5f}")
         ci = self.stats.get("ci_mean")
-        if isinstance(ci, dict) and ci.get("confidence") == confidence:
-            lines.append(
-                f"  (engine) CI: [{ci['low']:.5f}, {ci['high']:.5f}] via {ci['method']}-crit={ci['crit']:.5f}"
-            )
+        if isinstance(ci, (tuple, list)) and len(ci) == 2 and all(isinstance(x, (int, float)) for x in ci):
+            lines.append(f"  (engine) CI: [{ci[0]:.5f}, {ci[1]:.5f}]")
         if self.stats:
             lines.append("Additional Stats:")
         for k, v in self.stats.items():
@@ -486,15 +485,22 @@ class MonteCarloSimulation(ABC):
                 logger.error(f"Stats engine failed: {e}")
                 stats = {}
             
-            # Start with engine-provided percentiles if present
+            # Merge engine stats with baseline (engine wins on collisions)
+            baseline = self._compute_stats_block(results, ctx)
+            merged_stats = dict(baseline)
+            merged_stats.update(stats if isinstance(stats, dict) else {})
+            stats = merged_stats
+            
+            # Pull percentiles returned by the engine (if any)
             engine_perc = {}
             if isinstance(stats, dict) and "percentiles" in stats:
                 engine_perc = stats.pop("percentiles") or {}
-            
-            percentile_map = dict((int(k), float(v)) for k, v in engine_perc.items())
+
+            percentile_map = {int(k): float(v) for k, v in engine_perc.items()}
+
+            # If the user requested extra percentiles, compute & merge them
             if user_pcts:
-                user_map = self._percentiles(results, user_pcts)
-                percentile_map.update(user_map)
+                percentile_map.update(self._percentiles(results, user_pcts))
         
         requested_percentiles = list(user_pcts)
         return self._create_result(
@@ -542,7 +548,8 @@ class MonteCarloSimulation(ABC):
         if n_workers <= 1 or n_simulations < self._PARALLEL_THRESHOLD:
             return self._run_sequential(n_simulations, progress_callback, **simulation_kwargs)
 
-        blocks = make_blocks(n_simulations, block_size=max(1, n_simulations // (n_workers * self._CHUNKS_PER_WORKER)))
+        block_size = max(1, n_simulations // (n_workers * self._CHUNKS_PER_WORKER)) # floor division
+        blocks = make_blocks(n_simulations, block_size)
         if self.seed_seq is not None:
             child_seqs = self.seed_seq.spawn(len(blocks))
         else:
@@ -604,6 +611,51 @@ class MonteCarloSimulation(ABC):
         """Return a ``{percentile: value}`` map computed via :func:`numpy.percentile`."""
         return {int(p): float(np.percentile(arr, int(p))) for p in ps}
 
+    @staticmethod
+    def _compute_stats_block(results: np.ndarray, ctx) -> dict[str, object]:
+        """
+        Build the stats dict expected by tests:
+        - 'mean': float
+        - 'std' : float
+        - 'ci_mean' : (low, high)
+        """
+        ctx = _ensure_ctx(ctx, results)
+        results = np.asarray(results, dtype=float).ravel()
+        if results.size == 0:
+            return {"mean": float("nan"), "std": float("nan"), "ci_mean": (float("nan"), float("nan"))}
+
+        m = mean(results, ctx)
+        s = std(results, ctx)
+        ci = ci_mean(results, ctx)
+        return {
+            "mean": float(m),
+            "std": float(s), 
+            "ci_mean": (float(ci["low"]), float(ci["high"])),
+            "confidence": float(ci["confidence"]),
+            "method": ci["method"],
+            "se": float(ci["se"]),
+            "crit": float(ci["crit"]),
+        }
+
+    @staticmethod
+    def _compute_percentiles_block(results: np.ndarray, ctx) -> dict[float, float]:
+        """
+        Build the percentiles dict from whatever is requested in ctx.
+        Accepts either ctx.percentiles or ctx.requested_percentiles.
+        Returns {q: value} with q as float (e.g., 5.0, 50.0, 95.0).
+        """
+        ctx = _ensure_ctx(ctx, results)
+        results = np.asarray(results, dtype=float).ravel()
+        req = (
+            getattr(ctx, "percentiles", None)
+            or getattr(ctx, "requested_percentiles", None)
+            or []
+        )
+        req = list(req)
+        if not req:
+            return {}
+        vals = pct(results, req, ctx)  # aligned to req
+        return {float(q): float(v) for q, v in zip(req, np.asarray(vals, dtype=float))}
     def _create_result(
         self,
         results: np.ndarray,

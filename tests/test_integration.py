@@ -4,7 +4,6 @@ import pytest
 from mcframework import MonteCarloFramework, MonteCarloSimulation, PiEstimationSimulation, PortfolioSimulation
 
 
-
 class TestIntegration:
     """Integration tests for complete workflows"""
 
