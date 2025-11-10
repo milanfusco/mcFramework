@@ -30,6 +30,16 @@ class TestPerformance:
         # This is a soft check since timing can be variable
         assert par_time < seq_time * 1.5  # Some speedup expected
 
+    def test_auto_backend_resolves_per_platform(self, simple_simulation, monkeypatch):
+        """Auto backend should prefer processes on Windows, threads elsewhere."""
+        simple_simulation.parallel_backend = "auto"
+
+        monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: True)
+        assert simple_simulation._resolve_parallel_backend() == "process"
+
+        monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: False)
+        assert simple_simulation._resolve_parallel_backend() == "thread"
+
 
     def test_memory_efficiency_streaming(self, simple_simulation):
         """Test large simulations don't crash due to memory"""

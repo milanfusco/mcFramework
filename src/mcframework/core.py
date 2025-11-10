@@ -20,12 +20,13 @@ Parallel backends
 ----------------
 
 ``MonteCarloSimulation.run(..., parallel=True)`` can use threads or processes.
-By default, (:attr:`~mcframework.core.MonteCarloSimulation.parallel_backend` = ``"auto"``),
+By default (:attr:`~mcframework.core.MonteCarloSimulation.parallel_backend` = ``"auto"``),
 the framework **prefers threads** because NumPy's random generators release the Global
 Interpreter Lock (GIL), avoiding the heavy spawn/pickle cost of processes on macOS.
+On Windows, ``"auto"`` resolves to processes to sidestep thread serialization effects.
 
 Set ``parallel_backend = "process"`` for heavy, Python-bound work that does **not**
-release the GIL.
+release the GIL (the default on Windows).
 
 Confidence intervals
 --------------------
@@ -43,6 +44,7 @@ from __future__ import annotations
 
 import logging
 import multiprocessing as mp
+import sys
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
@@ -62,6 +64,11 @@ if not logger.handlers:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
+
+
+def _is_windows_platform() -> bool:
+    """Return True when running on a Windows platform."""
+    return sys.platform.startswith("win") or (sys.platform == "cli")
 
 
 def _worker_run_chunk(
@@ -523,6 +530,29 @@ class MonteCarloSimulation(ABC):
                 progress_callback(i + 1, n_simulations)
         return results
 
+    def _resolve_parallel_backend(self, requested: str | None = None) -> str:
+        """
+        Resolve the effective parallel backend for this simulation.
+
+        ``"auto"`` maps to:
+        * ``"thread"`` on POSIX-like platforms where NumPy releases the GIL.
+        * ``"process"`` on Windows where threads tend to serialize under the GIL.
+        Invalid values fall back to ``"auto"``.
+        """
+        backend = requested or getattr(self, "parallel_backend", "auto")
+        if backend not in ("auto", "thread", "process"):
+            logger.warning("Unknown parallel backend '%s'; defaulting to 'auto'", backend)
+            backend = "auto"
+
+        if backend == "auto":
+            on_windows = _is_windows_platform()
+            resolved = "process" if on_windows else "thread"
+            if on_windows:
+                logger.info("Parallel backend 'auto' resolved to 'process' on Windows platform.")
+            return resolved
+
+        return backend
+
     def _run_parallel(
         self,
         n_simulations: int,
@@ -555,9 +585,9 @@ class MonteCarloSimulation(ABC):
         else:
             child_seqs = [np.random.SeedSequence() for _ in range(len(blocks))]
 
-        # ---- Choose backend (prefer threads) ----
-        backend = getattr(self, "parallel_backend", "auto")
-        use_threads = backend in ("thread", "auto")
+        # ---- Choose backend (heuristic per platform) ----
+        backend = self._resolve_parallel_backend()
+        use_threads = backend == "thread"
         results = np.empty(n_simulations, dtype=float)
         completed = 0
         max_workers = min(n_workers, len(blocks))
