@@ -1,7 +1,7 @@
 # mcframework
 
-[![CI](https://github.com/yourusername/mcframework/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/mcframework/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/yourusername/mcframework/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/mcframework)
+[![CI](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml/badge.svg)](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/milanfusco/mcframework/branch/main/graph/badge.svg)](https://codecov.io/gh/milanfusco/mcframework)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -58,6 +58,19 @@ print(res.result_to_string())
 ```
 
 For a comprehensive example with visualizations, see [`demo.py`](demo.py) which demonstrates Pi estimation and portfolio simulations with detailed plots.
+
+
+## Parallel execution becomes multiplatform (Version )
+
+`MonteCarloSimulation.run(..., parallel=True)` automatically decides between threads and
+processes. On POSIX platforms NumPy releases the GIL, so the framework keeps using threads
+for `parallel_backend="auto"`. Starting with this release the same `auto` setting resolves
+to **processes on Windows**, which restores the expected speed-ups when Python threads
+serialize under the GIL. You can still override the backend explicitly by setting
+`parallel_backend` to `"thread"` or `"process"`.
+
+
+
 
 ## Defining a Custom Simulation
 
