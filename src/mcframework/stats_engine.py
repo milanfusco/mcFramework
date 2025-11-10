@@ -21,26 +21,23 @@ mcframework.utils.autocrit
 
 
 # DEV NOTE:
-#===========================================================================
+# ===========================================================================
 # The type checker throws a fit since x is ndarray and the checker can't verify
 # that numpy/scipy functions accept that. So, we're suppressing the error
 # with type: ignore[arg-type] where needed.
-#===========================================================================
-
+# ===========================================================================
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field, replace
-from typing import (Any, Callable, Iterable, Literal, Protocol,
-                    Generic, TypeVar, Sequence, Optional, Union)
+from dataclasses import dataclass, replace
 from enum import Enum
+from typing import Any, Callable, Generic, Iterable, Optional, Protocol, Sequence, TypeVar, Union
 
 import numpy as np
-import scipy
 from scipy.stats import kurtosis as sp_kurtosis
-from scipy.stats import skew as sp_skew
 from scipy.stats import norm
+from scipy.stats import skew as sp_skew
 
 from .utils import autocrit
 
@@ -54,7 +51,8 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
 
 
-_PCTS = (5, 25, 50, 75, 95) # default percentiles
+_PCTS = (5, 25, 50, 75, 95)  # default percentiles
+
 
 class NanPolicy(str, Enum):
     """
@@ -66,10 +64,11 @@ class NanPolicy(str, Enum):
     omit : str
         Omit non-finite values before computations.
     """
+
     propagate = "propagate"
     omit = "omit"
-    
-    
+
+
 class CIMethod(str, Enum):
     """
     Enum class for confidence interval methods.
@@ -84,6 +83,7 @@ class CIMethod(str, Enum):
     bootstrap : str
         Use bootstrap methods.
     """
+
     auto = "auto"
     z = "z"
     t = "t"
@@ -91,7 +91,6 @@ class CIMethod(str, Enum):
 
 
 class BootstrapMethod(str, Enum):
-    
     percentile = "percentile"
     bca = "bca"
 
@@ -142,6 +141,7 @@ class StatsContext:
     >>> round(ctx.alpha, 2)
     0.05
     """
+
     n: int
     confidence: float = 0.95
     ci_method: CIMethod = "auto"
@@ -155,7 +155,7 @@ class StatsContext:
     n_bootstrap: int = 10_000
     bootstrap: BootstrapMethod = "percentile"
     block_size: Optional[int] = None  # future: block bootstrap
-    
+
     # ergonomics
     def with_overrides(self, **changes) -> "StatsContext":
         r"""
@@ -172,7 +172,7 @@ class StatsContext:
         >>> ctx2 = ctx.with_overrides(confidence=0.9, n_bootstrap=2000)
         """
         return replace(self, **changes)
-    
+
     @property
     def alpha(self) -> float:
         r"""
@@ -183,7 +183,7 @@ class StatsContext:
         float
         """
         return 1.0 - self.confidence
-    
+
     def q_bound(self) -> tuple[float, float]:
         r"""
         Percentile bounds corresponding to the current confidence.
@@ -198,7 +198,7 @@ class StatsContext:
         """
         alpha = self.alpha
         return 100.0 * (alpha / 2), 100.0 * (1 - alpha / 2)
-    
+
     def eff_n(self, observed_len: int, finite_count: Optional[int] = None) -> int:
         r"""
         Effective sample size :math:`n_\text{eff}` used by CI calculations.
@@ -223,7 +223,7 @@ class StatsContext:
         if self.nan_policy == "omit" and finite_count is not None:
             return int(finite_count)
         return int(self.n or observed_len)
-    
+
     def get_generators(self) -> np.random.Generator:
         r"""
         Return a NumPy :class:`~numpy.random.Generator` initialized from :attr:`rng`.
@@ -232,12 +232,12 @@ class StatsContext:
         -------
         numpy.random.Generator
         """
-        if isinstance(self.rng, np.random.Generator) :
+        if isinstance(self.rng, np.random.Generator):
             return self.rng
         if isinstance(self.rng, (int, np.integer)):
             return np.random.default_rng(int(self.rng))
         return np.random.default_rng()
-    
+
     def __post_init__(self) -> None:
         r"""
         Validate field ranges (confidence, percentiles, n_bootstrap, ddof).
@@ -259,8 +259,6 @@ class StatsContext:
             raise ValueError("eps must be positive")
 
 
-
-
 class Metric(Protocol):
     r"""
     Protocol for metric callables used by :class:`StatsEngine`.
@@ -280,7 +278,7 @@ class Metric(Protocol):
     def __call__(self, x: np.ndarray, ctx: StatsContext, /) -> Any: ...
 
 
-T = TypeVar("T") # abc
+T = TypeVar("T")  # abc
 
 
 @dataclass(frozen=True)
@@ -337,9 +335,11 @@ class FnMetric(Generic[T]):
 def _validate_ctx(ctx: dict[str, Any], required: set[str], optional: set[str]):
     missing = required - ctx.keys()
     if missing:
-        raise ValueError(f"Missing required context keys: {missing} \n "
-                         f"Optional keys are: {optional} \n "
-                         f"Provided keys are: {set(ctx.keys())}")
+        raise ValueError(
+            f"Missing required context keys: {missing} \n "
+            f"Optional keys are: {optional} \n "
+            f"Provided keys are: {set(ctx.keys())}"
+        )
 
 
 class StatsEngine:
@@ -366,16 +366,16 @@ class StatsEngine:
 
     def __init__(self, metrics: Iterable[Metric]):
         self._metrics = list(metrics)
-    
+
     def available(self) -> tuple[str, ...]:
         return tuple(m.name for m in self._metrics)
-        
+
     def compute(
-            self,
-            x: np.ndarray,
-            ctx: Optional[StatsContext] = None,
-            select: Sequence[str] | None = None,
-            **kwargs: Any,
+        self,
+        x: np.ndarray,
+        ctx: Optional[StatsContext] = None,
+        select: Sequence[str] | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         r"""
         Evaluate all registered metrics on ``x``.
@@ -400,32 +400,33 @@ class StatsEngine:
         """
         # Build context if not provided
         if ctx is None:
-            if 'n' not in kwargs:
+            if "n" not in kwargs:
                 raise ValueError("Either provide 'ctx' or include 'n' in kwargs")
             ctx = StatsContext(**kwargs)
-        
-        metrics_to_compute = self._metrics \
-            if select is None else [m for m in self._metrics if m.name in set(select)]
-        
+
+        metrics_to_compute = (
+            self._metrics if select is None else [m for m in self._metrics if m.name in set(select)]
+        )
+
         out: dict[str, Any] = {}
         for m in metrics_to_compute:
             try:
                 result = m(x, ctx)
-                
+
                 # Filter out empty dicts (metrics that can't compute)
                 if isinstance(result, dict) and len(result) == 0:
                     logger.debug(f"Metric '{m.name}' returned empty dict, skipping")
                     continue
-                
+
                 out[m.name] = result
-            
+
             except ValueError as e:
                 msg = str(e)
                 # Check for eps requirement
                 if (
-                        "requires ctx.target" in msg
-                        or "requires ctx.eps" in msg  # ← Add this
-                        or "Missing required context keys" in msg
+                    "requires ctx.target" in msg
+                    or "requires ctx.eps" in msg  # ← Add this
+                    or "Missing required context keys" in msg
                 ):
                     logger.debug(f"Skipping metric {m.name}: {msg}")
                     continue
@@ -433,10 +434,10 @@ class StatsEngine:
             except Exception:
                 logger.exception(f"Error computing metric {m.name}")
                 continue
-        
+
         return out
-    
-    
+
+
 def _clean(x: np.ndarray, ctx: StatsContext) -> tuple[np.ndarray, int]:
     arr = np.asarray(x, dtype=float)
     if ctx.nan_policy == "omit":
@@ -484,7 +485,7 @@ def mean(x: np.ndarray, ctx: StatsContext):
     -------
     float
         :math:`\bar X = \frac{1}{n}\sum_i x_i`.
-        
+
     Examples
     --------
     >>> mean(np.array([1, 2, 3]))
@@ -523,6 +524,7 @@ def std(x: np.ndarray, ctx: StatsContext):
         return 0.0
     return float(np.std(arr, ddof=ctx.ddof))
 
+
 def percentiles(x: np.ndarray, ctx: StatsContext) -> dict[int, float]:
     r"""
     Percentiles of the sample.
@@ -551,6 +553,7 @@ def percentiles(x: np.ndarray, ctx: StatsContext) -> dict[int, float]:
     vals = np.percentile(arr, ctx.percentiles)
     return dict(zip(ctx.percentiles, map(float, vals)))
 
+
 def skew(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
     Unbiased sample skewness (Fisher–Pearson standardized third central moment).
@@ -566,7 +569,7 @@ def skew(x: np.ndarray, ctx: StatsContext) -> float:
     -------
     float
         Fisher–Pearson standardized third central moment (0.0 if ``n<=2``).
-        
+
     Notes
     -----
     Uses :func:`scipy.stats.skew` with ``bias=False``.
@@ -579,7 +582,8 @@ def skew(x: np.ndarray, ctx: StatsContext) -> float:
     arr, _ = _clean(x, ctx)
     if arr.size == 0:
         return float("nan")
-    return float(sp_skew(arr, bias=False)) # type: ignore[arg-type]
+    return float(sp_skew(arr, bias=False))  # type: ignore[arg-type]
+
 
 def kurtosis(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
@@ -596,7 +600,7 @@ def kurtosis(x: np.ndarray, ctx: StatsContext) -> float:
     -------
     float
         Excess kurtosis (0.0 if ``n<=3``).
-        
+
     Notes
     -----
     Uses :func:`scipy.stats.kurtosis` with ``fisher=True, bias=False``.
@@ -663,7 +667,6 @@ def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.nd
     n = arr.size
     idx = rng.integers(0, n, size=(B, n), endpoint=False)
     return arr[idx].mean(axis=1)
-
 
 
 def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str]:
@@ -757,7 +760,7 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     s = np.sum(arr, dtype=float)
     jack = (s - arr) / (arr.size - 1)
     d = jack - float(np.mean(jack))
-    a = float(np.sum(d ** 3)) / (6.0 * (np.sum(d ** 2) ** 1.5) + 1e-30)
+    a = float(np.sum(d**3)) / (6.0 * (np.sum(d**2) ** 1.5) + 1e-30)
 
     zlo = float(norm.ppf((1 - ctx.confidence) / 2))
     zhi = float(norm.ppf(1 - (1 - ctx.confidence) / 2))
@@ -816,7 +819,7 @@ def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:
     With :math:`\delta = 1 - \text{confidence}`, the half-width is
     :math:`z\,SE = \dfrac{s}{\sqrt{n_\text{eff}\,\delta}}` where :math:`z=1/\sqrt{\delta}`.
     Solve :math:`n_\text{eff} \ge \dfrac{s^2}{\varepsilon^2\,\delta}`.
-    
+
     Parameters
     ----------
     x : ndarray
@@ -831,7 +834,7 @@ def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:
     -------
     int
         Minimum integer :math:`n_\text{eff}`.
-        
+
     Examples
     --------
     >>> chebyshev_required_n(np.array([1., 2., 3.]), {"eps": 0.5, "confidence": 0.9})
@@ -882,7 +885,8 @@ def markov_error_prob(x: np.ndarray, ctx: StatsContext) -> float:
         raise ValueError("ctx.eps must be positive")
     arr, _ = _clean(x, ctx)
     mse = float(np.mean((arr - ctx.target) ** 2))
-    return mse / (ctx.eps ** 2)
+    return mse / (ctx.eps**2)
+
 
 def bias_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
@@ -952,27 +956,35 @@ def build_default_engine(
     StatsEngine
     """
     metrics: list[Metric] = [
-        FnMetric("mean", mean, "Sample mean"),
-        FnMetric("std", std, "Sample standard deviation"),
-        FnMetric("percentiles", percentiles, "Percentiles over the sample"),
-        FnMetric("skew", skew, "Fisher skewness (unbiased)"),
-        FnMetric("kurtosis", kurtosis, "Excess kurtosis (unbiased)"),
-        FnMetric("ci_mean", ci_mean, "z/t CI for the mean"),
-        FnMetric("ci_mean_bootstrap", ci_mean_bootstrap, "Bootstrap CI for the mean"),
+        FnMetric[float]("mean", mean, "Sample mean"),
+        FnMetric[float]("std", std, "Sample standard deviation"),
+        FnMetric[dict[int, float]]("percentiles", percentiles, "Percentiles over the sample"),
+        FnMetric[float]("skew", skew, "Fisher skewness (unbiased)"),
+        FnMetric[float]("kurtosis", kurtosis, "Excess kurtosis (unbiased)"),
+        FnMetric[dict[str, float | str]]("ci_mean", ci_mean, "z/t CI for the mean"),
+        FnMetric[dict[str, float | str]]("ci_mean_bootstrap", ci_mean_bootstrap, "Bootstrap CI for the mean"),
     ]
     if include_dist_free:
-        metrics.extend([
-            FnMetric("ci_mean_chebyshev", ci_mean_chebyshev, "Chebyshev bound CI for the mean"),
-            FnMetric("chebyshev_required_n", chebyshev_required_n, "Required n under Chebyshev to reach eps"),
-        ])
+        metrics.extend(
+            [
+                FnMetric[dict[str, float | str]]("ci_mean_chebyshev", 
+                    ci_mean_chebyshev, "Chebyshev bound CI for the mean"),
+                FnMetric[int](
+                    "chebyshev_required_n", chebyshev_required_n, "Required n under Chebyshev to reach eps"
+                ),
+            ]
+        )
     if include_target_bounds:
-        metrics.extend([
-            FnMetric("markov_error_prob", markov_error_prob, "Markov bound P(|X-target|>=eps)"),
-            FnMetric("bias_to_target", bias_to_target, "Bias relative to target"),
-            FnMetric("mse_to_target", mse_to_target, "Mean squared error to target"),
-        ])
+        metrics.extend(
+            [
+                FnMetric[float]("markov_error_prob", markov_error_prob, "Markov bound P(|X-target|>=eps)"),
+                FnMetric[float]("bias_to_target", bias_to_target, "Bias relative to target"),
+                FnMetric[float]("mse_to_target", mse_to_target, "Mean squared error to target"),
+            ]
+        )
     return StatsEngine(metrics)
-    
+
+
 # Build a default engine at import time
 DEFAULT_ENGINE = build_default_engine(
     include_dist_free=True,

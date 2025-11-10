@@ -51,7 +51,7 @@ from typing import Any, Callable, Iterable, Mapping, Optional
 
 import numpy as np
 
-from .stats_engine import DEFAULT_ENGINE, StatsEngine, StatsContext, CIMethod, BootstrapMethod, NanPolicy
+from .stats_engine import DEFAULT_ENGINE, StatsContext, StatsEngine
 from .utils import autocrit
 
 logger = logging.getLogger(__name__)  # pragma: no cover
@@ -542,7 +542,8 @@ class MonteCarloSimulation(ABC):
         if n_workers <= 1 or n_simulations < self._PARALLEL_THRESHOLD:
             return self._run_sequential(n_simulations, progress_callback, **simulation_kwargs)
 
-        blocks = make_blocks(n_simulations, block_size=max(1, n_simulations // (n_workers * self._CHUNKS_PER_WORKER)))
+        block_size = max(1, n_simulations // (n_workers * self._CHUNKS_PER_WORKER)) # floor division
+        blocks = make_blocks(n_simulations, block_size)
         if self.seed_seq is not None:
             child_seqs = self.seed_seq.spawn(len(blocks))
         else:
