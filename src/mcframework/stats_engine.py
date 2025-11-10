@@ -216,7 +216,7 @@ class StatsContext:
 
         Returns
         -------
-        int
+        int 
         """
         if self.ess is not None:
             return int(self.ess)
@@ -476,21 +476,19 @@ def _ensure_ctx(ctx: Any, x: np.ndarray) -> StatsContext:
     return StatsContext(**data)
 
 
-def _clean(x: np.ndarray, ctx: StatsContext) -> tuple[np.ndarray, int]:
+def _clean(x: np.ndarray, ctx: Any) -> tuple[np.ndarray, int]:
     """
-    Returns (arr, finite_mask, ctx) where ctx is a normalized StatsContext.
+    Return (arr, finite_mask). Uses ctx.nan_policy but does NOT return ctx.
     """
-    ctx = _ensure_ctx(ctx, x)
     arr = np.asarray(x, dtype=float)
     finite = np.isfinite(arr)
 
     if ctx.nan_policy == "omit":
         arr = arr[finite]
-        finite = finite[finite]  # keep shapes aligned if caller uses it
     elif ctx.nan_policy not in ("omit", "propagate", "raise"):
         raise ValueError(f"Unknown nan_policy: {ctx.nan_policy}")
 
-    return arr, finite, ctx
+    return arr, finite
 
 
 def _effective_sample_size(x: np.ndarray, ctx: StatsContext) -> int:
@@ -538,11 +536,9 @@ def mean(x: np.ndarray, ctx: StatsContext):
     >>> mean(np.array([1, 2, 3]))
     2.0
     """
-    arr, _, ctx = _clean(x, ctx)
-
-    if arr.size == 0:
-        return float("nan")
-    return float(np.mean(arr))
+    ctx = _ensure_ctx(ctx, x)
+    arr, _ = _clean(x, ctx)
+    return float(np.mean(arr)) if arr.size else float("nan")
 
 
 def std(x: np.ndarray, ctx: StatsContext):
@@ -566,7 +562,8 @@ def std(x: np.ndarray, ctx: StatsContext):
     >>> std(np.array([1, 2, 3]), {})
     1.0
     """
-    arr, finite, ctx = _clean(x, ctx)
+    ctx = _ensure_ctx(ctx, x)
+    arr, finite = _clean(x, ctx)
     n_eff = ctx.eff_n(observed_len=arr.size, finite_count=finite)
     if n_eff <= 1:
         return 0.0
@@ -595,11 +592,12 @@ def percentiles(x: np.ndarray, ctx: StatsContext) -> dict[int, float]:
     >>> percentiles(np.array([0., 1., 2., 3.]), {"percentiles": (50, 75)})
     {50: 1.5, 75: 2.25}
     """
-    arr, _, ctx = _clean(x, ctx)
+    ctx = _ensure_ctx(ctx, x)
+    arr, _ = _clean(x, ctx)
     if arr.size == 0:
         return {p: float("nan") for p in ctx.percentiles}
-    vals = np.percentile(arr, ctx.percentiles)
-    return dict(zip(ctx.percentiles, map(float, vals)))
+    pct_values = np.percentile(arr, ctx.percentiles)
+    return dict(zip(ctx.percentiles, map(float, pct_values)))
 
 
 def skew(x: np.ndarray, ctx: StatsContext) -> float:
@@ -627,12 +625,9 @@ def skew(x: np.ndarray, ctx: StatsContext) -> float:
     >>> round(skew(np.array([1, 2, 3, 10.0]), {}), 3) > 0
     True
     """
-    arr, _, ctx = _clean(x, ctx)
-    if arr.size == 0:
-        return float("nan")
-    if arr.size < 3:
-        return 0.0
-    return float(sp_skew(arr, bias=False))  # type: ignore[arg-type]
+    ctx = _ensure_ctx(ctx, x)
+    arr, _ = _clean(x, ctx)
+    return float(sp_skew(arr, bias=False)) if arr.size > 2 else 0.0  # type: ignore[arg-type]
 
 
 def kurtosis(x: np.ndarray, ctx: StatsContext) -> float:
@@ -660,15 +655,12 @@ def kurtosis(x: np.ndarray, ctx: StatsContext) -> float:
     >>> round(kurtosis(np.array([1, 2, 3, 4.0]), {}), 6)
     -1.200000
     """
-    arr, _, ctx = _clean(x, ctx)
-    if arr.size == 0:
-        return float("nan")
-    if arr.size < 4:
-        return 0.0
-    return float(sp_kurtosis(arr, fisher=True, bias=False))
+    ctx = _ensure_ctx(ctx, x)
+    arr, _ = _clean(x, ctx)
+    return float(sp_kurtosis(arr, fisher=True, bias=False)) if arr.size > 3 else 0.0  # type: ignore[arg-type]
 
 
-def ci_mean(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str]:
+def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
     r"""
     Parametric CI for :math:`\mathbb{E}[X]` using z/t critical values.
 
@@ -683,25 +675,52 @@ def ci_mean(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str]:
 
     Returns
     -------
-    dict
-        ``{"confidence","method","se","crit","low","high"}``.
+    tuple[float, float]
+        Lower and upper bounds of the CI.
     """
-    n_eff = _effective_sample_size(x, ctx)
+    ctx = _ensure_ctx(ctx, x)
+    arr, _ = _clean(x, ctx)
+
+    # if everything got dropped or x was empty
+    if arr.size == 0:
+        return {
+            "confidence": ctx.confidence,
+            "method": ctx.ci_method,
+            "low": float("nan"),
+            "high": float("nan"),
+        }
+    
+
+    n_eff = _effective_sample_size(arr, ctx)  # counts after cleaning if 'omit'
     if n_eff < 2:
-        return {}
-    s = std(x, ctx)
-    se = s / np.sqrt(n_eff)
-    crit, kind = autocrit(ctx.confidence, n_eff, ctx.ci_method)
-    mu = mean(x, ctx)
+        return {
+            "confidence": ctx.confidence,
+            "method": ctx.ci_method,
+            "low": float("nan"),
+            "high": float("nan"),
+            "se": float("nan"),
+            "crit": float("nan"),
+        }
+    
+    mu = float(np.mean(arr))
+
+    s = float(np.std(arr, ddof=getattr(ctx, "ddof", 1)))
+    if s == 0.0:
+        # degenerate data -> zero SE -> CI collapses to point
+        se = 0.0
+    else:
+        se = s / np.sqrt(n_eff)
+
+    crit, method = autocrit(ctx.confidence, n_eff, ctx.ci_method)
+
     return {
         "confidence": ctx.confidence,
-        "method": kind,
+        "method": method,
         "se": float(se),
         "crit": float(crit),
         "low": float(mu - crit * se),
         "high": float(mu + crit * se),
     }
-
 
 def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.ndarray:
     r"""
@@ -786,6 +805,7 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     >>> 1.5 < result["low"] < result["high"] < 4.5
     True
     """
+    ctx = _ensure_ctx(ctx, x)
     arr, _ = _clean(x, ctx)
     if arr.size == 0:
         return {}
@@ -834,7 +854,7 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
 
 def ci_mean_chebyshev(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str]:
     r"""
-    Distribution-free CI for :math:`\mathbb{E}[X]` via Chebyshev’s inequality.
+    Distribution-free CI for :math:`\mathbb{E}[X]` via Chebyshev's inequality.
 
     For :math:`\delta = 1 - \text{confidence}`, choose :math:`z=1/\sqrt{\delta}`
     so that
@@ -848,7 +868,7 @@ def ci_mean_chebyshev(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     dict
         ``{"confidence","method","low","high"}``.
     """
-
+    ctx = _ensure_ctx(ctx, x)
     n_eff = _effective_sample_size(x, ctx)
     if n_eff < 2:
         return {}
@@ -893,6 +913,7 @@ def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:
     8
     """
     ctx = _ensure_ctx(ctx, x)
+    arr, _ = _clean(x, ctx)
     if ctx.eps is None:
         raise ValueError("chebyshev_required_n requires ctx.eps")
     if ctx.eps <= 0:
@@ -958,6 +979,7 @@ def bias_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     float or None
         :math:`\Xbar - \theta`, or ``None`` if ``target`` is missing.
     """
+    ctx = _ensure_ctx(ctx, x)
     if ctx.target is None:
         raise ValueError("bias_to_target requires ctx.target")
     return float(mean(x, ctx) - ctx.target)
@@ -985,6 +1007,7 @@ def mse_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     float or None
         Estimated MSE, or ``None`` if ``target`` is missing.
     """
+    ctx = _ensure_ctx(ctx, x)
     if ctx.target is None:
         raise ValueError("mse_to_target requires ctx.target")
     arr, _ = _clean(x, ctx)

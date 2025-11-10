@@ -137,7 +137,7 @@ class TestErrorHandling:
         failing_engine = Mock()
         failing_engine.compute = failing_compute
 
-        # Should not crash, just skip stats
+        # Should not crash, falls back to baseline stats
         result = simple_simulation.run(
             100,
             parallel=False,
@@ -146,4 +146,7 @@ class TestErrorHandling:
         )
 
         assert result.n_simulations == 100
-        assert len(result.stats) == 0  # Stats should be empty
+        # Should have baseline stats even though engine failed
+        assert len(result.stats) > 0
+        assert "mean" in result.stats
+        assert "ci_mean" in result.stats

@@ -23,7 +23,7 @@ class TestDistributionFreeMetrics:
     def test_chebyshev_required_n_no_eps(self, sample_data):
         """Test returns None when eps not provided"""
         ctx = {"confidence": 0.95}
-        with pytest.raises(ValueError, match=r"Missing required context keys: \{'eps'\}"):
+        with pytest.raises(ValueError, match=r"chebyshev_required_n requires ctx\.eps"):
                 chebyshev_required_n(sample_data, ctx)
 
     def test_markov_error_prob(self):
@@ -33,12 +33,12 @@ class TestDistributionFreeMetrics:
         ctx = {"n": 1000, "target": 3.14159, "eps": 0.05}
         result = markov_error_prob(data, ctx)
         assert result is not None
-        assert 0 <= result <= 1
+        assert result >= 0  # Markov bound is non-negative (can be > 1)
 
     def test_markov_error_prob_no_target(self, sample_data):
         """Test returns None when target not provided"""
         ctx = {"n": 1000, "eps": 0.05}
-        with pytest.raises(ValueError, match=r"Missing required context keys: \{'target'\}"):
+        with pytest.raises(ValueError, match=r"markov_error_prob requires ctx\.target"):
             markov_error_prob(sample_data, ctx)
 
     def test_bias_to_target(self):
