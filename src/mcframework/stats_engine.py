@@ -35,6 +35,7 @@ from enum import Enum
 from typing import Any, Callable, Generic, Iterable, Optional, Protocol, Sequence, TypeVar, Union
 
 import numpy as np
+from scipy.special import erfinv
 from scipy.stats import kurtosis as sp_kurtosis
 from scipy.stats import norm
 from scipy.stats import skew as sp_skew
@@ -216,7 +217,7 @@ class StatsContext:
 
         Returns
         -------
-        int 
+        int
         """
         if self.ess is not None:
             return int(self.ess)
@@ -400,13 +401,12 @@ class StatsEngine:
         """
         if ctx is not None:
             ctx = _ensure_ctx(ctx, x)
-        
+
         # build context from kwargs
         else:
             base = dict(kwargs)
             base.setdefault("n", int(np.asarray(x).size))
             ctx = StatsContext(**base)
-
 
         metrics_to_compute = (
             self._metrics if select is None else [m for m in self._metrics if m.name in set(select)]
@@ -441,6 +441,7 @@ class StatsEngine:
 
         return out
 
+
 def _ensure_ctx(ctx: Any, x: np.ndarray) -> StatsContext:
     """
     Coerce ctx into a StatsContext.
@@ -452,9 +453,9 @@ def _ensure_ctx(ctx: Any, x: np.ndarray) -> StatsContext:
     # ctx is a StatsContext
     if isinstance(ctx, StatsContext):
         return ctx
-    
-    arr_len = int(np.asarray(x).size) 
-    
+
+    arr_len = int(np.asarray(x).size)
+
     # ctx is None
     if ctx is None:
         return StatsContext(n=arr_len)
@@ -469,10 +470,8 @@ def _ensure_ctx(ctx: Any, x: np.ndarray) -> StatsContext:
     try:
         data = dict(vars(ctx))
     except TypeError:
-        raise TypeError(
-            "ctx must be a StatsContext, dict, None, or an object with attributes"
-        )
-    data.setdefault("n", arr_len) 
+        raise TypeError("ctx must be a StatsContext, dict, None, or an object with attributes")
+    data.setdefault("n", arr_len)
     return StatsContext(**data)
 
 
@@ -689,7 +688,6 @@ def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
             "low": float("nan"),
             "high": float("nan"),
         }
-    
 
     n_eff = _effective_sample_size(arr, ctx)  # counts after cleaning if 'omit'
     if n_eff < 2:
@@ -701,7 +699,7 @@ def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
             "se": float("nan"),
             "crit": float("nan"),
         }
-    
+
     mu = float(np.mean(arr))
 
     s = float(np.std(arr, ddof=getattr(ctx, "ddof", 1)))
@@ -721,6 +719,7 @@ def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
         "low": float(mu - crit * se),
         "high": float(mu + crit * se),
     }
+
 
 def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.ndarray:
     r"""
@@ -827,7 +826,7 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     m_hat = float(np.mean(arr))
     prop = float(np.sum(means < m_hat)) / B
     prop = np.clip(prop, 1e-12, 1 - 1e-12)
-    z0 = float(np.sqrt(2) * np.erfinv(2 * prop - 1))
+    z0 = float(np.sqrt(2) * erfinv(2 * prop - 1))
 
     s = np.sum(arr, dtype=float)
     jack = (s - arr) / (arr.size - 1)
@@ -1044,8 +1043,9 @@ def build_default_engine(
     if include_dist_free:
         metrics.extend(
             [
-                FnMetric[dict[str, float | str]]("ci_mean_chebyshev", 
-                    ci_mean_chebyshev, "Chebyshev bound CI for the mean"),
+                FnMetric[dict[str, float | str]](
+                    "ci_mean_chebyshev", ci_mean_chebyshev, "Chebyshev bound CI for the mean"
+                ),
                 FnMetric[int](
                     "chebyshev_required_n", chebyshev_required_n, "Required n under Chebyshev to reach eps"
                 ),
