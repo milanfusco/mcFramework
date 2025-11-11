@@ -4,6 +4,7 @@ import pytest
 from mcframework import MonteCarloFramework, MonteCarloSimulation, SimulationResult
 from mcframework.core import make_blocks
 from mcframework.sims import PiEstimationSimulation
+from mcframework.stats_engine import StatsContext
 
 
 class TestMakeBlocks:
@@ -83,6 +84,29 @@ class TestSimulationResult:
         )
         output = result.result_to_string()
         assert "Test" in output
+
+    def test_result_to_string_with_stats_and_metadata(self):
+        """Ensure result string includes engine stats and metadata entries."""
+        results = np.array([2.0, 4.0, 6.0, 8.0])
+        stats = {"ci_mean": (1.0, 2.0), "custom_metric": 42}
+        metadata = {"simulation_name": "EdgeSim", "requested_percentiles": [5, 95], "note": "coverage"}
+        percentiles = {5: 2.0, 95: 8.0}
+        result = SimulationResult(
+            results=results,
+            n_simulations=len(results),
+            execution_time=0.5,
+            mean=float(np.mean(results)),
+            std=float(np.std(results, ddof=1)),
+            percentiles=percentiles,
+            stats=stats,
+            metadata=metadata,
+        )
+
+        summary = result.result_to_string(confidence=0.9, method="t")
+        assert "(engine) CI" in summary
+        assert "Additional Stats" in summary
+        assert "custom_metric" in summary
+        assert "note" in summary
 
 
 class TestMonteCarloSimulation:
@@ -211,6 +235,71 @@ class TestMonteCarloSimulation:
         result = deterministic_simulation.run(5, parallel=False, compute_stats=False)
         expected = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
         np.testing.assert_array_equal(result.results, expected)
+
+    def test_serialization_without_seed(self, simple_simulation):
+        """__setstate__ should recreate RNG when seed_seq is missing."""
+        state = simple_simulation.__getstate__()
+        assert state["rng"] is None
+        simple_simulation.__setstate__(state)
+        assert simple_simulation.rng is not None
+
+    def test_run_rejects_invalid_n_workers(self, simple_simulation):
+        """n_workers must be positive."""
+        with pytest.raises(ValueError, match="n_workers must be positive"):
+            simple_simulation.run(5, n_workers=0)
+
+    def test_run_rejects_invalid_confidence(self, simple_simulation):
+        """confidence must lie in (0, 1)."""
+        with pytest.raises(ValueError, match="confidence must be in the interval"):
+            simple_simulation.run(5, confidence=1.5)
+
+    def test_run_rejects_invalid_ci_method(self, simple_simulation):
+        """Invalid ci_method should raise."""
+        with pytest.raises(ValueError, match="ci_method must be one of"):
+            simple_simulation.run(5, ci_method="invalid")
+
+    def test_run_handles_invalid_extra_context(self, simple_simulation):
+        """Extra context with invalid keys should fall back to defaults."""
+        result = simple_simulation.run(
+            10,
+            parallel=False,
+            extra_context={"unexpected": "value"},
+        )
+        assert result.n_simulations == 10
+        assert result.stats
+
+    def test_resolve_parallel_backend_unknown_value_defaults(self, simple_simulation):
+        """Unknown backend values should coerce to auto/thread."""
+        simple_simulation.parallel_backend = "unknown"
+        backend = simple_simulation._resolve_parallel_backend()
+        assert backend in {"thread", "process"}
+
+    def test_compute_stats_block_handles_empty_array(self):
+        """_compute_stats_block should return NaNs for empty input."""
+        ctx = StatsContext(n=0)
+        stats = MonteCarloSimulation._compute_stats_block(np.array([]), ctx)
+        assert np.isnan(stats["mean"])
+        assert np.isnan(stats["std"])
+        low, high = stats["ci_mean"]
+        assert np.isnan(low) and np.isnan(high)
+
+    def test_create_result_merges_engine_percentiles(self, simple_simulation):
+        """Engine-supplied percentiles should be merged once."""
+        results = np.array([1.0, 2.0, 3.0, 4.0])
+        stats = {"mean": 2.5, "percentiles": {25: 1.5, 75: 3.5}}
+        percentiles = {5: 1.0}
+        res = simple_simulation._create_result(
+            results,
+            n_simulations=results.size,
+            execution_time=0.1,
+            percentiles=percentiles,
+            stats=stats,
+            requested_percentiles=[5, 25, 75],
+            engine_defaults_used=True,
+        )
+        assert res.percentiles[25] == pytest.approx(1.5)
+        assert res.percentiles[5] == pytest.approx(percentiles[5])
+        assert "percentiles" not in res.stats
 
 
 class TestMonteCarloFramework:
@@ -635,3 +724,11 @@ class TestAdditionalEdgeCases:
             result = fw.compare_results(["Pi Estimation"], metric=metric)
             assert "Pi Estimation" in result
             assert isinstance(result["Pi Estimation"], float)
+
+
+def test_pi_simulation_antithetic_handles_odd_points():
+    """Antithetic sampling should pad when n_points is odd."""
+    sim = PiEstimationSimulation()
+    sim.set_seed(123)
+    value = sim.single_simulation(antithetic=True, n_points=5)
+    assert 0.0 < value < 4.5
