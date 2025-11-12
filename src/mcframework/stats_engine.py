@@ -873,7 +873,7 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     >>> x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     >>> result = ci_mean_bootstrap(x, {"confidence": 0.9, "n_bootstrap": 5000, "rng": 42})
     >>> result["method"]
-    'bootstrap'
+    'bootstrap-percentile'
     >>> 1.5 < result["low"] < result["high"] < 4.5
     True
     """
