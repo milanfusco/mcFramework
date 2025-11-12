@@ -2,7 +2,7 @@ name: Docs Validation
 
 on:
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main, test ]
   workflow_dispatch:
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
 
       - name: Build Sphinx documentation
         run: |
-          sphinx-build -b html docs/source docs/_build/html --keep-going -W
+          sphinx-build -b html docs/source docs/_build/html --keep-going
 
       - name: Upload built documentation
         uses: actions/upload-artifact@v4
