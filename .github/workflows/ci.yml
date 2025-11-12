@@ -1,5 +1,14 @@
 name: CI
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 on:
   push:
     branches: [ main, master, develop ]
@@ -102,6 +111,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
       
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -117,11 +129,9 @@ jobs:
       - name: Build Sphinx documentation
         run: |
           sphinx-build -b html docs/source docs/_build/html --keep-going
-      
-      - name: Upload documentation artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload documentation artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: documentation
           path: docs/_build/html/
 
   # Check that the package can be built and installed
@@ -148,4 +158,17 @@ jobs:
         run: |
           pip install dist/*.whl
           python -c "import mcframework; print(f'Successfully imported mcframework version {mcframework.__version__}')"
+
+  deploy-docs:
+    name: Deploy Documentation
+    needs: docs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
