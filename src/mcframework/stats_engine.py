@@ -56,14 +56,15 @@ _PCTS = (5, 25, 50, 75, 95)  # default percentiles
 
 
 class NanPolicy(str, Enum):
-    """
-    Enum class for NaN handling policies.
+    r"""
+    Strategies for handling the propagation of non-finite values.
+
     Attributes
     ----------
     propagate : str
-        Propagate NaNs in computations.
+        Propagate any NaNs or infinities encountered in the sample.
     omit : str
-        Omit non-finite values before computations.
+        Drop non-finite observations before computing a metric.
     """
 
     propagate = "propagate"
@@ -71,18 +72,19 @@ class NanPolicy(str, Enum):
 
 
 class CIMethod(str, Enum):
-    """
-    Enum class for confidence interval methods.
+    r"""
+    Parametric strategies for selecting confidence-interval critical values.
+
     Attributes
     ----------
     auto : str
-        Automatically select method based on effective sample size.
+        Choose Student-t when :math:`n_\text{eff} < 30`, otherwise z.
     z : str
-        Use normal z critical values.
+        Always use the normal :math:`z` critical value.
     t : str
-        Use Student-t critical values.
+        Always use the Student-:math:`t` critical value.
     bootstrap : str
-        Use bootstrap methods.
+        Defer to resampling-based bootstrap intervals.
     """
 
     auto = "auto"
@@ -92,6 +94,17 @@ class CIMethod(str, Enum):
 
 
 class BootstrapMethod(str, Enum):
+    r"""
+    Supported bootstrap confidence-interval flavors.
+
+    Attributes
+    ----------
+    percentile : str
+        Use the percentile method on the bootstrap distribution.
+    bca : str
+        Use the bias-corrected and accelerated (BCa) adjustment.
+    """
+
     percentile = "percentile"
     bca = "bca"
 
@@ -161,6 +174,11 @@ class StatsContext:
     def with_overrides(self, **changes) -> "StatsContext":
         r"""
         Return a shallow copy with selected fields replaced.
+
+        Parameters
+        ----------
+        **changes :
+            Field overrides passed to :func:`dataclasses.replace`.
 
         Returns
         -------
@@ -443,12 +461,25 @@ class StatsEngine:
 
 
 def _ensure_ctx(ctx: Any, x: np.ndarray) -> StatsContext:
-    """
-    Coerce ctx into a StatsContext.
-    - If ctx is None: build a minimal context with n = len(x).
-    - If ctx is a dict: merge with defaults; ensure 'n' (fallback len(x)).
-    - If ctx is already a StatsContext: return as-is.
-    - If ctx is an arbitrary object with attributes: pull __dict__ and coerce.
+    r"""
+    Normalize arbitrary context inputs into a :class:`StatsContext`.
+
+    Parameters
+    ----------
+    ctx : Any
+        A :class:`StatsContext`, mapping, object with attributes, or ``None``.
+    x : ndarray
+        Sample used to infer the fallback ``n`` when missing.
+
+    Returns
+    -------
+    StatsContext
+        Context instance with all required fields populated.
+
+    Raises
+    ------
+    TypeError
+        If ``ctx`` cannot be interpreted as configuration data.
     """
     # ctx is a StatsContext
     if isinstance(ctx, StatsContext):
@@ -475,9 +506,27 @@ def _ensure_ctx(ctx: Any, x: np.ndarray) -> StatsContext:
     return StatsContext(**data)
 
 
-def _clean(x: np.ndarray, ctx: Any) -> tuple[np.ndarray, int]:
-    """
-    Return (arr, finite_mask). Uses ctx.nan_policy but does NOT return ctx.
+def _clean(x: np.ndarray, ctx: Any) -> tuple[np.ndarray, np.ndarray]:
+    r"""
+    Sanitize the input sample and return the finite-value mask.
+
+    Parameters
+    ----------
+    x : ndarray
+        Raw input sample.
+    ctx : StatsContext
+        Context whose :attr:`~StatsContext.nan_policy` guides filtering.
+
+    Returns
+    -------
+    tuple of ndarray
+        ``(arr, finite_mask)`` where ``arr`` is the possibly filtered sample and
+        ``finite_mask`` marks finite elements in the original sample.
+
+    Raises
+    ------
+    ValueError
+        If an unknown :attr:`~StatsContext.nan_policy` is supplied.
     """
     arr = np.asarray(x, dtype=float)
     finite = np.isfinite(arr)
@@ -492,23 +541,19 @@ def _clean(x: np.ndarray, ctx: Any) -> tuple[np.ndarray, int]:
 
 def _effective_sample_size(x: np.ndarray, ctx: StatsContext) -> int:
     r"""
-    Effective sample size used by CI calculations.
+    Compute :math:`n_\text{eff}` used by confidence-interval calculations.
 
     Parameters
     ----------
     x : ndarray
         Input sample.
-    ctx : dict
-        Context with optional keys:
-        - ``nan_policy`` : {"propagate", "omit"}, default "propagate"
-          If "omit", use the count of finite values in ``x``.
-        - ``n`` : int, optional
-          Override for sample size when ``nan_policy != "omit"``.
+    ctx : StatsContext
+        Context governing NaN handling and declared sample size.
 
     Returns
     -------
     int
-        Effective ``n``.
+        Effective sample size according to :meth:`StatsContext.eff_n`.
     """
     arr, finite = _clean(x, ctx)
     return ctx.eff_n(observed_len=arr.size, finite_count=finite)
@@ -571,7 +616,7 @@ def std(x: np.ndarray, ctx: StatsContext):
 
 def percentiles(x: np.ndarray, ctx: StatsContext) -> dict[int, float]:
     r"""
-    Percentiles of the sample.
+    Empirical percentiles evaluated on the cleaned sample.
 
     Parameters
     ----------
@@ -580,11 +625,11 @@ def percentiles(x: np.ndarray, ctx: StatsContext) -> dict[int, float]:
     ctx : StatsContext
         Uses :attr:`StatsContext.percentiles` and :attr:`StatsContext.nan_policy`.
 
-
     Returns
     -------
     dict[int, float]
-        Mapping from requested percentile to value.
+        Mapping :math:`p \mapsto Q_p(x)` where :math:`Q_p` is the
+        :math:`p`-th percentile.
 
     Examples
     --------
@@ -607,13 +652,14 @@ def skew(x: np.ndarray, ctx: StatsContext) -> float:
     ----------
     x : ndarray
         Input sample.
-    ctx : dict
-        - ``nan_policy`` : {"propagate", "omit"}, default "propagate"
+    ctx : StatsContext
+        Uses :attr:`StatsContext.nan_policy`.
 
     Returns
     -------
     float
-        Fisher–Pearson standardized third central moment (0.0 if ``n<=2``).
+        Fisher–Pearson standardized third central moment, returning ``0.0`` if
+        :math:`n_\text{eff} \le 2`.
 
     Notes
     -----
@@ -637,13 +683,13 @@ def kurtosis(x: np.ndarray, ctx: StatsContext) -> float:
     ----------
     x : ndarray
         Input sample.
-    ctx : dict
-        - ``nan_policy`` : {"propagate", "omit"}, default "propagate"
+    ctx : StatsContext
+        Uses :attr:`StatsContext.nan_policy`.
 
     Returns
     -------
     float
-        Excess kurtosis (0.0 if ``n<=3``).
+        Excess kurtosis (``0.0`` if :math:`n_\text{eff} \le 3`).
 
     Notes
     -----
@@ -669,13 +715,31 @@ def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
     .. math::
        \bar X \pm c \cdot SE,
 
-    where :math:`c` is selected by :func:`mcframework.utils.autocrit` according to
-    ``ci_method`` and :math:`n_\text{eff}`.
+    where :math:`c` is selected by :func:`mcframework.utils.autocrit` according
+    to :attr:`StatsContext.ci_method` and :math:`n_\text{eff}`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Input sample.
+    ctx : StatsContext or Mapping
+        Configuration supplying at least :attr:`StatsContext.n`. Additional
+        fields such as :attr:`StatsContext.confidence`, :attr:`StatsContext.ddof`,
+        and :attr:`StatsContext.ci_method` refine the interval.
 
     Returns
     -------
-    tuple[float, float]
-        Lower and upper bounds of the CI.
+    dict[str, float | str]
+        Mapping with keys
+
+        ``confidence``
+            Requested confidence level.
+        ``method``
+            Resolved CI method (``"z"``, ``"t"``, or ``"auto"``).
+        ``low`` / ``high``
+            Lower and upper endpoints.
+        ``se`` / ``crit``
+            Standard error and critical value when :math:`n_\text{eff} \ge 2`.
     """
     ctx = _ensure_ctx(ctx, x)
     arr, _ = _clean(x, ctx)
@@ -723,16 +787,21 @@ def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
 
 def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.ndarray:
     r"""
-    Bootstrap CI for :math:`\mathbb{E}[X]` (percentile or BCa).
+    Generate bootstrap replicates of the sample mean.
 
-    Draws ``n_bootstrap`` resamples (with replacement) and computes bootstrap
-    means :math:`\{\bar X_b^*\}`. Returns a percentile CI or BCa CI depending on
-    :attr:`StatsContext.bootstrap`.
+    Parameters
+    ----------
+    arr : ndarray
+        Cleaned sample values.
+    B : int
+        Number of bootstrap resamples.
+    rng : numpy.random.Generator
+        Random generator used to draw resamples.
 
     Returns
     -------
-    dict
-        ``{"confidence","method","low","high"}``.
+    ndarray
+        Array of length ``B`` containing :math:`\{\bar X_b^*\}`.
     """
     n = arr.size
     idx = rng.integers(0, n, size=(B, n), endpoint=False)
@@ -760,15 +829,19 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     ----------
     x : ndarray
         Input sample.
-    ctx : dict
-        - ``confidence`` : float, default ``0.95``
-          Confidence level in :math:`(0, 1)`.
-        - ``n_bootstrap`` : int, default ``10000``
-          Number of bootstrap resamples.
-        - ``nan_policy`` : {"propagate", "omit"}, default ``"propagate"``
-          If ``"omit"``, filter out non-finite values before bootstrapping.
-        - ``random_state`` : int, optional
-          Seed for the random number generator.
+    ctx : StatsContext or Mapping
+        Configuration that may specify:
+
+        - :attr:`StatsContext.confidence`
+            Confidence level :math:`\in (0, 1)`.
+        - :attr:`StatsContext.n_bootstrap`
+            Number of bootstrap resamples (default ``10_000``).
+        - :attr:`StatsContext.nan_policy`
+            Whether to omit non-finite values before bootstrapping.
+        - :attr:`StatsContext.bootstrap`
+            Flavor (``"percentile"`` or ``"bca"``).
+        - :attr:`StatsContext.rng`
+            Seed or generator for reproducibility.
 
     Returns
     -------
@@ -778,7 +851,7 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
         - ``confidence`` : float
           The requested confidence level.
         - ``method`` : str
-          Always ``"bootstrap"``.
+          ``"bootstrap-percentile"`` or ``"bootstrap-bca"``.
         - ``low`` : float
           Lower bound of the CI (NaN if sample is empty).
         - ``high`` : float
@@ -798,9 +871,9 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     Examples
     --------
     >>> x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-    >>> result = ci_mean_bootstrap(x, {"confidence": 0.9, "n_bootstrap": 5000, "random_state": 42})
+    >>> result = ci_mean_bootstrap(x, {"confidence": 0.9, "n_bootstrap": 5000, "rng": 42})
     >>> result["method"]
-    'bootstrap'
+    'bootstrap-percentile'
     >>> 1.5 < result["low"] < result["high"] < 4.5
     True
     """
@@ -862,10 +935,18 @@ def ci_mean_chebyshev(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
        \Pr\!\left(\,|\bar X - \mu| \ge z\,SE\,\right) \le \delta,
        \qquad SE = \frac{s}{\sqrt{n_\text{eff}}}.
 
+    Parameters
+    ----------
+    x : ndarray
+        Input sample.
+    ctx : StatsContext or Mapping
+        Requires :attr:`StatsContext.n` and may specify
+        :attr:`StatsContext.confidence`.
+
     Returns
     -------
-    dict
-        ``{"confidence","method","low","high"}``.
+    dict[str, float | str]
+        Mapping with keys ``confidence``, ``method``, ``low``, and ``high``.
     """
     ctx = _ensure_ctx(ctx, x)
     n_eff = _effective_sample_size(x, ctx)
@@ -895,11 +976,9 @@ def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:
     ----------
     x : ndarray
         Input sample.
-    ctx : StatsContext
-        - ``eps`` : float
-            Target half-width :math:`\varepsilon` (> 0).
-        - ``confidence`` : float
-            Confidence level in :math:`(0, 1)`.
+    ctx : StatsContext or Mapping
+        Must supply :attr:`StatsContext.eps` (target half-width) and may
+        override :attr:`StatsContext.confidence`.
 
     Returns
     -------
@@ -937,18 +1016,15 @@ def markov_error_prob(x: np.ndarray, ctx: StatsContext) -> float:
     ----------
     x : ndarray
         Input sample.
-    ctx : StatsContext
-        - ``target`` : float
-            The true/reference value :math:`\theta`.
-        - ``eps`` : float
-            Tolerance :math:`\varepsilon` (> 0).
-        - ``n`` : int
-            Effective sample size.
+    ctx : StatsContext or Mapping
+        Requires :attr:`StatsContext.target` and :attr:`StatsContext.eps`. The
+        declared :attr:`StatsContext.n` influences the context but does not enter
+        directly into the bound.
 
     Returns
     -------
-    float or None
-        Upper bound in :math:`[0,1]`, or ``None`` if inputs missing/invalid.
+    float
+        Upper bound in :math:`[0, 1]`.
     """
     ctx = _ensure_ctx(ctx, x)
     if ctx.target is None:
@@ -970,13 +1046,13 @@ def bias_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     ----------
     x : ndarray
         Input sample.
-    ctx : dict
-        - ``target`` : float
+    ctx : StatsContext or Mapping
+        Requires :attr:`StatsContext.target`.
 
     Returns
     -------
-    float or None
-        :math:`\Xbar - \theta`, or ``None`` if ``target`` is missing.
+    float
+        Estimated bias :math:`\bar X - \theta`.
     """
     ctx = _ensure_ctx(ctx, x)
     if ctx.target is None:
@@ -986,25 +1062,24 @@ def bias_to_target(x: np.ndarray, ctx: StatsContext) -> float:
 
 def mse_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
-    Mean squared error of :math:`\Xbar` relative to a target :math:`\theta`.
+    Mean squared error of :math:`\bar X` relative to a target :math:`\theta`.
 
     Approximated by
 
     .. math::
-       \mathrm{MSE}(\Xbar) \approx \frac{s^2}{n} + (\Xbar - \theta)^2.
+       \mathrm{MSE}(\bar X) \approx \frac{s^2}{n} + (\bar X - \theta)^2.
 
     Parameters
     ----------
     x : ndarray
         Input sample.
-    ctx : dict
-        - ``target`` : float
-        - ``n`` : int
+    ctx : StatsContext or Mapping
+        Requires :attr:`StatsContext.target`.
 
     Returns
     -------
-    float or None
-        Estimated MSE, or ``None`` if ``target`` is missing.
+    float
+        Estimated mean squared error relative to ``target``.
     """
     ctx = _ensure_ctx(ctx, x)
     if ctx.target is None:
