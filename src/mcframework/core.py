@@ -49,7 +49,7 @@ import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping
 
 import numpy as np
 
@@ -277,12 +277,14 @@ class MonteCarloSimulation(ABC):
     """
 
     _PCTS = (5, 25, 50, 75, 95)  # Default percentiles for stats engine
-    _PARALLEL_THRESHOLD = 20_000  # Minimum simulations to use parallel execution
-    _CHUNKS_PER_WORKER = 8  # Number of chunks per worker for load balancing
+    # Minimum simulations to use parallel execution (default: 20,000, soft limit)
+    _PARALLEL_THRESHOLD = 20_000
+    # Number of chunks per worker for load balancing (ensures dynamic work distribution)
+    _CHUNKS_PER_WORKER = 8
 
     @staticmethod
     def _rng(
-        rng: Optional[np.random.Generator],
+        rng: np.random.Generator | None,
         default: np.random.Generator | None = None,
     ) -> np.random.Generator:
         r"""
@@ -312,7 +314,7 @@ class MonteCarloSimulation(ABC):
 
     def __init__(self, name: str = "Simulation"):
         self.name = name
-        self.seed_seq: Optional[np.random.SeedSequence] = None
+        self.seed_seq: np.random.SeedSequence | None = None
         self.rng = np.random.default_rng()
         self.parallel_backend: str = "auto"  # "auto" | "thread" | "process"
 
@@ -363,19 +365,139 @@ class MonteCarloSimulation(ABC):
         self.seed_seq = np.random.SeedSequence(seed)
         self.rng = np.random.default_rng(self.seed_seq)
 
+    def _validate_run_params(
+        self,
+        n_simulations: int,
+        n_workers: int | None,
+        confidence: float,
+        ci_method: str,
+    ) -> None:
+        """Validate parameters for run() method."""
+        if n_simulations <= 0:
+            raise ValueError("n_simulations must be positive")
+        if n_workers is not None and n_workers <= 0:
+            raise ValueError("n_workers must be positive")
+        if not 0.0 < confidence < 1.0:
+            raise ValueError("confidence must be in the interval (0, 1)")
+        if ci_method not in ("auto", "z", "t", "bootstrap"):
+            raise ValueError(f"ci_method must be one of 'auto', 'z', 't', 'bootstrap', got '{ci_method}'")
+
+    def _compute_stats_with_engine(
+        self,
+        results: np.ndarray,
+        n_simulations: int,
+        confidence: float,
+        ci_method: str,
+        stats_engine: StatsEngine | None,
+        extra_context: Mapping[str, Any] | None,
+    ) -> tuple[dict[str, Any], dict[int, float]]:
+        """
+        Compute statistics using the stats engine.
+        
+        Returns
+        -------
+        tuple[dict[str, Any], dict[int, float]]
+            (stats dict, percentiles dict)
+        """
+        eng = stats_engine or DEFAULT_ENGINE
+        if eng is None:
+            return {}, {}
+        
+        engine_defaults = self._PCTS
+        
+        # Build context dictionary
+        ctx_dict = {
+            "n": n_simulations,
+            "percentiles": engine_defaults,
+            "confidence": confidence,
+            "ci_method": ci_method,
+        }
+        
+        # Merge extra_context if provided
+        if extra_context:
+            ctx_dict.update(dict(extra_context))
+        
+        # Create StatsContext object
+        try:
+            ctx = StatsContext(**ctx_dict)
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Invalid context parameters: {e}. Using defaults.")
+            ctx = StatsContext(
+                n=n_simulations,
+                percentiles=engine_defaults,
+                confidence=confidence,
+                ci_method=ci_method,
+            )
+        
+        # Compute stats
+        try:
+            stats = eng.compute(results, ctx)
+        except Exception as e:
+            logger.error(f"Stats engine failed: {e}")
+            stats = {}
+        
+        # Merge engine stats with baseline (engine wins on collisions)
+        baseline = self._compute_stats_block(results, ctx)
+        merged_stats = dict(baseline)
+        merged_stats.update(stats if isinstance(stats, dict) else {})
+        stats = merged_stats
+        
+        # Pull percentiles returned by the engine (if any)
+        engine_perc = {}
+        if isinstance(stats, dict) and "percentiles" in stats:
+            engine_perc = stats.pop("percentiles") or {}
+        
+        percentile_map = {int(k): float(v) for k, v in engine_perc.items()}
+        
+        return stats, percentile_map
+
+    def _handle_percentiles(
+        self,
+        results: np.ndarray,
+        percentiles: Iterable[int] | None,
+        compute_stats: bool,
+        percentile_map: dict[int, float],
+    ) -> tuple[dict[int, float], list[int], bool]:
+        """
+        Handle percentile computation and tracking.
+        
+        Returns
+        -------
+        tuple[dict[int, float], list[int], bool]
+            (final percentile_map, requested_percentiles list, engine_defaults_used flag)
+        """
+        user_percentiles_provided = percentiles is not None
+        user_pcts: tuple[int, ...] = tuple(int(p) for p in (percentiles or ()))
+        
+        if not compute_stats:
+            # No stats engine: only compute user-requested percentiles
+            if not user_percentiles_provided:
+                final_map = {}
+            else:
+                final_map = self._percentiles(results, user_pcts) if user_pcts else {}
+            requested_percentiles = list(user_pcts) if user_percentiles_provided else []
+            return final_map, requested_percentiles, False
+        
+        # If the user requested extra percentiles beyond engine defaults, compute & merge them
+        if user_pcts:
+            percentile_map.update(self._percentiles(results, user_pcts))
+        
+        requested_percentiles = list(user_pcts)
+        return percentile_map, requested_percentiles, True
+
     def run(
         self,
         n_simulations: int,
         *,
         parallel: bool = False,
-        n_workers: Optional[int] = None,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-        percentiles: Optional[Iterable[int]] = None,
+        n_workers: int | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
+        percentiles: Iterable[int] | None = None,
         compute_stats: bool = True,
-        stats_engine: Optional[StatsEngine] = None,
+        stats_engine: StatsEngine | None = None,
         confidence: float = 0.95,
         ci_method: str = "auto",
-        extra_context: Optional[Mapping[str, Any]] = None,
+        extra_context: Mapping[str, Any] | None = None,
         **simulation_kwargs: Any,
     ) -> SimulationResult:
         r"""
@@ -418,14 +540,10 @@ class MonteCarloSimulation(ABC):
         --------
         mcframework.core.MonteCarloFramework.run_simulation : Run a registered simulation by name.
         """
-        if n_simulations <= 0:
-            raise ValueError("n_simulations must be positive")
-        if n_workers is not None and n_workers <= 0:
-            raise ValueError("n_workers must be positive")
-        if not 0.0 < confidence < 1.0:
-            raise ValueError("confidence must be in the interval (0, 1)")
-        if ci_method not in ("auto", "z", "t", "bootstrap"):
-            raise ValueError(f"ci_method must be one of 'auto', 'z', 't', 'bootstrap', got '{ci_method}'")
+        # Validate parameters
+        self._validate_run_params(n_simulations, n_workers, confidence, ci_method)
+        
+        # Execute simulation
         t0 = time.time()
         if parallel:
             if n_workers is None:
@@ -438,91 +556,33 @@ class MonteCarloSimulation(ABC):
 
         exec_time = time.time() - t0
 
-        # === Percentile and Stats handling ===
+        # Compute stats and percentiles
         stats: dict[str, Any] = {}
         percentile_map: dict[int, float] = {}
-        user_percentiles_provided = percentiles is not None
-        user_pcts: tuple[int, ...] = tuple(int(p) for p in (percentiles or ()))
-        if not compute_stats:
-            if not user_percentiles_provided:
-                percentile_map = {}
-            else:
-                percentile_map = self._percentiles(results, user_pcts) if user_pcts else {}
-
-            requested_percentiles = list(user_pcts) if user_percentiles_provided else []
-            return self._create_result(
-                results, n_simulations, exec_time, percentile_map, stats,
-                requested_percentiles, engine_defaults_used=False
+        
+        if compute_stats:
+            stats, percentile_map = self._compute_stats_with_engine(
+                results, n_simulations, confidence, ci_method, stats_engine, extra_context
             )
         
-        # Compute stats with engine
-        eng = stats_engine or DEFAULT_ENGINE
-        if eng is not None:
-            engine_defaults = self._PCTS
-            
-            # Build context dictionary
-            ctx_dict = {
-                "n": n_simulations,
-                "percentiles": engine_defaults,
-                "confidence": confidence,
-                "ci_method": ci_method,
-            }
-            
-            # Merge extra_context if provided
-            if extra_context:
-                ctx_dict.update(dict(extra_context))
-            
-            # Create StatsContext object
-            try:
-                ctx = StatsContext(**ctx_dict)
-            except (TypeError, ValueError) as e:
-                # Handle case where extra_context has invalid fields
-                logger.warning(f"Invalid context parameters: {e}. Using defaults.")
-                ctx = StatsContext(
-                    n=n_simulations,
-                    percentiles=engine_defaults,
-                    confidence=confidence,
-                    ci_method=ci_method,  # Pass as string; StatsContext will validate
-                )
-            
-            # Compute stats - pass StatsContext object
-            try:
-                stats = eng.compute(results, ctx)
-            except Exception as e:
-                logger.error(f"Stats engine failed: {e}")
-                stats = {}
-            
-            # Merge engine stats with baseline (engine wins on collisions)
-            baseline = self._compute_stats_block(results, ctx)
-            merged_stats = dict(baseline)
-            merged_stats.update(stats if isinstance(stats, dict) else {})
-            stats = merged_stats
-            
-            # Pull percentiles returned by the engine (if any)
-            engine_perc = {}
-            if isinstance(stats, dict) and "percentiles" in stats:
-                engine_perc = stats.pop("percentiles") or {}
-
-            percentile_map = {int(k): float(v) for k, v in engine_perc.items()}
-
-            # If the user requested extra percentiles, compute & merge them
-            if user_pcts:
-                percentile_map.update(self._percentiles(results, user_pcts))
+        percentile_map, requested_percentiles, engine_defaults_used = self._handle_percentiles(
+            results, percentiles, compute_stats, percentile_map
+        )
         
-        requested_percentiles = list(user_pcts)
         return self._create_result(
             results, n_simulations, exec_time, percentile_map, stats,
-            requested_percentiles, engine_defaults_used=True
+            requested_percentiles, engine_defaults_used
         )
 
     def _run_sequential(
         self,
         n_simulations: int,
-        progress_callback: Optional[Callable[[int, int], None]],
+        progress_callback: Callable[[int, int], None] | None,
         **simulation_kwargs: Any,
     ) -> np.ndarray:
         """Compute ``n_simulations`` draws on a single thread, with optional progress."""
         results = np.empty(n_simulations, dtype=float)
+        # Report progress every 1% of simulations
         step = max(1, n_simulations // 100)
         for i in range(n_simulations):
             results[i] = float(self.single_simulation(**simulation_kwargs))
@@ -553,64 +613,73 @@ class MonteCarloSimulation(ABC):
 
         return backend
 
-    def _run_parallel(
-        self,
-        n_simulations: int,
-        n_workers: Optional[int],
-        progress_callback: Optional[Callable[[int, int], None]],
-        **simulation_kwargs: Any,
-    ) -> np.ndarray:
-        r"""
-        Compute draws in parallel using threads (default) or processes.
-
-        Notes
-        -----
-        * Threads path uses a local worker function (no pickling).
-        * Process path submits a top-level worker (:func:`_worker_run_chunk`) so it is
-          pickleable under the ``spawn`` start method (macOS/Windows).
-        * For small jobs (``n_simulations < 20_000``) a sequential fallback avoids
-          parallel overhead.
+    def _prepare_parallel_blocks(
+        self, n_simulations: int, n_workers: int
+    ) -> tuple[list[tuple[int, int]], list[np.random.SeedSequence]]:
         """
-        if n_workers is None:
-            n_workers = mp.cpu_count()  # pragma: no cover
-
-        # ---- Short-job fallback (cheap runs shouldn't pay parallel overhead) ----
-        if n_workers <= 1 or n_simulations < self._PARALLEL_THRESHOLD:
-            return self._run_sequential(n_simulations, progress_callback, **simulation_kwargs)
-
-        block_size = max(1, n_simulations // (n_workers * self._CHUNKS_PER_WORKER)) # floor division
+        Prepare work blocks and independent random seeds for parallel execution.
+        
+        Returns
+        -------
+        tuple[list[tuple[int, int]], list[np.random.SeedSequence]]
+            (blocks, child_seed_sequences)
+        """
+        block_size = max(1, n_simulations // (n_workers * self._CHUNKS_PER_WORKER))
         blocks = make_blocks(n_simulations, block_size)
+        
         if self.seed_seq is not None:
             child_seqs = self.seed_seq.spawn(len(blocks))
         else:
             child_seqs = [np.random.SeedSequence() for _ in range(len(blocks))]
+        
+        return blocks, child_seqs
 
-        # ---- Choose backend (heuristic per platform) ----
-        backend = self._resolve_parallel_backend()
-        use_threads = backend == "thread"
+    def _run_with_threads(
+        self,
+        blocks: list[tuple[int, int]],
+        child_seqs: list[np.random.SeedSequence],
+        n_simulations: int,
+        n_workers: int,
+        progress_callback: Callable[[int, int], None] | None,
+        **simulation_kwargs: Any,
+    ) -> np.ndarray:
+        """Execute simulation using thread-based parallelism."""
         results = np.empty(n_simulations, dtype=float)
         completed = 0
         max_workers = min(n_workers, len(blocks))
 
-        if use_threads:
-            # Threads: inline worker is fine (no pickling)
-            def _work(args):
-                (a, b), seed_seq = args
-                rng = np.random.Generator(np.random.Philox(seed_seq))
-                out = np.empty(b - a, dtype=float)
-                for k in range(out.size):
-                    out[k] = float(self.single_simulation(_rng=rng, **simulation_kwargs))
-                return (a, b), out
+        def _work(args):
+            (a, b), seed_seq = args
+            rng = np.random.Generator(np.random.Philox(seed_seq))
+            out = np.empty(b - a, dtype=float)
+            for k in range(out.size):
+                out[k] = float(self.single_simulation(_rng=rng, **simulation_kwargs))
+            return (a, b), out
 
-            with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                futs = [ex.submit(_work, (blk, ss)) for blk, ss in zip(blocks, child_seqs)]
-                for f in as_completed(futs):
-                    (i, j), arr = f.result()
-                    results[i:j] = arr
-                    completed += j - i
-                    if progress_callback:
-                        progress_callback(completed, n_simulations)  # pragma: no cover
-            return results
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futs = [ex.submit(_work, (blk, ss)) for blk, ss in zip(blocks, child_seqs)]
+            for f in as_completed(futs):
+                (i, j), arr = f.result()
+                results[i:j] = arr
+                completed += j - i
+                if progress_callback:
+                    progress_callback(completed, n_simulations)  # pragma: no cover
+        
+        return results
+
+    def _run_with_processes(
+        self,
+        blocks: list[tuple[int, int]],
+        child_seqs: list[np.random.SeedSequence],
+        n_simulations: int,
+        n_workers: int,
+        progress_callback: Callable[[int, int], None] | None,
+        **simulation_kwargs: Any,
+    ) -> np.ndarray:
+        """Execute simulation using process-based parallelism."""
+        results = np.empty(n_simulations, dtype=float)
+        completed = 0
+        max_workers = min(n_workers, len(blocks))
 
         with ProcessPoolExecutor(
             max_workers=max_workers,
@@ -635,6 +704,47 @@ class MonteCarloSimulation(ABC):
                 raise
 
         return results
+
+    def _run_parallel(
+        self,
+        n_simulations: int,
+        n_workers: int | None,
+        progress_callback: Callable[[int, int], None] | None,
+        **simulation_kwargs: Any,
+    ) -> np.ndarray:
+        r"""
+        Compute draws in parallel using threads (default) or processes.
+
+        Notes
+        -----
+        * Threads path uses a local worker function (no pickling).
+        * Process path submits a top-level worker (:func:`_worker_run_chunk`) so it is
+          pickleable under the ``spawn`` start method (macOS/Windows).
+        * For small jobs (``n_simulations < 20_000``) a sequential fallback avoids
+          parallel overhead.
+        """
+        if n_workers is None:
+            n_workers = mp.cpu_count()  # pragma: no cover
+
+        # Short-job fallback (cheap runs shouldn't pay parallel overhead)
+        if n_workers <= 1 or n_simulations < self._PARALLEL_THRESHOLD:
+            return self._run_sequential(n_simulations, progress_callback, **simulation_kwargs)
+
+        # Prepare work blocks and seed sequences
+        blocks, child_seqs = self._prepare_parallel_blocks(n_simulations, n_workers)
+
+        # Choose backend (heuristic per platform)
+        backend = self._resolve_parallel_backend()
+        use_threads = backend == "thread"
+
+        if use_threads:
+            return self._run_with_threads(
+                blocks, child_seqs, n_simulations, n_workers, progress_callback, **simulation_kwargs
+            )
+        else:
+            return self._run_with_processes(
+                blocks, child_seqs, n_simulations, n_workers, progress_callback, **simulation_kwargs
+            )
 
     @staticmethod
     def _percentiles(arr: np.ndarray, ps: Iterable[int]) -> dict[int, float]:
@@ -771,7 +881,7 @@ class MonteCarloFramework:
     def register_simulation(
         self,
         simulation: MonteCarloSimulation,
-        name: Optional[str] = None,
+        name: str | None = None,
     ):
         r"""
         Register a simulation instance under a name.
