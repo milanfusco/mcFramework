@@ -736,8 +736,9 @@ def test_pi_simulation_antithetic_handles_odd_points():
 
 def test_compute_stats_with_none_engine():
     """Test that _compute_stats_with_engine returns empty dicts when engine is None"""
-    from mcframework.core import MonteCarloSimulation
     from unittest.mock import patch
+
+    from mcframework.core import MonteCarloSimulation
     
     class SimpleSim(MonteCarloSimulation):
         def single_simulation(self, _rng=None):

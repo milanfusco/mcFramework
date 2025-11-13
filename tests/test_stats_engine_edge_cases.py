@@ -347,7 +347,6 @@ def test_ensure_ctx_with_none():
 
 def test_value_error_handling_for_missing_context_keys():
     """Test that ValueError with 'Missing required context keys' is caught"""
-    from mcframework.stats_engine import MissingContextError
 
     def metric_raising_value_error(x, ctx):
         raise ValueError("Missing required context keys: some_key")
