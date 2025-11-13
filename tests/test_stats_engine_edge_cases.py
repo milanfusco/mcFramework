@@ -75,16 +75,16 @@ def test_stats_engine_available_and_select_branch():
     assert engine.available() == ("mean", "std", "noop")
 
     res = engine.compute(np.array([1.0, 2.0, 3.0]), select=("std",), n=3, confidence=0.95)
-    assert set(res) == {"std"}
+    assert set(res.metrics) == {"std"}
 
 
 def test_stats_engine_skips_empty_and_error_metrics():
-    def empty_metric(x, ctx):
-        return {}
+    def none_metric(x, ctx):
+        return None
 
     metrics = [
         FnMetric("mean", mean),
-        FnMetric("empty", empty_metric),
+        FnMetric("none_metric", none_metric),
         FnMetric("chebyshev_required_n", chebyshev_required_n),
         FnMetric("boom", lambda x, ctx: (_ for _ in ()).throw(RuntimeError("boom"))),
     ]
@@ -93,9 +93,15 @@ def test_stats_engine_skips_empty_and_error_metrics():
     ctx = StatsContext(n=5)  # Missing eps for chebyshev_required_n
     result = engine.compute(np.array([1.0, 2.0, 3.0]), ctx)
 
-    # Only mean should survive; 'empty' skipped, chebyshev raises ValueError and is skipped,
-    # and boom raises RuntimeError and is suppressed.
-    assert result == {"mean": pytest.approx(2.0)}
+    # Only mean should survive; 'none_metric' returns None and is skipped,
+    # chebyshev raises MissingContextError and is skipped,
+    # and boom raises RuntimeError and is tracked in errors.
+    assert result.metrics == {"mean": pytest.approx(2.0)}
+    assert len(result.skipped) == 2  # none_metric and chebyshev_required_n
+    assert len(result.errors) == 1  # boom
+    assert any("none_metric" in s[0] for s in result.skipped)
+    assert any("chebyshev_required_n" in s[0] for s in result.skipped)
+    assert "boom" in result.errors[0][0]
 
 
 def test_ensure_ctx_handles_dict_and_attributes():
@@ -185,14 +191,14 @@ def test_ci_mean_bootstrap_outputs_plain_python_floats():
     assert isinstance(res["high"], float)
 
 
-def test_ci_mean_bootstrap_empty_returns_empty_dict():
-    ctx = StatsContext(n=0, n_bootstrap=50, rng=0)
-    assert ci_mean_bootstrap(np.array([]), ctx) == {}
+def test_ci_mean_bootstrap_empty_returns_none():
+    ctx = StatsContext(n=0, n_bootstrap=100, rng=0)
+    assert ci_mean_bootstrap(np.array([]), ctx) is None
 
 
-def test_ci_mean_chebyshev_small_sample_returns_empty():
+def test_ci_mean_chebyshev_small_sample_returns_none():
     ctx_small = StatsContext(n=1)
-    assert ci_mean_chebyshev(np.array([1.0]), ctx_small) == {}
+    assert ci_mean_chebyshev(np.array([1.0]), ctx_small) is None
 
     ctx = StatsContext(n=10, confidence=0.9)
     res = ci_mean_chebyshev(np.array([1.0, 2.0, 3.0, 4.0]), ctx)
@@ -237,4 +243,69 @@ def test_markov_error_prob_validations_and_result():
     object.__setattr__(ctx_negative_eps, "eps", -0.1)
     with pytest.raises(ValueError, match="must be positive"):
         markov_error_prob(arr, ctx_negative_eps)
+
+
+def test_stats_context_cross_field_validations():
+    """Test new cross-field validation in StatsContext.__post_init__"""
+
+    # Test ess > n raises error
+    with pytest.raises(ValueError, match="ess .* cannot exceed n"):
+        StatsContext(n=10, ess=20)
+
+    # Test ess <= 0 raises error
+    with pytest.raises(ValueError, match="ess must be positive"):
+        StatsContext(n=10, ess=0)
+
+    # Test n_bootstrap < 100 raises error
+    with pytest.raises(ValueError, match="n_bootstrap .* should be >= 100"):
+        StatsContext(n=10, n_bootstrap=50)
+
+    # Valid cases should not raise
+    ctx = StatsContext(n=100, ess=50, n_bootstrap=1000)
+    assert ctx.ess == 50
+    assert ctx.n_bootstrap == 1000
+
+
+def test_compute_result_tracking():
+    """Test that ComputeResult properly tracks skipped and errored metrics"""
+    from mcframework.stats_engine import ComputeResult, MissingContextError
+
+    def failing_metric(x, ctx):
+        raise RuntimeError("intentional failure")
+
+    def none_metric(x, ctx):
+        return None
+
+    def missing_ctx_metric(x, ctx):
+        raise MissingContextError("missing field")
+
+    metrics = [
+        FnMetric("mean", mean),
+        FnMetric("failing", failing_metric),
+        FnMetric("none", none_metric),
+        FnMetric("missing", missing_ctx_metric),
+    ]
+    engine = StatsEngine(metrics)
+    result = engine.compute(np.array([1, 2, 3]), n=3)
+
+    # Check result type
+    assert isinstance(result, ComputeResult)
+
+    # mean should succeed
+    assert "mean" in result.metrics
+    assert result.metrics["mean"] == pytest.approx(2.0)
+
+    # failing should be in errors
+    assert len(result.errors) == 1
+    assert result.errors[0][0] == "failing"
+    assert "intentional failure" in result.errors[0][1]
+
+    # none and missing should be in skipped
+    assert len(result.skipped) == 2
+    skipped_names = [s[0] for s in result.skipped]
+    assert "none" in skipped_names
+    assert "missing" in skipped_names
+
+    # Test successful_metrics() method
+    assert result.successful_metrics() == {"mean"}
 

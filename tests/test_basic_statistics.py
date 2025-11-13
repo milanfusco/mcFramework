@@ -37,18 +37,18 @@ class TestBasicStatistics:
         assert pytest.approx(result) == expected
 
     def test_std_single_value(self):
-        """Test std returns 0 for single value"""
+        """Test std returns None for single value (n_eff <= 1)"""
         data = np.array([5.0])
         ctx = StatsContext(n=len(data))
         result = std(data, ctx)
-        assert result == 0.0
+        assert result is None
 
     def test_std_empty_array(self):
-        """Test std returns 0 for an empty array"""
+        """Test std returns None for an empty array"""
         data = np.array([])
         ctx = StatsContext(n=len(data))
         result = std(data, ctx)
-        assert result == 0.0
+        assert result is None
 
     def test_percentiles_default(self, sample_data):
         """Test percentile calculation with defaults"""

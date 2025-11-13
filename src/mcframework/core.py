@@ -431,7 +431,9 @@ class MonteCarloSimulation(ABC):
         
         # Compute stats
         try:
-            stats = eng.compute(results, ctx)
+            result = eng.compute(results, ctx)
+            # Extract metrics from ComputeResult
+            stats = result.metrics if hasattr(result, 'metrics') else {}
         except Exception as e:
             logger.error(f"Stats engine failed: {e}")
             stats = {}

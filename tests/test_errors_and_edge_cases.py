@@ -125,7 +125,7 @@ class TestErrorHandling:
         """Test stats engine with no metrics"""
         engine = StatsEngine([])
         result = engine.compute(np.array([1, 2, 3]), n=3)
-        assert len(result) == 0
+        assert len(result.metrics) == 0
 
     def test_simulation_with_failed_stats(self, simple_simulation, monkeypatch):
         """Test simulation continues if stats engine fails"""

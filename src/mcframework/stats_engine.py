@@ -73,11 +73,13 @@ _BCa_JACKKNIFE_DENOMINATOR = 6.0  # Constant in BCa acceleration calculation
 # Custom exceptions for better error handling
 class MissingContextError(ValueError):
     """Raised when a required context field is missing."""
+
     pass
 
 
 class InsufficientDataError(ValueError):
     """Raised when insufficient data is available for computation."""
+
     pass
 
 
@@ -194,7 +196,6 @@ class StatsContext:
     rng: int | np.random.Generator | None = None
     n_bootstrap: int = 10_000
     bootstrap: BootstrapMethod = "percentile"
-    # Note: block_size for block bootstrap was removed as it was unused
 
     # ergonomics
     def with_overrides(self, **changes) -> "StatsContext":
@@ -285,13 +286,14 @@ class StatsContext:
 
     def __post_init__(self) -> None:
         r"""
-        Validate field ranges (confidence, percentiles, n_bootstrap, ddof).
+        Validate field ranges and cross-field consistency.
 
         Raises
         ------
         ValueError
-            If any field is outside its allowed range.
+            If any field is outside its allowed range or fields are inconsistent.
         """
+        # Individual field validations
         if not (0.0 < self.confidence < 1.0):
             raise ValueError("confidence must be in (0,1)")
         if any(p < 0 or p > 100 for p in self.percentiles):
@@ -302,6 +304,17 @@ class StatsContext:
             raise ValueError("ddof must be >= 0")
         if self.eps is not None and self.eps <= 0:
             raise ValueError("eps must be positive")
+
+        # Cross-field validations
+        if self.ess is not None:
+            if self.ess > self.n:
+                raise ValueError(f"ess ({self.ess}) cannot exceed n ({self.n})")
+            if self.ess <= 0:
+                raise ValueError(f"ess must be positive, got {self.ess}")
+
+        # Warn about small bootstrap samples (but don't fail)
+        if self.n_bootstrap < 100:
+            raise ValueError(f"n_bootstrap ({self.n_bootstrap}) should be >= 100 for reliable estimates")
 
 
 @dataclass(frozen=True)
@@ -322,6 +335,45 @@ class _CIResult:
         if self.extras:
             result.update({key: float(value) for key, value in self.extras.items()})
         return result
+
+
+@dataclass(frozen=True)
+class ComputeResult:
+    r"""
+    Result from :meth:`StatsEngine.compute` with tracking of computation failures.
+
+    Attributes
+    ----------
+    metrics : dict[str, Any]
+        Successfully computed metric values, keyed by metric name.
+    skipped : list[tuple[str, str]]
+        List of (metric_name, reason) pairs for metrics that were skipped.
+    errors : list[tuple[str, str]]
+        List of (metric_name, error_message) pairs for metrics that raised errors.
+
+    Examples
+    --------
+    >>> result = engine.compute(data, ctx)
+    >>> result.metrics  # dict of computed values
+    >>> result.skipped  # list of skipped metrics with reasons
+    >>> result.successful_metrics()  # set of successful metric names
+    """
+
+    metrics: dict[str, Any]
+    skipped: list[tuple[str, str]] = field(default_factory=list)
+    errors: list[tuple[str, str]] = field(default_factory=list)
+
+    def successful_metrics(self) -> set[str]:
+        r"""
+        Return names of successfully computed metrics.
+
+        Returns
+        -------
+        set[str]
+            Set of metric names present in :attr:`metrics`.
+        """
+        return set(self.metrics.keys())
+
 
 class Metric(Protocol):
     r"""
@@ -440,7 +492,7 @@ class StatsEngine:
         ctx: StatsContext | None = None,
         select: Sequence[str] | None = None,
         **kwargs: Any,
-    ) -> dict[str, Any]:
+    ) -> ComputeResult:
         r"""
         Evaluate all registered metrics on ``x``.
 
@@ -459,8 +511,12 @@ class StatsEngine:
 
         Returns
         -------
-        dict
-            Mapping from metric name to computed value.
+        ComputeResult
+            Result object containing:
+
+            - ``metrics``: Successfully computed metric values.
+            - ``skipped``: List of (metric_name, reason) for skipped metrics.
+            - ``errors``: List of (metric_name, error_message) for failed metrics.
         """
         if ctx is not None:
             ctx = _ensure_ctx(ctx, x)
@@ -476,33 +532,43 @@ class StatsEngine:
         )
 
         out: dict[str, Any] = {}
+        skipped: list[tuple[str, str]] = []
+        errors: list[tuple[str, str]] = []
+
         for m in metrics_to_compute:
             try:
                 result = m(x, ctx)
 
-                # Filter out empty dicts (metrics that can't compute)
-                if isinstance(result, dict) and len(result) == 0:
-                    logger.debug(f"Metric '{m.name}' returned empty dict, skipping")
+                # Handle None return (insufficient data)
+                if result is None:
+                    skipped.append((m.name, "insufficient data"))
+                    logger.debug(f"Metric '{m.name}' returned None (insufficient data), skipping")
                     continue
 
                 out[m.name] = result
 
             except MissingContextError as e:
                 # Skip metrics that require context fields not provided
-                logger.debug(f"Skipping metric {m.name}: {e}")
+                reason = str(e)
+                skipped.append((m.name, reason))
+                logger.debug(f"Skipping metric {m.name}: {reason}")
                 continue
             except ValueError as e:
                 # Also handle general ValueError for backward compatibility
                 msg = str(e)
                 if "Missing required context keys" in msg:
+                    skipped.append((m.name, msg))
                     logger.debug(f"Skipping metric {m.name}: {msg}")
                     continue
                 raise
-            except Exception:
+            except Exception as e:
+                # Log and track unexpected errors
+                error_msg = str(e)
+                errors.append((m.name, error_msg))
                 logger.exception(f"Error computing metric {m.name}")
                 continue
 
-        return out
+        return ComputeResult(metrics=out, skipped=skipped, errors=errors)
 
 
 def _ensure_ctx(ctx: Any, x: np.ndarray) -> StatsContext:
@@ -604,7 +670,7 @@ def _effective_sample_size(x: np.ndarray, ctx: StatsContext) -> int:
     return ctx.eff_n(observed_len=arr.size, finite_count=finite)
 
 
-def mean(x: np.ndarray, ctx: StatsContext):
+def mean(x: np.ndarray, ctx: StatsContext) -> float | None:
     r"""
     Sample mean.
 
@@ -617,8 +683,9 @@ def mean(x: np.ndarray, ctx: StatsContext):
 
     Returns
     -------
-    float
-        :math:`\bar X = \frac{1}{n}\sum_i x_i`.
+    float or None
+        :math:`\bar X = \frac{1}{n}\sum_i x_i`, or ``None`` if the sample is empty
+        after cleaning.
 
     Examples
     --------
@@ -627,10 +694,10 @@ def mean(x: np.ndarray, ctx: StatsContext):
     """
     ctx = _ensure_ctx(ctx, x)
     arr, _ = _clean(x, ctx)
-    return float(np.mean(arr)) if arr.size else float("nan")
+    return float(np.mean(arr)) if arr.size else None
 
 
-def std(x: np.ndarray, ctx: StatsContext):
+def std(x: np.ndarray, ctx: StatsContext) -> float | None:
     r"""
     Sample standard deviation with Bessel correction.
 
@@ -643,8 +710,9 @@ def std(x: np.ndarray, ctx: StatsContext):
         If ``nan_policy="omit"``, non-finite values are excluded.
     Returns
     -------
-    float
-        :math:`s = \sqrt{\frac{1}{n-1}\sum_i (x_i-\bar X)^2}` (returns ``0.0`` if :math:`n_\text{eff} \le 1`).
+    float or None
+        :math:`s = \sqrt{\frac{1}{n-1}\sum_i (x_i-\bar X)^2}`, or ``None`` if
+        :math:`n_\text{eff} \le 1`.
 
     Examples
     --------
@@ -655,7 +723,7 @@ def std(x: np.ndarray, ctx: StatsContext):
     arr, finite = _clean(x, ctx)
     n_eff = ctx.eff_n(observed_len=arr.size, finite_count=finite)
     if n_eff <= 1:
-        return 0.0
+        return None
     return float(np.std(arr, ddof=ctx.ddof))
 
 
@@ -851,11 +919,113 @@ def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.nd
     return arr[idx].mean(axis=1)
 
 
-def _compute_bca_interval(
-    arr: np.ndarray, means: np.ndarray, confidence: float
-) -> tuple[float, float]:
+def _bca_bias_correction(arr: np.ndarray, bootstrap_means: np.ndarray) -> float:
+    r"""
+    Compute :math:`z_0`, the bias-correction factor for BCa bootstrap.
+
+    The bias correction accounts for median bias in the bootstrap distribution.
+    It is computed as:
+
+    .. math::
+       z_0 = \Phi^{-1}(P(\bar X_b^* < \bar X))
+
+    where :math:`\Phi^{-1}` is the inverse standard normal CDF, :math:`\bar X`
+    is the observed sample mean, and :math:`\bar X_b^*` are the bootstrap means.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Original sample values.
+    bootstrap_means : ndarray
+        Bootstrap replicate means.
+
+    Returns
+    -------
+    float
+        Bias correction factor :math:`z_0`.
+
+    Notes
+    -----
+    The proportion is clipped to :math:`[\epsilon, 1-\epsilon]` where
+    :math:`\epsilon` = ``_SMALL_PROB_BOUND`` to prevent numerical issues
+    in the inverse error function.
+    """
+    m_hat = float(np.mean(arr))
+    prop = float(np.sum(bootstrap_means < m_hat)) / bootstrap_means.size
+    # Clip to prevent log(0) in erfinv (which is used by inverse normal CDF)
+    prop = np.clip(prop, _SMALL_PROB_BOUND, 1 - _SMALL_PROB_BOUND)
+    # Convert proportion to z-score using inverse normal CDF
+    # erfinv is related to norm.ppf via: norm.ppf(p) = sqrt(2) * erfinv(2*p - 1)
+    return float(np.sqrt(2) * erfinv(2 * prop - 1))
+
+
+def _bca_acceleration(arr: np.ndarray) -> float:
+    r"""
+    Compute :math:`a`, the acceleration factor for BCa bootstrap via jackknife.
+
+    The acceleration factor measures the rate of change of the standard error
+    of the estimator as a function of the true parameter value. It is computed
+    using the jackknife (leave-one-out) means:
+
+    .. math::
+       a = \frac{\sum_{i=1}^n d_i^3}{6 \left(\sum_{i=1}^n d_i^2\right)^{3/2}}
+
+    where :math:`d_i = \bar X_{(-i)} - \bar{\bar X}_{(\cdot)}` is the deviation
+    of each jackknife mean from their overall mean.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Original sample values.
+
+    Returns
+    -------
+    float
+        Acceleration factor :math:`a`.
+
+    Notes
+    -----
+    The formula follows Efron & Tibshirani (1993), "An Introduction to the Bootstrap".
+    A small constant is added to the denominator to prevent division by zero.
+
+    References
+    ----------
+    .. [1] Efron, B., & Tibshirani, R. J. (1993). An Introduction to the Bootstrap.
+           Chapman & Hall/CRC.
+    """
+    # Jackknife: compute leave-one-out means efficiently
+    # If sum(arr) = S and arr[i] = x_i, then mean without x_i = (S - x_i)/(n-1)
+    s = np.sum(arr, dtype=float)
+    jack_means = (s - arr) / (arr.size - 1)
+
+    # Deviations from jackknife mean
+    d = jack_means - float(np.mean(jack_means))
+
+    # Acceleration formula from Efron & Tibshirani (1993)
+    # The constant 6.0 comes from the theoretical derivation
+    numerator = float(np.sum(d**3))
+    denominator = _BCa_JACKKNIFE_DENOMINATOR * (np.sum(d**2) ** 1.5) + _SMALL_VARIANCE_BOUND
+    return numerator / denominator
+
+
+def _compute_bca_interval(arr: np.ndarray, means: np.ndarray, confidence: float) -> tuple[float, float]:
     r"""
     Compute bias-corrected and accelerated (BCa) bootstrap interval.
+
+    The BCa method adjusts the bootstrap percentiles to account for:
+
+    1. **Bias correction** (:math:`z_0`): Corrects for median bias in the bootstrap
+       distribution relative to the observed statistic.
+    2. **Acceleration** (:math:`a`): Adjusts for non-constant variance of the
+       estimator as the true parameter varies.
+
+    The adjusted percentiles are computed via the transformation:
+
+    .. math::
+       p = \Phi\left(z_0 + \frac{z_0 + z_\alpha}{1 - a(z_0 + z_\alpha)}\right)
+
+    where :math:`\Phi` is the standard normal CDF and :math:`z_\alpha` is the
+    :math:`\alpha`-level quantile.
 
     Parameters
     ----------
@@ -870,38 +1040,44 @@ def _compute_bca_interval(
     -------
     tuple[float, float]
         (lower_bound, upper_bound)
+
+    See Also
+    --------
+    _bca_bias_correction : Computes the bias correction factor :math:`z_0`.
+    _bca_acceleration : Computes the acceleration factor :math:`a`.
+
+    References
+    ----------
+    .. [1] Efron, B. (1987). "Better Bootstrap Confidence Intervals".
+           Journal of the American Statistical Association, 82(397), 171-185.
     """
-    B = means.size
-    m_hat = float(np.mean(arr))
-    
-    # Compute bias correction factor z0
-    prop = float(np.sum(means < m_hat)) / B
-    prop = np.clip(prop, _SMALL_PROB_BOUND, 1 - _SMALL_PROB_BOUND)
-    z0 = float(np.sqrt(2) * erfinv(2 * prop - 1))
+    # Compute BCa adjustment factors
+    z0 = _bca_bias_correction(arr, means)
+    a = _bca_acceleration(arr)
 
-    # Compute acceleration factor via jackknife
-    s = np.sum(arr, dtype=float)
-    jack = (s - arr) / (arr.size - 1)
-    d = jack - float(np.mean(jack))
-    a = float(np.sum(d**3)) / (_BCa_JACKKNIFE_DENOMINATOR * (np.sum(d**2) ** 1.5) + _SMALL_VARIANCE_BOUND)
-
-    # Compute adjusted percentiles
+    # Standard normal quantiles for the confidence interval
     zlo = float(norm.ppf((1 - confidence) / 2))
     zhi = float(norm.ppf(1 - (1 - confidence) / 2))
 
-    def _adj(z: float) -> float:
+    # BCa-adjusted percentiles using the transformation formula
+    # Φ(z0 + (z0 + z) / (1 - a(z0 + z))) converted to percentile scale
+    def adjusted_percentile(z: float) -> float:
+        """Apply BCa transformation to convert z-score to adjusted percentile."""
         num = z0 + z
         den = 1.0 - a * num
         return float(norm.cdf(z0 + num / den)) * 100.0
 
-    p_lo = np.clip(_adj(zlo), 0, 100)
-    p_hi = np.clip(_adj(zhi), 0, 100)
+    # Compute adjusted percentile bounds and clip to valid range
+    p_lo = np.clip(adjusted_percentile(zlo), 0, 100)
+    p_hi = np.clip(adjusted_percentile(zhi), 0, 100)
+
+    # Extract the interval from the bootstrap distribution
     low, high = np.percentile(means, [p_lo, p_hi])
-    
+
     return float(low), float(high)
 
 
-def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str]:
+def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str] | None:
     r"""
     Bootstrap confidence interval for :math:`\mathbb{E}[X]` via resampling.
 
@@ -938,7 +1114,7 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
 
     Returns
     -------
-    dict
+    dict or None
         Mapping with keys:
 
         - ``confidence`` : float
@@ -946,9 +1122,11 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
         - ``method`` : str
           ``"bootstrap-percentile"`` or ``"bootstrap-bca"``.
         - ``low`` : float
-          Lower bound of the CI (NaN if sample is empty).
+          Lower bound of the CI.
         - ``high`` : float
-          Upper bound of the CI (NaN if sample is empty).
+          Upper bound of the CI.
+
+        Returns ``None`` if the sample is empty after cleaning.
 
     See Also
     --------
@@ -973,14 +1151,14 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     ctx = _ensure_ctx(ctx, x)
     arr, _ = _clean(x, ctx)
     if arr.size == 0:
-        return {}
-    
+        return None
+
     B = int(ctx.n_bootstrap)
     g = ctx.get_generators()
     means = _bootstrap_means(arr, B, g)
     loq, hiq = ctx.q_bound()
     method = ctx.bootstrap
-    
+
     # Use percentile method for small samples or when explicitly requested
     if method == "percentile" or arr.size < 3:
         low, high = np.percentile(means, [loq, hiq])
@@ -1001,7 +1179,7 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     ).as_dict()
 
 
-def ci_mean_chebyshev(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str]:
+def ci_mean_chebyshev(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str] | None:
     r"""
     Distribution-free CI for :math:`\mathbb{E}[X]` via Chebyshev's inequality.
 
@@ -1022,15 +1200,19 @@ def ci_mean_chebyshev(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
 
     Returns
     -------
-    dict[str, float | str]
-        Mapping with keys ``confidence``, ``method``, ``low``, and ``high``.
+    dict[str, float | str] or None
+        Mapping with keys ``confidence``, ``method``, ``low``, and ``high``,
+        or ``None`` if :math:`n_\text{eff} < 2`.
     """
     ctx = _ensure_ctx(ctx, x)
     n_eff = _effective_sample_size(x, ctx)
     if n_eff < 2:
-        return {}
+        return None
     mu = mean(x, ctx)
     s = std(x, ctx)
+    # Handle case where mean or std returns None
+    if mu is None or s is None:
+        return None
     k = 1.0 / np.sqrt(max(_SMALL_VARIANCE_BOUND, 1.0 - ctx.confidence))  # 1/sqrt(alpha)
     half = k * s / np.sqrt(n_eff)
     return _CIResult(
@@ -1222,6 +1404,7 @@ DEFAULT_ENGINE = build_default_engine(
 
 __all__ = [
     "StatsContext",
+    "ComputeResult",
     "Metric",
     "FnMetric",
     "StatsEngine",
