@@ -732,3 +732,33 @@ def test_pi_simulation_antithetic_handles_odd_points():
     sim.set_seed(123)
     value = sim.single_simulation(antithetic=True, n_points=5)
     assert 0.0 < value < 4.5
+
+
+def test_compute_stats_with_none_engine():
+    """Test that _compute_stats_with_engine returns empty dicts when engine is None"""
+    from mcframework.core import MonteCarloSimulation
+    from unittest.mock import patch
+    
+    class SimpleSim(MonteCarloSimulation):
+        def single_simulation(self, _rng=None):
+            return 1.0
+    
+    sim = SimpleSim()
+    sim.set_seed(42)
+    
+    # Patch DEFAULT_ENGINE to be None
+    with patch('mcframework.core.DEFAULT_ENGINE', None):
+        stats, percentiles = sim._compute_stats_with_engine(
+            results=np.array([1.0, 2.0, 3.0]),
+            n_simulations=3,
+            confidence=0.95,
+            ci_method="auto",
+            stats_engine=None,
+            extra_context=None
+        )
+        assert stats == {}
+        assert percentiles == {}
+
+
+
+

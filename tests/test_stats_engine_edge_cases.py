@@ -316,3 +316,85 @@ def test_compute_result_tracking():
     # Test successful_metrics() method
     assert result.successful_metrics() == {"mean"}
 
+
+def test_compute_result_repr():
+    """Test that ComputeResult's __repr__ displays correctly"""
+    from mcframework.stats_engine import ComputeResult
+
+    result = ComputeResult(
+        metrics={"mean": 5.0, "std": 1.2},
+        skipped=[("metric1", "reason1"), ("metric2", "reason2")],
+        errors=[("metric3", "error message")]
+    )
+    
+    # Test that repr generates the multiline formatted output
+    repr_str = repr(result)
+    assert "ComputeResult" in repr_str
+    assert "mean" in repr_str
+    assert "std" in repr_str
+    assert "metric1" in repr_str
+    assert "metric2" in repr_str
+    assert "metric3" in repr_str
+
+
+def test_ensure_ctx_with_none():
+    """Test that _ensure_ctx handles None ctx by creating a default context"""
+    arr = np.array([1.0, 2.0, 3.0, 4.0])
+    ctx = _ensure_ctx(None, arr)
+    assert isinstance(ctx, StatsContext)
+    assert ctx.n == arr.size
+
+
+def test_value_error_handling_for_missing_context_keys():
+    """Test that ValueError with 'Missing required context keys' is caught"""
+    from mcframework.stats_engine import MissingContextError
+
+    def metric_raising_value_error(x, ctx):
+        raise ValueError("Missing required context keys: some_key")
+
+    metrics = [
+        FnMetric("mean", mean),
+        FnMetric("value_error_metric", metric_raising_value_error),
+    ]
+    engine = StatsEngine(metrics)
+    result = engine.compute(np.array([1, 2, 3]), n=3)
+
+    # mean should succeed
+    assert "mean" in result.metrics
+
+    # value_error_metric should be skipped
+    assert len(result.skipped) == 1
+    assert result.skipped[0][0] == "value_error_metric"
+    assert "Missing required context keys" in result.skipped[0][1]
+
+
+def test_value_error_without_missing_keys_is_raised():
+    """Test that ValueError without 'Missing required context keys' is re-raised"""
+    
+    def metric_raising_other_value_error(x, ctx):
+        raise ValueError("Some other error message")
+
+    metrics = [
+        FnMetric("value_error_metric", metric_raising_other_value_error),
+    ]
+    engine = StatsEngine(metrics)
+    
+    # This should raise the ValueError since it doesn't contain "Missing required context keys"
+    with pytest.raises(ValueError, match="Some other error message"):
+        engine.compute(np.array([1, 2, 3]), n=3)
+
+
+def test_ci_mean_chebyshev_with_none_mean_or_std():
+    """Test that ci_mean_chebyshev returns None when mean or std is None"""
+    from unittest.mock import patch
+    
+    # Create data with enough elements to pass the n_eff >= 2 check
+    # but mock std to return None
+    data = np.array([1.0, 2.0, 3.0, 4.0])
+    ctx = StatsContext(n=4, confidence=0.95)
+    
+    # Mock std to return None while keeping mean working
+    with patch('mcframework.stats_engine.std', return_value=None):
+        result = ci_mean_chebyshev(data, ctx)
+        assert result is None
+

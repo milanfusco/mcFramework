@@ -705,7 +705,7 @@ class MonteCarloSimulation(ABC):
                     completed += j - i
                     if progress_callback:
                         progress_callback(completed, n_simulations)  # pragma: no cover
-            except KeyboardInterrupt:
+            except KeyboardInterrupt: # pragma: no cover
                 for f in futs:
                     f.cancel()
                 raise
