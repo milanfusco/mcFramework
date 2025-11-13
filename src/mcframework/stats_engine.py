@@ -30,9 +30,21 @@ mcframework.utils.autocrit
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Any, Callable, Generic, Iterable, Optional, Protocol, Sequence, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Iterable,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    SupportsFloat,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
 from scipy.special import erfinv
@@ -277,6 +289,25 @@ class StatsContext:
         if self.eps is not None and self.eps <= 0:
             raise ValueError("eps must be positive")
 
+
+@dataclass(frozen=True)
+class _CIResult:
+    confidence: float
+    method: str
+    low: float
+    high: float
+    extras: Mapping[str, SupportsFloat] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, float | str]:
+        result: dict[str, float | str] = {
+            "confidence": float(self.confidence),
+            "method": str(self.method),
+            "low": float(self.low),
+            "high": float(self.high),
+        }
+        if self.extras:
+            result.update({key: float(value) for key, value in self.extras.items()})
+        return result
 
 class Metric(Protocol):
     r"""
@@ -746,23 +777,22 @@ def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
 
     # if everything got dropped or x was empty
     if arr.size == 0:
-        return {
-            "confidence": ctx.confidence,
-            "method": ctx.ci_method,
-            "low": float("nan"),
-            "high": float("nan"),
-        }
+        return _CIResult(
+            confidence=ctx.confidence,
+            method=ctx.ci_method,
+            low=float("nan"),
+            high=float("nan"),
+        ).as_dict()
 
     n_eff = _effective_sample_size(arr, ctx)  # counts after cleaning if 'omit'
     if n_eff < 2:
-        return {
-            "confidence": ctx.confidence,
-            "method": ctx.ci_method,
-            "low": float("nan"),
-            "high": float("nan"),
-            "se": float("nan"),
-            "crit": float("nan"),
-        }
+        return _CIResult(
+            confidence=ctx.confidence,
+            method=ctx.ci_method,
+            low=float("nan"),
+            high=float("nan"),
+            extras={"se": float("nan"), "crit": float("nan")},
+        ).as_dict()
 
     mu = float(np.mean(arr))
 
@@ -775,14 +805,13 @@ def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
 
     crit, method = autocrit(ctx.confidence, n_eff, ctx.ci_method)
 
-    return {
-        "confidence": ctx.confidence,
-        "method": method,
-        "se": float(se),
-        "crit": float(crit),
-        "low": float(mu - crit * se),
-        "high": float(mu + crit * se),
-    }
+    return _CIResult(
+        confidence=ctx.confidence,
+        method=method,
+        low=mu - crit * se,
+        high=mu + crit * se,
+        extras={"se": se, "crit": crit},
+    ).as_dict()
 
 
 def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.ndarray:
@@ -888,12 +917,12 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     method = ctx.bootstrap
     if method == "percentile" or arr.size < 3:
         low, high = np.percentile(means, [loq, hiq])
-        return {
-            "confidence": ctx.confidence,
-            "method": "bootstrap-percentile",
-            "low": float(low),
-            "high": float(high),
-        }
+        return _CIResult(
+            confidence=ctx.confidence,
+            method="bootstrap-percentile",
+            low=low,
+            high=high,
+        ).as_dict()
 
     # BCa
     m_hat = float(np.mean(arr))
@@ -916,12 +945,12 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
 
     p_lo, p_hi = np.clip(_adj(zlo), 0, 100), np.clip(_adj(zhi), 0, 100)
     low, high = np.percentile(means, [p_lo, p_hi])
-    return {
-        "confidence": ctx.confidence,
-        "method": "bootstrap-bca",
-        "low": float(low),
-        "high": float(high),
-    }
+    return _CIResult(
+        confidence=ctx.confidence,
+        method="bootstrap-bca",
+        low=low,
+        high=high,
+    ).as_dict()
 
 
 def ci_mean_chebyshev(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str]:
@@ -956,12 +985,12 @@ def ci_mean_chebyshev(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     s = std(x, ctx)
     k = 1.0 / np.sqrt(max(1e-30, 1.0 - ctx.confidence))  # 1/sqrt(alpha)
     half = k * s / np.sqrt(n_eff)
-    return {
-        "confidence": ctx.confidence,
-        "method": "chebyshev",
-        "low": float(mu - half),
-        "high": float(mu + half),
-    }
+    return _CIResult(
+        confidence=ctx.confidence,
+        method="chebyshev",
+        low=mu - half,
+        high=mu + half,
+    ).as_dict()
 
 
 def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:

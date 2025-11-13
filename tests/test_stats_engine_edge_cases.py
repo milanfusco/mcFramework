@@ -156,6 +156,14 @@ def test_ci_mean_handles_edge_cases():
     assert zero_res["crit"] >= 0
 
 
+def test_ci_mean_outputs_plain_python_floats():
+    data = np.linspace(0.0, 5.0, num=8)
+    ctx = StatsContext(n=data.size, confidence=0.9)
+    res = ci_mean(data, ctx)
+    for key in ("low", "high", "se", "crit"):
+        assert isinstance(res[key], float)
+
+
 def test_ci_mean_bootstrap_percentile_and_bca():
     arr = np.linspace(0.0, 1.0, num=6)
 
@@ -167,6 +175,14 @@ def test_ci_mean_bootstrap_percentile_and_bca():
     bca_res = ci_mean_bootstrap(arr, ctx_bca)
     assert bca_res["method"] == "bootstrap-bca"
     assert bca_res["low"] <= bca_res["high"]
+
+
+def test_ci_mean_bootstrap_outputs_plain_python_floats():
+    arr = np.linspace(-2.0, 3.0, num=7)
+    ctx = StatsContext(n=arr.size, n_bootstrap=100, rng=999, bootstrap="percentile")
+    res = ci_mean_bootstrap(arr, ctx)
+    assert isinstance(res["low"], float)
+    assert isinstance(res["high"], float)
 
 
 def test_ci_mean_bootstrap_empty_returns_empty_dict():
@@ -181,6 +197,14 @@ def test_ci_mean_chebyshev_small_sample_returns_empty():
     ctx = StatsContext(n=10, confidence=0.9)
     res = ci_mean_chebyshev(np.array([1.0, 2.0, 3.0, 4.0]), ctx)
     assert res["method"] == "chebyshev"
+
+
+def test_ci_mean_chebyshev_outputs_plain_python_floats():
+    ctx = StatsContext(n=6, confidence=0.9)
+    values = np.array([0.5, 1.5, 2.5, 3.5, 4.5, 5.5])
+    res = ci_mean_chebyshev(values, ctx)
+    assert isinstance(res["low"], float)
+    assert isinstance(res["high"], float)
 
 
 def test_chebyshev_required_n_validations_and_result():

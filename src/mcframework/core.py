@@ -11,10 +11,10 @@ simulations, and managing results.
 
 This module provides:
 
-* :class:`~mcframework.core.MonteCarloSimulation` – abstract base for simulations.
-* :class:`~mcframework.core.SimulationResult` – a lightweight container for outputs.
-* :class:`~mcframework.core.MonteCarloFramework` – registry + convenience runner.
-* :func:`~mcframework.core.make_blocks` – chunking helper for parallel runs.
+* :class:`~mcframework.core.MonteCarloSimulation` - abstract base for simulations.
+* :class:`~mcframework.core.SimulationResult` - a lightweight container for outputs.
+* :class:`~mcframework.core.MonteCarloFramework` - registry + convenience runner.
+* :func:`~mcframework.core.make_blocks` - chunking helper for parallel runs.
 
 Parallel backends
 ----------------
