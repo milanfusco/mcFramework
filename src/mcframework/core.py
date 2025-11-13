@@ -393,7 +393,7 @@ class MonteCarloSimulation(ABC):
     ) -> tuple[dict[str, Any], dict[int, float]]:
         """
         Compute statistics using the stats engine.
-        
+
         Returns
         -------
         tuple[dict[str, Any], dict[int, float]]
@@ -402,9 +402,9 @@ class MonteCarloSimulation(ABC):
         eng = stats_engine or DEFAULT_ENGINE
         if eng is None:
             return {}, {}
-        
+
         engine_defaults = self._PCTS
-        
+
         # Build context dictionary
         ctx_dict = {
             "n": n_simulations,
@@ -412,11 +412,11 @@ class MonteCarloSimulation(ABC):
             "confidence": confidence,
             "ci_method": ci_method,
         }
-        
+
         # Merge extra_context if provided
         if extra_context:
             ctx_dict.update(dict(extra_context))
-        
+
         # Create StatsContext object
         try:
             ctx = StatsContext(**ctx_dict)
@@ -428,29 +428,29 @@ class MonteCarloSimulation(ABC):
                 confidence=confidence,
                 ci_method=ci_method,
             )
-        
+
         # Compute stats
         try:
             result = eng.compute(results, ctx)
             # Extract metrics from ComputeResult
-            stats = result.metrics if hasattr(result, 'metrics') else {}
+            stats = result.metrics if hasattr(result, "metrics") else {}
         except Exception as e:
             logger.error(f"Stats engine failed: {e}")
             stats = {}
-        
+
         # Merge engine stats with baseline (engine wins on collisions)
         baseline = self._compute_stats_block(results, ctx)
         merged_stats = dict(baseline)
         merged_stats.update(stats if isinstance(stats, dict) else {})
         stats = merged_stats
-        
+
         # Pull percentiles returned by the engine (if any)
         engine_perc = {}
         if isinstance(stats, dict) and "percentiles" in stats:
             engine_perc = stats.pop("percentiles") or {}
-        
+
         percentile_map = {int(k): float(v) for k, v in engine_perc.items()}
-        
+
         return stats, percentile_map
 
     def _handle_percentiles(
@@ -462,7 +462,7 @@ class MonteCarloSimulation(ABC):
     ) -> tuple[dict[int, float], list[int], bool]:
         """
         Handle percentile computation and tracking.
-        
+
         Returns
         -------
         tuple[dict[int, float], list[int], bool]
@@ -470,7 +470,7 @@ class MonteCarloSimulation(ABC):
         """
         user_percentiles_provided = percentiles is not None
         user_pcts: tuple[int, ...] = tuple(int(p) for p in (percentiles or ()))
-        
+
         if not compute_stats:
             # No stats engine: only compute user-requested percentiles
             if not user_percentiles_provided:
@@ -479,11 +479,11 @@ class MonteCarloSimulation(ABC):
                 final_map = self._percentiles(results, user_pcts) if user_pcts else {}
             requested_percentiles = list(user_pcts) if user_percentiles_provided else []
             return final_map, requested_percentiles, False
-        
+
         # If the user requested extra percentiles beyond engine defaults, compute & merge them
         if user_pcts:
             percentile_map.update(self._percentiles(results, user_pcts))
-        
+
         requested_percentiles = list(user_pcts)
         return percentile_map, requested_percentiles, True
 
@@ -544,7 +544,7 @@ class MonteCarloSimulation(ABC):
         """
         # Validate parameters
         self._validate_run_params(n_simulations, n_workers, confidence, ci_method)
-        
+
         # Execute simulation
         t0 = time.time()
         if parallel:
@@ -561,19 +561,24 @@ class MonteCarloSimulation(ABC):
         # Compute stats and percentiles
         stats: dict[str, Any] = {}
         percentile_map: dict[int, float] = {}
-        
+
         if compute_stats:
             stats, percentile_map = self._compute_stats_with_engine(
                 results, n_simulations, confidence, ci_method, stats_engine, extra_context
             )
-        
+
         percentile_map, requested_percentiles, engine_defaults_used = self._handle_percentiles(
             results, percentiles, compute_stats, percentile_map
         )
-        
+
         return self._create_result(
-            results, n_simulations, exec_time, percentile_map, stats,
-            requested_percentiles, engine_defaults_used
+            results,
+            n_simulations,
+            exec_time,
+            percentile_map,
+            stats,
+            requested_percentiles,
+            engine_defaults_used,
         )
 
     def _run_sequential(
@@ -620,7 +625,7 @@ class MonteCarloSimulation(ABC):
     ) -> tuple[list[tuple[int, int]], list[np.random.SeedSequence]]:
         """
         Prepare work blocks and independent random seeds for parallel execution.
-        
+
         Returns
         -------
         tuple[list[tuple[int, int]], list[np.random.SeedSequence]]
@@ -628,12 +633,12 @@ class MonteCarloSimulation(ABC):
         """
         block_size = max(1, n_simulations // (n_workers * self._CHUNKS_PER_WORKER))
         blocks = make_blocks(n_simulations, block_size)
-        
+
         if self.seed_seq is not None:
             child_seqs = self.seed_seq.spawn(len(blocks))
         else:
             child_seqs = [np.random.SeedSequence() for _ in range(len(blocks))]
-        
+
         return blocks, child_seqs
 
     def _run_with_threads(
@@ -666,7 +671,7 @@ class MonteCarloSimulation(ABC):
                 completed += j - i
                 if progress_callback:
                     progress_callback(completed, n_simulations)  # pragma: no cover
-        
+
         return results
 
     def _run_with_processes(
@@ -771,7 +776,7 @@ class MonteCarloSimulation(ABC):
         ci = ci_mean(results, ctx)
         return {
             "mean": float(m),
-            "std": float(s), 
+            "std": float(s),
             "ci_mean": (float(ci["low"]), float(ci["high"])),
             "confidence": float(ci["confidence"]),
             "method": ci["method"],
@@ -788,16 +793,13 @@ class MonteCarloSimulation(ABC):
         """
         ctx = _ensure_ctx(ctx, results)
         results = np.asarray(results, dtype=float).ravel()
-        req = (
-            getattr(ctx, "percentiles", None)
-            or getattr(ctx, "requested_percentiles", None)
-            or []
-        )
+        req = getattr(ctx, "percentiles", None) or getattr(ctx, "requested_percentiles", None) or []
         req = list(req)
         if not req:
             return {}
         vals = pct(results, req, ctx)  # aligned to req
         return {float(q): float(v) for q, v in zip(req, np.asarray(vals, dtype=float))}
+
     def _create_result(
         self,
         results: np.ndarray,

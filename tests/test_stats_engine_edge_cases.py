@@ -7,7 +7,6 @@ from mcframework.stats_engine import (
     StatsEngine,
     _clean,
     _ensure_ctx,
-    _validate_ctx,
     chebyshev_required_n,
     ci_mean,
     ci_mean_bootstrap,
@@ -63,19 +62,27 @@ def test_stats_context_validation_errors(kwargs, message):
         StatsContext(n=1, **kwargs)
 
 
-def test_validate_ctx_missing_required_keys():
-    with pytest.raises(ValueError) as exc:
-        _validate_ctx({}, {"n"}, {"confidence"})
-    assert "Missing required context keys" in str(exc.value)
+def test_stats_context_missing_required_field():
+    with pytest.raises(TypeError):
+        StatsContext()   # missing required argument n
 
 
 def test_stats_engine_available_and_select_branch():
-    metrics = [FnMetric("mean", mean), FnMetric("std", std), FnMetric("noop", lambda x, ctx: 0)]
+    metrics = [
+        FnMetric("mean", mean),
+        FnMetric("std", std),
+        FnMetric("noop", lambda x, ctx: 0)
+    ]
     engine = StatsEngine(metrics)
-    assert engine.available() == ("mean", "std", "noop")
+
+    rep = repr(engine)
+    assert "mean" in rep
+    assert "std" in rep
+    assert "noop" in rep
 
     res = engine.compute(np.array([1.0, 2.0, 3.0]), select=("std",), n=3, confidence=0.95)
     assert set(res.metrics) == {"std"}
+
 
 
 def test_stats_engine_skips_empty_and_error_metrics():

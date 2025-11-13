@@ -41,6 +41,7 @@ from typing import (
     Protocol,
     Sequence,
     SupportsFloat,
+    TypeAlias,
     TypeVar,
 )
 
@@ -64,6 +65,8 @@ if not logger.handlers:
 
 _PCTS = (5, 25, 50, 75, 95)  # default percentiles
 
+
+# TODO: make these configurable
 # Numerical stability constants
 _SMALL_PROB_BOUND = 1e-12  # Minimum probability for BCa bootstrap to avoid log(0)
 _SMALL_VARIANCE_BOUND = 1e-30  # Minimum variance denominator to prevent division by zero
@@ -294,7 +297,7 @@ class StatsContext:
             If any field is outside its allowed range or fields are inconsistent.
         """
         # Individual field validations
-        if not (0.0 < self.confidence < 1.0):
+        if not 0.0 < self.confidence < 1.0:
             raise ValueError("confidence must be in (0,1)")
         if any(p < 0 or p > 100 for p in self.percentiles):
             raise ValueError("percentiles must be in [0,100]")
@@ -363,6 +366,15 @@ class ComputeResult:
     skipped: list[tuple[str, str]] = field(default_factory=list)
     errors: list[tuple[str, str]] = field(default_factory=list)
 
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(\n"
+            f"  metrics={list(self.metrics.keys())},\n"
+            f"  skipped={[name for name, _ in self.skipped]},\n"
+            f"  errors={[name for name, _ in self.errors]}\n"
+            ")"
+    )
+
     def successful_metrics(self) -> set[str]:
         r"""
         Return names of successfully computed metrics.
@@ -373,6 +385,9 @@ class ComputeResult:
             Set of metric names present in :attr:`metrics`.
         """
         return set(self.metrics.keys())
+
+
+MetricSet: TypeAlias = Iterable["Metric"]
 
 
 class Metric(Protocol):
@@ -448,16 +463,6 @@ class FnMetric(Generic[T]):
         return self.fn(x, ctx)
 
 
-def _validate_ctx(ctx: dict[str, Any], required: set[str], optional: set[str]):
-    missing = required - ctx.keys()
-    if missing:
-        raise ValueError(
-            f"Missing required context keys: {missing} \n "
-            f"Optional keys are: {optional} \n "
-            f"Provided keys are: {set(ctx.keys())}"
-        )
-
-
 class StatsEngine:
     r"""
     Orchestrator that evaluates a set of metrics over an input array.
@@ -480,11 +485,12 @@ class StatsEngine:
     {'mean': 2.0, 'std': 1.0}
     """
 
-    def __init__(self, metrics: Iterable[Metric]):
+    def __init__(self, metrics: MetricSet):
         self._metrics = list(metrics)
 
-    def available(self) -> tuple[str, ...]:
-        return tuple(m.name for m in self._metrics)
+    def __repr__(self) -> str:
+        metric_names = ", ".join(m.name for m in self._metrics)
+        return f"{self.__class__.__name__}(metrics=[{metric_names}])"
 
     def compute(
         self,
@@ -542,7 +548,7 @@ class StatsEngine:
                 # Handle None return (insufficient data)
                 if result is None:
                     skipped.append((m.name, "insufficient data"))
-                    logger.debug(f"Metric '{m.name}' returned None (insufficient data), skipping")
+                    logger.debug("Metric %s returned None (insufficient data), skipping", m.name)
                     continue
 
                 out[m.name] = result
@@ -551,21 +557,21 @@ class StatsEngine:
                 # Skip metrics that require context fields not provided
                 reason = str(e)
                 skipped.append((m.name, reason))
-                logger.debug(f"Skipping metric {m.name}: {reason}")
+                logger.debug("Skipping metric %s: %s", m.name, reason)
                 continue
             except ValueError as e:
                 # Also handle general ValueError for backward compatibility
                 msg = str(e)
                 if "Missing required context keys" in msg:
                     skipped.append((m.name, msg))
-                    logger.debug(f"Skipping metric {m.name}: {msg}")
+                    logger.debug("Skipping metric %s: %s", m.name, msg)
                     continue
                 raise
             except Exception as e:
                 # Log and track unexpected errors
                 error_msg = str(e)
                 errors.append((m.name, error_msg))
-                logger.exception(f"Error computing metric {m.name}")
+                logger.exception("Error computing metric %s", m.name)
                 continue
 
         return ComputeResult(metrics=out, skipped=skipped, errors=errors)
