@@ -271,7 +271,7 @@ def animate_paths(
     ax.set_xlim(0, T)
     ax.set_xlabel("Time (years)")
     ax.set_ylabel("Stock Price ($)")
-    ax.set_title("Animated Black–Scholes Price Paths")
+    ax.set_title("Black-Scholes Price Paths, first 20 paths")
     ax.grid(True, alpha=GRID_ALPHA)
     
     # Start with tight y-limits that will expand
