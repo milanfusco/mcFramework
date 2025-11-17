@@ -705,7 +705,7 @@ class MonteCarloSimulation(ABC):
                     completed += j - i
                     if progress_callback:
                         progress_callback(completed, n_simulations)  # pragma: no cover
-            except KeyboardInterrupt: # pragma: no cover
+            except KeyboardInterrupt: # type: ignore[misc]
                 for f in futs:
                     f.cancel()
                 raise
@@ -797,7 +797,7 @@ class MonteCarloSimulation(ABC):
         req = list(req)
         if not req:
             return {}
-        vals = pct(results, req, ctx)  # aligned to req
+        vals = pct(results, ctx)  # aligned to req
         return {float(q): float(v) for q, v in zip(req, np.asarray(vals, dtype=float))}
 
     def _create_result(

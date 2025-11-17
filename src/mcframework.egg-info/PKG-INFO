@@ -5,7 +5,7 @@ Summary: Lightweight, reproducible Monte Carlo simulation framework
 Author: Milan Fusco
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
-License-File: LICENSE 
+License-File: LICENSE
 Requires-Dist: numpy>=1.24
 Requires-Dist: matplotlib>=3.7
 Requires-Dist: scipy>=1.10
@@ -31,7 +31,39 @@ Dynamic: license-file
 
 # mcframework
 
+[![CI](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml/badge.svg)](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/milanfusco/mcframework/branch/main/graph/badge.svg)](https://codecov.io/gh/milanfusco/mcframework)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Lightweight, reproducible Monte Carlo simulation framework.
+
+## Installation
+
+### From Source (Development)
+
+Clone the repository and install in editable mode:
+
+```bash
+git clone https://github.com/yourusername/mcframework.git
+cd mcframework
+pip install -e .
+```
+
+### Dependencies
+
+The framework requires:
+- Python >= 3.10
+- numpy >= 1.24
+- scipy >= 1.10
+- matplotlib >= 3.7
+
+### Optional Dependencies
+
+For development:
+```bash
+pip install -e ".[dev,test,docs]"
+```
 
 ## Features
 
@@ -55,6 +87,21 @@ fw.register_simulation(sim)
 res = fw.run_simulation("Pi Estimation", 10000, n_points=5000, parallel=True)
 print(res.result_to_string())
 ```
+
+For a comprehensive example with visualizations, see [`demo.py`](demo.py) which demonstrates Pi estimation and portfolio simulations with detailed plots.
+
+
+## Parallel execution becomes multiplatform (Version )
+
+`MonteCarloSimulation.run(..., parallel=True)` automatically decides between threads and
+processes. On POSIX platforms NumPy releases the GIL, so the framework keeps using threads
+for `parallel_backend="auto"`. Starting with this release the same `auto` setting resolves
+to **processes on Windows**, which restores the expected speed-ups when Python threads
+serialize under the GIL. You can still override the backend explicitly by setting
+`parallel_backend` to `"thread"` or `"process"`.
+
+
+
 
 ## Defining a Custom Simulation
 

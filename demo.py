@@ -1,9 +1,11 @@
 from __future__ import annotations
+
+import multiprocessing as mp
+
 import matplotlib.pyplot as plt
 import numpy as np
-import multiprocessing as mp
-from mcframework import MonteCarloFramework
-from mcframework import PiEstimationSimulation, PortfolioSimulation
+
+from mcframework import MonteCarloFramework, PiEstimationSimulation, PortfolioSimulation
 from mcframework.stats_engine import build_default_engine
 
 

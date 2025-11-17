@@ -1,4 +1,4 @@
-LICENSE 
+LICENSE
 README.md
 pyproject.toml
 src/mcframework/__init__.py
@@ -23,4 +23,5 @@ tests/test_performance_and_concurrency.py
 tests/test_regression.py
 tests/test_sims.py
 tests/test_stats_engine.py
+tests/test_stats_engine_edge_cases.py
 tests/test_utils.py

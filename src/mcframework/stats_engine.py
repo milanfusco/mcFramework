@@ -22,7 +22,7 @@ mcframework.utils.autocrit
 
 # DEV NOTE:
 # ===========================================================================
-# The type checker throws a fit since x is ndarray and the checker can't verify
+# The type checker throws a fit since x is a numpy ndarray and the checker can't verify
 # that numpy/scipy functions accept that. So, we're suppressing the error
 # with type: ignore[arg-type] where needed.
 # ===========================================================================
@@ -138,6 +138,8 @@ class BootstrapMethod(str, Enum):
 
     percentile = "percentile"
     bca = "bca"
+    
+    
 
 
 @dataclass(slots=True)
