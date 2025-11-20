@@ -28,7 +28,9 @@ matplotlib.use('Agg')  # Use non-interactive backend for headless environments
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FFMpegWriter, FuncAnimation
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from numpy.typing import NDArray
+from scipy.stats import norm
 
 from mcframework.core import MonteCarloFramework, SimulationResult
 from mcframework.sims import BlackScholesPathSimulation, BlackScholesSimulation
@@ -55,6 +57,7 @@ LINEWIDTH_MEAN = 2.5
 GRID_ALPHA = 0.3
 
 # Simulation Parameters
+SEED = 999
 N_SIMULATIONS_PRICING = 10_000
 N_SIMULATIONS_GREEKS = 5_000
 N_SIMULATIONS_PATHS = 1_000
@@ -89,7 +92,7 @@ def save_figure(fig: plt.Figure, filename: str) -> None:
         Name of the output file.
     """
     filepath = OUTPUT_DIR / filename
-    fig.savefig(filepath, dpi=DPI, bbox_inches='tight')
+    fig.savefig(filepath, dpi=DPI, bbox_inches='tight', pad_inches=0.5)
     print(f"Saved plot to {filepath}")
 
 
@@ -243,6 +246,99 @@ def plot_greeks(
     plt.close(fig)
 
 
+def black_scholes_call_price(S, K, r, sigma, tau):
+    """
+    Vectorized Black–Scholes formula for call options.
+    Works with scalars, 1D arrays, and 2D arrays (for surface grids).
+    """
+    S = np.asarray(S)
+    tau = np.asarray(tau)
+
+    # Payoff at maturity (tau = 0)
+    intrinsic = np.maximum(S - K, 0.0)
+
+    # Where tau == 0, return intrinsic value
+    zero_mask = tau <= 0
+
+    # Allocate result array
+    C = np.zeros_like(S, dtype=float)
+    C[zero_mask] = intrinsic[zero_mask]
+
+    # Normal BS formula where tau > 0
+    positive_mask = ~zero_mask
+    if np.any(positive_mask):
+        tau_pos = tau[positive_mask]
+        S_pos = S[positive_mask]
+
+        d1 = (np.log(S_pos / K) + (r + 0.5 * sigma**2) * tau_pos) / (sigma * np.sqrt(tau_pos))
+        d2 = d1 - sigma * np.sqrt(tau_pos)
+
+        C[positive_mask] = (
+            S_pos * norm.cdf(d1) -
+            K * np.exp(-r * tau_pos) * norm.cdf(d2)
+        )
+
+    return C
+
+
+def plot_price_surface_3d(paths, T=1.0, K=100, r=0.05, sigma=0.20,
+                           filename="bs_surface.png"):
+    """
+    Create a 3D plot of option price surface + simulated stock paths.
+    """
+    n_paths, n_steps = paths.shape
+    t = np.linspace(0, T, n_steps)
+
+    # ===== 1) Create Stock Price Grid =====
+    S_min = np.min(paths)
+    S_max = np.max(paths)
+    S_vals = np.linspace(S_min, S_max, 120)
+
+    T_vals = np.linspace(0, T, 120)
+    T_grid, S_grid = np.meshgrid(T_vals, S_vals)
+
+    # Time to maturity tau = T - t
+    tau_grid = (T - T_grid)
+
+    # ===== 2) Compute Option Price Surface =====
+    C_grid = black_scholes_call_price(S_grid, K, r, sigma, tau_grid)
+
+    # ===== 3) Compute Option Value Along Simulated Paths =====
+    C_paths = np.zeros_like(paths)
+    for i in range(n_steps):
+        tau = T - t[i]
+        C_paths[:, i] = black_scholes_call_price(paths[:, i], K, r, sigma, tau)
+
+    # ===== 4) Plot Everything =====
+    fig = plt.figure(figsize=(24, 10)) 
+    ax = fig.add_subplot(111, projection="3d")
+    ax.set_box_aspect([1.5, 1, 0.8])
+
+    # Surface
+    ax.plot_surface(
+        T_grid, S_grid, C_grid,
+        cmap="viridis", alpha=0.4, rstride=4, cstride=4, linewidth=0
+    )
+
+    # Path cloud
+    for i in range(min(80, n_paths)):
+        ax.plot(t, paths[i], C_paths[i], color="black", alpha=0.05)
+
+    # Highlight mean path in red
+    mean_path = np.mean(paths, axis=0)
+    tau_mean = T - t  # Time to maturity for each time point along the mean path
+    mean_price = black_scholes_call_price(mean_path, K, r, sigma, tau_mean)
+    ax.plot(t, mean_path, mean_price, color="red", linewidth=2)
+
+    ax.set_xlabel("Time t")
+    ax.set_ylabel("Stock Price Sₜ")
+    ax.set_zlabel("Call Price Cₜ")
+    ax.set_title("Black–Scholes Call Price Surface with Simulated Paths")
+
+    save_figure(fig, filename)
+    plt.close(fig)
+
+
 # =============================================================================
 # Animation Functions
 # =============================================================================
@@ -392,7 +488,8 @@ def animate_distribution(
 # =============================================================================
 
 def run_option_pricing(
-    fw: MonteCarloFramework
+    fw: MonteCarloFramework,
+    seed: int
 ) -> tuple[SimulationResult, SimulationResult, BlackScholesSimulation]:
     """
     Run European and American option pricing simulations.
@@ -410,7 +507,7 @@ def run_option_pricing(
     """
     # European Call Option
     european_sim = BlackScholesSimulation(name="European Call Option")
-    european_sim.set_seed(42)
+    european_sim.set_seed(seed)
     fw.register_simulation(european_sim)
     
     european_result = fw.run_simulation(
@@ -422,7 +519,7 @@ def run_option_pricing(
     
     # American Put Option
     american_sim = BlackScholesSimulation(name="American Put Option")
-    american_sim.set_seed(42)
+    american_sim.set_seed(seed)
     fw.register_simulation(american_sim)
     
     american_result = fw.run_simulation(
@@ -467,7 +564,7 @@ def simulate_paths() -> NDArray[np.float64]:
         Array of shape (n_paths, n_steps + 1) containing price paths.
     """
     path_sim = BlackScholesPathSimulation(name="Black-Scholes Path Simulation")
-    path_sim.set_seed(123)
+    path_sim.set_seed(SEED)
     
     # Get statistics on final prices
     result_paths = path_sim.run(
@@ -477,6 +574,7 @@ def simulate_paths() -> NDArray[np.float64]:
     print(f"Average final price: ${result_paths.mean:.2f}")
 
     # Generate paths for visualization
+    path_sim.set_seed(SEED)
     paths = path_sim.simulate_paths(
         n_paths=N_PATHS_VISUALIZATION,
         S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252
@@ -534,7 +632,7 @@ def generate_visualizations(
     plot_final_price_distribution(paths)
     plot_convergence(european_result.results)
     plot_greeks(greeks)
-    
+    plot_price_surface_3d(paths)
     # Animations
     animate_paths(paths)
     animate_distribution(paths)
@@ -559,7 +657,7 @@ def main() -> None:
     
     # Run simulations
     print("Running option pricing simulations...")
-    european_result, american_result, european_sim = run_option_pricing(fw)
+    european_result, american_result, european_sim = run_option_pricing(fw, SEED)
     
     # Display results
     print_comparison(fw)
