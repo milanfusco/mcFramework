@@ -15,7 +15,7 @@ Lightweight, reproducible, and deterministic Monte Carlo simulation framework wi
 Clone the repository and install in editable mode:
 
 ```bash
-git clone https://github.com/yourusername/mcframework.git
+git clone https://github.com/milanfusco/mcframework.git
 cd mcframework
 pip install -e .
 ```
