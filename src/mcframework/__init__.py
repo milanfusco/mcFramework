@@ -1,7 +1,12 @@
 """mcframework package public API."""
 
 from .core import MonteCarloFramework, MonteCarloSimulation, SimulationResult
-from .sims import PiEstimationSimulation, PortfolioSimulation
+from .sims import (
+    BlackScholesPathSimulation,
+    BlackScholesSimulation,
+    PiEstimationSimulation,
+    PortfolioSimulation,
+)
 from .stats_engine import DEFAULT_ENGINE, FnMetric, StatsContext, StatsEngine
 from .utils import autocrit, t_crit, z_crit
 
@@ -11,6 +16,8 @@ __all__ = [
     "MonteCarloFramework",
     "PiEstimationSimulation",
     "PortfolioSimulation",
+    "BlackScholesSimulation",
+    "BlackScholesPathSimulation",
     "StatsEngine",
     "StatsContext",
     "FnMetric",

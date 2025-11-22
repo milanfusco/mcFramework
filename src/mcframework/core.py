@@ -797,8 +797,14 @@ class MonteCarloSimulation(ABC):
         req = list(req)
         if not req:
             return {}
-        vals = pct(results, req, ctx)  # aligned to req
-        return {float(q): float(v) for q, v in zip(req, np.asarray(vals, dtype=float))}
+        vals = pct(results, ctx)  # aligned to req
+        if isinstance(vals, Mapping):
+            return {float(q): float(vals[q]) for q in req}
+        vals_arr = np.asarray(vals, dtype=float).ravel()
+        if vals_arr.size != len(req):
+            msg = "pct() must return as many values as requested percentiles"
+            raise ValueError(msg)
+        return {float(q): float(v) for q, v in zip(req, vals_arr)}
 
     def _create_result(
         self,
