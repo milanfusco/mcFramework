@@ -20,7 +20,6 @@ from mcframework.sims import (
     _simulate_gbm_path,
 )
 
-
 # =============================================================================
 # Tests for Helper Functions
 # =============================================================================
@@ -117,8 +116,8 @@ class TestAmericanExerciseLSM:
         for i in range(n_paths):
             paths[i] = _simulate_gbm_path(S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=n_steps, rng=rng)
 
-        price = _american_exercise_lsm(paths, K=100.0, r=0.05, dt=1.0/n_steps, option_type="put")
-        
+        price = _american_exercise_lsm(paths, K=100.0, r=0.05, dt=1.0 / n_steps, option_type="put")
+
         # American put should have positive value
         assert price > 0
         # Should be reasonable (between 0 and strike)
@@ -133,8 +132,8 @@ class TestAmericanExerciseLSM:
         for i in range(n_paths):
             paths[i] = _simulate_gbm_path(S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=n_steps, rng=rng)
 
-        price = _american_exercise_lsm(paths, K=100.0, r=0.05, dt=1.0/n_steps, option_type="call")
-        
+        price = _american_exercise_lsm(paths, K=100.0, r=0.05, dt=1.0 / n_steps, option_type="call")
+
         # American call should have positive value
         assert price >= 0
 
@@ -151,13 +150,12 @@ class TestAmericanExerciseLSM:
     def test_deep_otm_options(self):
         """Test LSM with deep out-of-the-money options."""
         # Create paths that stay well above strike for puts
-        rng = np.random.default_rng(42)
         n_paths = 50
         n_steps = 20
         paths = np.ones((n_paths, n_steps + 1)) * 200.0  # All paths at $200
 
-        price = _american_exercise_lsm(paths, K=100.0, r=0.05, dt=1.0/n_steps, option_type="put")
-        
+        price = _american_exercise_lsm(paths, K=100.0, r=0.05, dt=1.0 / n_steps, option_type="put")
+
         # Deep OTM put should be worthless
         assert price == 0.0
 
@@ -174,7 +172,7 @@ class TestBlackScholesSimulation:
         """Test simulation initialization."""
         sim = BlackScholesSimulation()
         assert sim.name == "Black-Scholes Option Pricing"
-        
+
         sim_custom = BlackScholesSimulation(name="Custom BS")
         assert sim_custom.name == "Custom BS"
 
@@ -182,12 +180,11 @@ class TestBlackScholesSimulation:
         """Test single European call option simulation."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         price = sim.single_simulation(
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="call", exercise_type="european"
+            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20, option_type="call", exercise_type="european"
         )
-        
+
         assert isinstance(price, float)
         assert price >= 0
 
@@ -195,12 +192,11 @@ class TestBlackScholesSimulation:
         """Test single European put option simulation."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         price = sim.single_simulation(
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="put", exercise_type="european"
+            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20, option_type="put", exercise_type="european"
         )
-        
+
         assert isinstance(price, float)
         assert price >= 0
 
@@ -208,12 +204,11 @@ class TestBlackScholesSimulation:
         """Test single American call option simulation."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         price = sim.single_simulation(
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="call", exercise_type="american"
+            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20, option_type="call", exercise_type="american"
         )
-        
+
         assert isinstance(price, float)
         assert price >= 0
 
@@ -221,12 +216,11 @@ class TestBlackScholesSimulation:
         """Test single American put option simulation."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         price = sim.single_simulation(
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="put", exercise_type="american"
+            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20, option_type="put", exercise_type="american"
         )
-        
+
         assert isinstance(price, float)
         assert price >= 0
 
@@ -234,35 +228,31 @@ class TestBlackScholesSimulation:
         """Test that invalid option type raises ValueError."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         with pytest.raises(ValueError, match="option_type must be 'call' or 'put'"):
             sim.single_simulation(
-                S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-                option_type="invalid", exercise_type="european"
+                S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20, option_type="invalid", exercise_type="european"
             )
 
     def test_invalid_exercise_type(self):
         """Test that invalid exercise type raises ValueError."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         with pytest.raises(ValueError, match="exercise_type must be 'european' or 'american'"):
             sim.single_simulation(
-                S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-                option_type="call", exercise_type="invalid"
+                S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20, option_type="call", exercise_type="invalid"
             )
 
     def test_european_call_run(self):
         """Test running multiple European call simulations."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         result = sim.run(
-            1000,
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="call", exercise_type="european"
+            1000, S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20, option_type="call", exercise_type="european"
         )
-        
+
         assert result.n_simulations == 1000
         assert result.mean > 0
         assert result.std > 0
@@ -272,13 +262,11 @@ class TestBlackScholesSimulation:
         """Test running multiple American put simulations."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         result = sim.run(
-            1000,
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="put", exercise_type="american"
+            1000, S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20, option_type="put", exercise_type="american"
         )
-        
+
         assert result.n_simulations == 1000
         assert result.mean > 0
         assert len(result.results) == 1000
@@ -287,14 +275,16 @@ class TestBlackScholesSimulation:
         """Test that same seed produces same results."""
         sim1 = BlackScholesSimulation()
         sim1.set_seed(42)
-        result1 = sim1.run(100, S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-                          option_type="call", exercise_type="european")
-        
+        result1 = sim1.run(
+            100, S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20, option_type="call", exercise_type="european"
+        )
+
         sim2 = BlackScholesSimulation()
         sim2.set_seed(42)
-        result2 = sim2.run(100, S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-                          option_type="call", exercise_type="european")
-        
+        result2 = sim2.run(
+            100, S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20, option_type="call", exercise_type="european"
+        )
+
         np.testing.assert_array_equal(result1.results, result2.results)
 
 
@@ -305,13 +295,18 @@ class TestCalculateGreeks:
         """Test basic Greeks calculation."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         greeks = sim.calculate_greeks(
             n_simulations=1000,
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="call", exercise_type="european"
+            S0=100.0,
+            K=100.0,
+            T=1.0,
+            r=0.05,
+            sigma=0.20,
+            option_type="call",
+            exercise_type="european",
         )
-        
+
         # Check all Greeks are present
         assert "price" in greeks
         assert "delta" in greeks
@@ -319,7 +314,7 @@ class TestCalculateGreeks:
         assert "vega" in greeks
         assert "theta" in greeks
         assert "rho" in greeks
-        
+
         # Check reasonable values
         assert greeks["price"] > 0
         assert 0 < greeks["delta"] < 1  # Call delta should be between 0 and 1
@@ -332,13 +327,18 @@ class TestCalculateGreeks:
         """Test Greeks calculation for put options."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         greeks = sim.calculate_greeks(
             n_simulations=1000,
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="put", exercise_type="european"
+            S0=100.0,
+            K=100.0,
+            T=1.0,
+            r=0.05,
+            sigma=0.20,
+            option_type="put",
+            exercise_type="european",
         )
-        
+
         assert greeks["price"] > 0
         assert -1 < greeks["delta"] < 0  # Put delta should be negative
         assert greeks["gamma"] > 0
@@ -348,43 +348,58 @@ class TestCalculateGreeks:
         """Test Greeks with custom bump percentages."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         greeks = sim.calculate_greeks(
             n_simulations=500,
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="call", exercise_type="european",
+            S0=100.0,
+            K=100.0,
+            T=1.0,
+            r=0.05,
+            sigma=0.20,
+            option_type="call",
+            exercise_type="european",
             bump_pct=0.02,  # 2% bump
-            time_bump_days=7.0  # 7 days
+            time_bump_days=7.0,  # 7 days
         )
-        
+
         assert all(k in greeks for k in ["price", "delta", "gamma", "vega", "theta", "rho"])
 
     def test_calculate_greeks_parallel(self):
         """Test Greeks calculation with parallel execution."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         greeks = sim.calculate_greeks(
             n_simulations=1000,
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="call", exercise_type="european",
-            parallel=True
+            S0=100.0,
+            K=100.0,
+            T=1.0,
+            r=0.05,
+            sigma=0.20,
+            option_type="call",
+            exercise_type="european",
+            parallel=True,
         )
-        
+
         assert all(isinstance(greeks[k], float) for k in greeks.keys())
 
     def test_calculate_greeks_near_expiry(self):
         """Test Greeks calculation near expiry."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         # Use time < 1 day (< 1/365) to trigger theta = 0 case
         greeks = sim.calculate_greeks(
             n_simulations=500,
-            S0=100.0, K=100.0, T=0.002, r=0.05, sigma=0.20,  # Less than 1 day
-            option_type="call", exercise_type="european"
+            S0=100.0,
+            K=100.0,
+            T=0.002,
+            r=0.05,
+            sigma=0.20,  # Less than 1 day
+            option_type="call",
+            exercise_type="european",
         )
-        
+
         # Theta should be 0 when T < time_bump_days/365
         assert greeks["theta"] == 0.0
 
@@ -401,7 +416,7 @@ class TestBlackScholesPathSimulation:
         """Test path simulation initialization."""
         sim = BlackScholesPathSimulation()
         assert sim.name == "Black-Scholes Path Simulation"
-        
+
         sim_custom = BlackScholesPathSimulation(name="Custom Path")
         assert sim_custom.name == "Custom Path"
 
@@ -409,11 +424,9 @@ class TestBlackScholesPathSimulation:
         """Test single path simulation returns final price."""
         sim = BlackScholesPathSimulation()
         sim.set_seed(42)
-        
-        final_price = sim.single_simulation(
-            S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252
-        )
-        
+
+        final_price = sim.single_simulation(S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252)
+
         assert isinstance(final_price, float)
         assert final_price > 0
 
@@ -421,12 +434,9 @@ class TestBlackScholesPathSimulation:
         """Test running multiple path simulations."""
         sim = BlackScholesPathSimulation()
         sim.set_seed(42)
-        
-        result = sim.run(
-            1000,
-            S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252
-        )
-        
+
+        result = sim.run(1000, S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252)
+
         assert result.n_simulations == 1000
         assert result.mean > 0
         assert len(result.results) == 1000
@@ -436,12 +446,9 @@ class TestBlackScholesPathSimulation:
         """Test simulate_paths method."""
         sim = BlackScholesPathSimulation()
         sim.set_seed(42)
-        
-        paths = sim.simulate_paths(
-            n_paths=50,
-            S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=100
-        )
-        
+
+        paths = sim.simulate_paths(n_paths=50, S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=100)
+
         assert paths.shape == (50, 101)  # n_paths x (n_steps + 1)
         np.testing.assert_allclose(paths[:, 0], 100.0, rtol=1e-10)  # All start at S0
         assert np.all(paths > 0)  # All prices positive
@@ -451,29 +458,25 @@ class TestBlackScholesPathSimulation:
         sim1 = BlackScholesPathSimulation()
         sim1.set_seed(42)
         paths1 = sim1.simulate_paths(n_paths=20, S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=50)
-        
+
         sim2 = BlackScholesPathSimulation()
         sim2.set_seed(42)
         paths2 = sim2.simulate_paths(n_paths=20, S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=50)
-        
+
         np.testing.assert_array_equal(paths1, paths2)
 
     def test_simulate_paths_different_parameters(self):
         """Test simulate_paths with different parameters."""
         sim = BlackScholesPathSimulation()
         sim.set_seed(42)
-        
+
         # High volatility
-        paths_high_vol = sim.simulate_paths(
-            n_paths=100, S0=100.0, r=0.05, sigma=0.50, T=1.0, n_steps=252
-        )
-        
+        paths_high_vol = sim.simulate_paths(n_paths=100, S0=100.0, r=0.05, sigma=0.50, T=1.0, n_steps=252)
+
         # Low volatility
         sim.set_seed(42)
-        paths_low_vol = sim.simulate_paths(
-            n_paths=100, S0=100.0, r=0.05, sigma=0.10, T=1.0, n_steps=252
-        )
-        
+        paths_low_vol = sim.simulate_paths(n_paths=100, S0=100.0, r=0.05, sigma=0.10, T=1.0, n_steps=252)
+
         # High volatility should have more spread in final prices
         high_vol_std = np.std(paths_high_vol[:, -1])
         low_vol_std = np.std(paths_low_vol[:, -1])
@@ -483,13 +486,9 @@ class TestBlackScholesPathSimulation:
         """Test parallel execution of path simulation."""
         sim = BlackScholesPathSimulation()
         sim.set_seed(42)
-        
-        result = sim.run(
-            10000,
-            S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252,
-            parallel=True
-        )
-        
+
+        result = sim.run(10000, S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252, parallel=True)
+
         assert result.n_simulations == 10000
         assert result.execution_time > 0
 
@@ -506,27 +505,23 @@ class TestBlackScholesIntegration:
         """Test put-call parity for European options."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
-        
+
         # Price call
         call_result = sim.run(
-            5000,
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="call", exercise_type="european"
+            5000, S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20, option_type="call", exercise_type="european"
         )
-        
+
         # Price put with same seed for consistency
         sim.set_seed(42)
         put_result = sim.run(
-            5000,
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="put", exercise_type="european"
+            5000, S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20, option_type="put", exercise_type="european"
         )
-        
+
         # Put-call parity: C - P = S0 - K*e^(-rT)
         S0, K, r, T = 100.0, 100.0, 0.05, 1.0
         parity_lhs = call_result.mean - put_result.mean
         parity_rhs = S0 - K * np.exp(-r * T)
-        
+
         # Allow for Monte Carlo error (within a few standard errors)
         combined_se = np.sqrt(call_result.std**2 + put_result.std**2) / np.sqrt(5000)
         assert abs(parity_lhs - parity_rhs) < 5 * combined_se
@@ -534,23 +529,19 @@ class TestBlackScholesIntegration:
     def test_american_vs_european_inequality(self):
         """Test that American option >= European option (early exercise premium)."""
         sim = BlackScholesSimulation()
-        
+
         # European put
         sim.set_seed(42)
         european_result = sim.run(
-            2000,
-            S0=100.0, K=110.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="put", exercise_type="european"
+            2000, S0=100.0, K=110.0, T=1.0, r=0.05, sigma=0.20, option_type="put", exercise_type="european"
         )
-        
+
         # American put
         sim.set_seed(42)
         american_result = sim.run(
-            2000,
-            S0=100.0, K=110.0, T=1.0, r=0.05, sigma=0.20,
-            option_type="put", exercise_type="american"
+            2000, S0=100.0, K=110.0, T=1.0, r=0.05, sigma=0.20, option_type="put", exercise_type="american"
         )
-        
+
         # American should be >= European (early exercise premium)
         # Allow small Monte Carlo error
         assert american_result.mean >= european_result.mean - 0.5
@@ -558,48 +549,41 @@ class TestBlackScholesIntegration:
     def test_increasing_volatility_increases_option_value(self):
         """Test that higher volatility leads to higher option prices."""
         sim = BlackScholesSimulation()
-        
+
         # Low volatility
         sim.set_seed(42)
         low_vol = sim.run(
-            2000,
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.10,
-            option_type="call", exercise_type="european"
+            2000, S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.10, option_type="call", exercise_type="european"
         )
-        
+
         # High volatility
         sim.set_seed(42)
         high_vol = sim.run(
-            2000,
-            S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.30,
-            option_type="call", exercise_type="european"
+            2000, S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.30, option_type="call", exercise_type="european"
         )
-        
+
         assert high_vol.mean > low_vol.mean
 
     def test_option_price_vs_analytical(self):
         """Test that Monte Carlo price is close to analytical Black-Scholes."""
         from scipy.stats import norm
-        
+
         # Analytical Black-Scholes for European call
         def black_scholes_call(S, K, T, r, sigma):
-            d1 = (np.log(S/K) + (r + 0.5*sigma**2)*T) / (sigma*np.sqrt(T))
-            d2 = d1 - sigma*np.sqrt(T)
-            return S * norm.cdf(d1) - K * np.exp(-r*T) * norm.cdf(d2)
-        
+            d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+            d2 = d1 - sigma * np.sqrt(T)
+            return S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+
         S0, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         analytical = black_scholes_call(S0, K, T, r, sigma)
-        
+
         # Monte Carlo price
         sim = BlackScholesSimulation()
         sim.set_seed(42)
         result = sim.run(
-            10000,
-            S0=S0, K=K, T=T, r=r, sigma=sigma,
-            option_type="call", exercise_type="european"
+            10000, S0=S0, K=K, T=T, r=r, sigma=sigma, option_type="call", exercise_type="european"
         )
-        
+
         # Should be within a few standard errors
         se = result.std / np.sqrt(10000)
         assert abs(result.mean - analytical) < 3 * se
-
