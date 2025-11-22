@@ -6,7 +6,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Lightweight, reproducible Monte Carlo simulation framework.
+Lightweight, reproducible, and deterministic Monte Carlo simulation framework with statistically robust analytics and parallel execution.
 
 ## Installation
 
@@ -22,7 +22,7 @@ pip install -e .
 
 ### Dependencies
 
-The framework requires:
+The package requires:
 - Python >= 3.10
 - numpy >= 1.24
 - scipy >= 1.10
@@ -61,14 +61,14 @@ print(res.result_to_string())
 For a comprehensive example with visualizations, see [`demo.py`](demo.py) which demonstrates Pi estimation and portfolio simulations with detailed plots.
 
 
-## Parallel execution becomes multiplatform (Version )
+## Cross-platform parallel execution
 
 `MonteCarloSimulation.run(..., parallel=True)` automatically decides between threads and
 processes. On POSIX platforms NumPy releases the GIL, so the framework keeps using threads
-for `parallel_backend="auto"`. Starting with this release the same `auto` setting resolves
-to **processes on Windows**, which restores the expected speed-ups when Python threads
-serialize under the GIL. You can still override the backend explicitly by setting
-`parallel_backend` to `"thread"` or `"process"`.
+for `parallel_backend="auto"`. The same `auto` setting resolves to **processes on Windows**, 
+which restores the expected speed-ups when Python threads serialize under the GIL. 
+
+You can still override the backend explicitly by setting `parallel_backend` to `"thread"` or `"process"`.
 
 
 
@@ -128,9 +128,7 @@ res = sim.run(10_000, compute_stats=False)
 Dev dependencies:
 
 ```
-pip install numpy scipy matplotlib \
-            pytest pylint mypy ruff sphinx \
-            sphinx-rtd-theme pytest-cov
+pip install -e .[dev]
 ```
 
 
