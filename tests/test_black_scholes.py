@@ -159,6 +159,31 @@ class TestAmericanExerciseLSM:
         # Deep OTM put should be worthless
         assert price == 0.0
 
+    def test_regression_failure_defaults_to_maturity_cashflows(self, monkeypatch):
+        """Regression failure should skip early exercise and use maturity payoff."""
+        paths = np.array(
+            [
+                [100.0, 90.0, 80.0],   # In the money at maturity
+                [100.0, 120.0, 110.0], # Out of the money at maturity
+            ]
+        )
+        K = 100.0
+        r = 0.05
+        n_steps = paths.shape[1] - 1
+        dt = 1.0 / n_steps
+
+        def failing_lstsq(*args, **kwargs):  # pragma: no cover - failure path
+            raise np.linalg.LinAlgError("singular matrix")
+
+        monkeypatch.setattr(np.linalg, "lstsq", failing_lstsq)
+
+        price = _american_exercise_lsm(paths, K=K, r=r, dt=dt, option_type="put")
+
+        maturity_payoffs = np.maximum(K - paths[:, -1], 0.0) * np.exp(-r * dt * n_steps)
+        expected_price = float(np.mean(maturity_payoffs))
+
+        assert price == pytest.approx(expected_price)
+
 
 # =============================================================================
 # Tests for BlackScholesSimulation

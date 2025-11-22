@@ -302,6 +302,70 @@ class TestMonteCarloSimulation:
         assert "percentiles" not in res.stats
 
 
+class TestComputePercentilesBlock:
+    """Tests for MonteCarloSimulation._compute_percentiles_block"""
+
+    def test_percentiles_block_returns_empty_without_requests(self):
+        """No requested percentiles should yield an empty dict."""
+        results = np.array([1.0, 2.0, 3.0], dtype=float)
+        ctx = StatsContext(n=results.size, percentiles=())
+
+        block = MonteCarloSimulation._compute_percentiles_block(results, ctx)
+        assert block == {}
+
+    def test_percentiles_block_uses_ctx_percentiles(self):
+        """Percentiles should be computed for ctx.percentiles."""
+        results = np.array([0.0, 1.0, 2.0, 3.0, 4.0], dtype=float)
+        ctx = StatsContext(n=results.size, percentiles=(10, 90))
+
+        block = MonteCarloSimulation._compute_percentiles_block(results, ctx)
+
+        assert 10.0 in block and 90.0 in block
+        assert block[10.0] == pytest.approx(np.percentile(results, 10))
+        assert block[90.0] == pytest.approx(np.percentile(results, 90))
+
+    def test_percentiles_block_falls_back_to_requested(self, monkeypatch):
+        """requested_percentiles should be used when ctx.percentiles is empty."""
+
+        class RequestedStatsContext(StatsContext):
+            __slots__ = ("requested_percentiles",)
+
+            def __init__(self, *, requested_percentiles, **kwargs):
+                super().__init__(**kwargs)
+                self.requested_percentiles = requested_percentiles
+
+        results = np.array([10.0, 20.0, 30.0, 40.0], dtype=float)
+        ctx = RequestedStatsContext(
+            n=results.size,
+            percentiles=(),
+            requested_percentiles=(5, 95),
+        )
+
+        def fake_pct(arr, ctx):
+            return np.percentile(arr, list(ctx.requested_percentiles))
+
+        monkeypatch.setattr("mcframework.core.pct", fake_pct)
+
+        block = MonteCarloSimulation._compute_percentiles_block(results, ctx)
+
+        assert set(block.keys()) == {5.0, 95.0}
+        assert block[5.0] == pytest.approx(np.percentile(results, 5))
+        assert block[95.0] == pytest.approx(np.percentile(results, 95))
+
+    def test_percentiles_block_raises_on_engine_mismatch(self, monkeypatch):
+        """pct() returning the wrong number of values should raise ValueError."""
+        results = np.array([0.0, 1.0, 2.0], dtype=float)
+        ctx = StatsContext(n=results.size, percentiles=(10, 90))
+
+        def bad_pct(arr, ctx):  # pragma: no cover - failure path
+            return [float(np.percentile(arr, 10))]
+
+        monkeypatch.setattr("mcframework.core.pct", bad_pct)
+
+        with pytest.raises(ValueError, match="must return as many values"):
+            MonteCarloSimulation._compute_percentiles_block(results, ctx)
+
+
 class TestMonteCarloFramework:
     """Test MonteCarloFramework class"""
 
