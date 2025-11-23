@@ -27,6 +27,12 @@ Installation
 
 .. toctree::
    :maxdepth: 1
+   :caption: Guides
+
+   getting-started
+
+.. toctree::
+   :maxdepth: 1
    :caption: API Reference
 
 

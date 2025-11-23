@@ -17,7 +17,7 @@ This module provides:
 * :func:`~mcframework.core.make_blocks` - chunking helper for parallel runs.
 
 Parallel backends
-----------------
+-------------------
 
 ``MonteCarloSimulation.run(..., parallel=True)`` can use threads or processes.
 By default (:attr:`~mcframework.core.MonteCarloSimulation.parallel_backend` = ``"auto"``),
@@ -248,7 +248,7 @@ class MonteCarloSimulation(ABC):
     Subclass this and implement :meth:`single_simulation`. The framework takes care of
     reproducible seeding, (optional) parallel execution, statistics, and percentiles.
 
-    Quick example
+    Example
     -------------
     >>> from mcframework.core import MonteCarloSimulation
     >>> class PiSim(MonteCarloSimulation):
@@ -510,27 +510,27 @@ class MonteCarloSimulation(ABC):
         n_simulations : int
             Number of simulation draws.
         parallel : bool, default ``False``
-            Use :meth:`_run_parallel` if ``True``; otherwise run sequentially.
+            Use :meth:`~mcframework.core.MonteCarloSimulation._run_parallel` if ``True``; otherwise run sequentially.
         n_workers : int, optional
             Worker count. Defaults to CPU count when needed.
         progress_callback : callable, optional
             A function ``f(completed: int, total: int)`` called periodically.
         percentiles : iterable of int, optional
             Percentiles to compute from raw results. If ``None`` and
-            ``compute_stats=True``, the stats engine's defaults (:attr:`_PCTS`)
+            ``compute_stats=True``, the stats engine's defaults (:attr:`~mcframework.core.MonteCarloSimulation._PCTS`)
             are used; if ``compute_stats=False``, **no** percentiles are computed
             unless explicitly provided.
         compute_stats : bool, default ``True``
             Compute additional metrics via a :class:`~mcframework.stats_engine.StatsEngine`.
         stats_engine : StatsEngine, optional
-            Custom engine (defaults to :data:`mcframework.stats_engine.DEFAULT_ENGINE`).
+            Custom engine (defaults to :data:`~mcframework.stats_engine.DEFAULT_ENGINE`).
         confidence : float, default ``0.95``
             Confidence level for CI-related metrics.
         ci_method : {"auto","z","t"}, default ``"auto"``
             Which critical values the stats engine should use.
         extra_context : mapping, optional
             Extra context forwarded to the stats engine.
-        **simulation_kwargs :
+        ``**simulation_kwargs`` :
             Forwarded to :meth:`single_simulation`.
 
         Returns
@@ -540,7 +540,7 @@ class MonteCarloSimulation(ABC):
 
         See Also
         --------
-        mcframework.core.MonteCarloFramework.run_simulation : Run a registered simulation by name.
+        :meth:`~mcframework.core.MonteCarloFramework.run_simulation` : Run a registered simulation by name.
         """
         # Validate parameters
         self._validate_run_params(n_simulations, n_workers, confidence, ci_method)
