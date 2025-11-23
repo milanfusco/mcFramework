@@ -17,10 +17,10 @@ This module provides:
 * :func:`~mcframework.core.make_blocks` - chunking helper for parallel runs.
 
 Parallel backends
-----------------
+-------------------
 
 ``MonteCarloSimulation.run(..., parallel=True)`` can use threads or processes.
-By default (:attr:`~mcframework.core.MonteCarloSimulation.parallel_backend` = ``"auto"``),
+By default (``MonteCarloSimulation.parallel_backend`` = ``"auto"``),
 the framework **prefers threads** because NumPy's random generators release the Global
 Interpreter Lock (GIL), avoiding the heavy spawn/pickle cost of processes on macOS.
 On Windows, ``"auto"`` resolves to processes to sidestep thread serialization effects.
@@ -248,8 +248,8 @@ class MonteCarloSimulation(ABC):
     Subclass this and implement :meth:`single_simulation`. The framework takes care of
     reproducible seeding, (optional) parallel execution, statistics, and percentiles.
 
-    Quick example
-    -------------
+    Examples
+    --------
     >>> from mcframework.core import MonteCarloSimulation
     >>> class PiSim(MonteCarloSimulation):
     ...     def single_simulation(self, _rng=None, n_points: int = 10_000):
@@ -264,13 +264,13 @@ class MonteCarloSimulation(ABC):
     Notes
     -----
     **Parallel backend.**
-    :attr:`parallel_backend` can be ``"auto"``, ``"thread"``, or ``"process"``.
+    The ``parallel_backend`` attribute can be ``"auto"``, ``"thread"``, or ``"process"``.
     With NumPy RNGs (which release the GIL), threads are usually faster and avoid
     process-spawn overhead.
 
     **Percentiles.**
     If ``compute_stats=True``, the stats engine computes defaults
-    :attr:`_PCTS` = ``(5, 25, 50, 75, 95)`` and merges them with user-requested
+    ``_PCTS`` = ``(5, 25, 50, 75, 95)`` and merges them with user-requested
     percentiles. The original user request is preserved in
     ``result.metadata["requested_percentiles"]`` and enforced by
     :meth:`MonteCarloFramework.compare_results` for percentile metrics.
@@ -510,27 +510,27 @@ class MonteCarloSimulation(ABC):
         n_simulations : int
             Number of simulation draws.
         parallel : bool, default ``False``
-            Use :meth:`_run_parallel` if ``True``; otherwise run sequentially.
+            Use ``_run_parallel`` if ``True``; otherwise run sequentially.
         n_workers : int, optional
             Worker count. Defaults to CPU count when needed.
         progress_callback : callable, optional
             A function ``f(completed: int, total: int)`` called periodically.
         percentiles : iterable of int, optional
             Percentiles to compute from raw results. If ``None`` and
-            ``compute_stats=True``, the stats engine's defaults (:attr:`_PCTS`)
+            ``compute_stats=True``, the stats engine's defaults (``_PCTS``)
             are used; if ``compute_stats=False``, **no** percentiles are computed
             unless explicitly provided.
         compute_stats : bool, default ``True``
             Compute additional metrics via a :class:`~mcframework.stats_engine.StatsEngine`.
         stats_engine : StatsEngine, optional
-            Custom engine (defaults to :data:`mcframework.stats_engine.DEFAULT_ENGINE`).
+            Custom engine (defaults to ``mcframework.stats_engine.DEFAULT_ENGINE``).
         confidence : float, default ``0.95``
             Confidence level for CI-related metrics.
         ci_method : {"auto","z","t"}, default ``"auto"``
             Which critical values the stats engine should use.
         extra_context : mapping, optional
             Extra context forwarded to the stats engine.
-        **simulation_kwargs :
+        ``**simulation_kwargs`` :
             Forwarded to :meth:`single_simulation`.
 
         Returns
@@ -540,7 +540,7 @@ class MonteCarloSimulation(ABC):
 
         See Also
         --------
-        mcframework.core.MonteCarloFramework.run_simulation : Run a registered simulation by name.
+        :meth:`~mcframework.core.MonteCarloFramework.run_simulation` : Run a registered simulation by name.
         """
         # Validate parameters
         self._validate_run_params(n_simulations, n_workers, confidence, ci_method)
@@ -901,7 +901,7 @@ class MonteCarloFramework:
         simulation : MonteCarloSimulation
             The simulation instance to register.
         name : str, optional
-            If omitted, :attr:`MonteCarloSimulation.name` is used.
+            If omitted, ``simulation.name`` is used.
         """
         sim_name = name or simulation.name
         self.simulations[sim_name] = simulation
@@ -921,7 +921,7 @@ class MonteCarloFramework:
             Key used in :meth:`register_simulation`.
         n_simulations : int
             Number of draws.
-        **kwargs :
+        ``**kwargs`` :
             Forwarded to :meth:`MonteCarloSimulation.run`.
 
         Returns
@@ -946,7 +946,7 @@ class MonteCarloFramework:
         Parameters
         ----------
         names : list of str
-            Simulation names (must exist in :attr:`results`).
+            Simulation names (must exist in ``self.results``).
         metric : {"mean","std","var","se","pX"}, default ``"mean"``
             Metric to extract. ``"pX"`` requests the X-th percentile (e.g. ``"p95"``).
 

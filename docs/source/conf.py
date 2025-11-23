@@ -44,7 +44,10 @@ extensions = [
 
 nitpicky = True
 nitpick_ignore = [
-    # Example: ("py:class", "pandas.DataFrame"),
+    ("py:class", "MetricSet"),
+    ("py:class", "mcframework.stats_engine._MetricT"),
+    ("py:obj", "mcframework.stats_engine._MetricT"),
+    ("py:func", "mcframework.stats_engine._clean"),
 ]
 
 templates_path = ['_templates']

@@ -1,5 +1,5 @@
 Simulations
-=========
+===========
 .. automodule:: mcframework.sims
    :no-members:
    :no-undoc-members:
@@ -11,5 +11,14 @@ Simulations
    :toctree: generated
    :recursive:
 
-   mcframework.sims.PiEstimationSimulation
-   mcframework.sims.PortfolioSimulation
+   PiEstimationSimulation
+   PortfolioSimulation
+   BlackScholesSimulation
+   BlackScholesPathSimulation
+
+Helper Functions
+----------------
+
+.. autofunction:: _simulate_gbm_path
+
+.. autofunction:: _american_exercise_lsm

@@ -1,14 +1,17 @@
-"""
-mcframework.sims
+"""mcframework.sims
 ====================
-Built-in simulations for mcframework.
 
-The Simulations module provides classes and functions to create, manage, and
-execute different types of simulations. Currently supported simulations include
-a pi estimation simulation, a portfolio risk simulation, and Black-Scholes
-option pricing simulations. The module is designed to implement additional
-simulation types from the abstract base class `MonteCarloSimulation` in the
-core module.
+Canonical, reference-quality simulation classes used throughout the framework.
+Each simulation exposes a :class:`~mcframework.core.MonteCarloSimulation`
+interface together with mathematical derivations of the underlying models so
+that the generated documentation reads as a miniature lecture note.
+
+The module currently contains three families of examples:
+
+* Pi estimation via geometric probability (:class:`PiEstimationSimulation`).
+* Geometric Brownian Motion (GBM) wealth evolution (:class:`PortfolioSimulation`).
+* Black–Scholes pricing and path sampling
+  (:class:`BlackScholesSimulation`, :class:`BlackScholesPathSimulation`).
 """
 
 from __future__ import annotations
@@ -29,33 +32,97 @@ __all__ = [
 
 
 class PiEstimationSimulation(MonteCarloSimulation):
+    r"""
+    Estimate :math:`\pi` by geometric probability on the unit disk.
+
+    The simulation throws :math:`n` i.i.d. points :math:`(X_i, Y_i)` uniformly on
+    :math:`[-1, 1]^2` and uses the identity
+
+    .. math::
+       \pi = 4 \,\Pr\!\left(X^2 + Y^2 \le 1\right),
+
+    to form the Monte Carlo estimator
+
+    .. math::
+       \widehat{\pi}_n = \frac{4}{n} \sum_{i=1}^n \mathbf{1}\{X_i^2 + Y_i^2 \le 1\}.
+
+    Attributes
+    ----------
+    name : str
+        Human-readable label registered with :class:`~mcframework.core.MonteCarloFramework`.
+    """
+
     def __init__(self):
         super().__init__("Pi Estimation")
 
     def single_simulation(
         self,
-        n_points: int = 10000,
+        n_points: int = 10_000,
         antithetic: bool = False,
         _rng: Optional[Generator] = None,
         **kwargs,
     ) -> float:
-        r = self._rng(_rng, self.rng)
-        if not antithetic: #pragma: no cover
-            pts = r.uniform(-1.0, 1.0, (n_points, 2))
+        r"""
+        Throw :math:`n_{\text{points}}` darts at :math:`[-1, 1]^2` and return the
+        single-run estimator :math:`\widehat{\pi}`.
+
+        Parameters
+        ----------
+        n_points : int, default ``10_000``
+            Number of uniformly distributed points to simulate. The Monte Carlo
+            variance decays as :math:`\mathcal{O}(n_{\text{points}}^{-1})`.
+        antithetic : bool, default ``False``
+            Whether to pair each point :math:`(x, y)` with its reflection
+            :math:`(-x, -y)` to achieve first-order variance cancellation.
+        _rng : numpy.random.Generator, optional
+            Worker-local generator injected by :class:`~mcframework.core.MonteCarloSimulation`.
+        ``**kwargs`` :
+            Ignored. Present for compatibility with the base signature.
+
+        Returns
+        -------
+        float
+            Estimate of :math:`\pi` computed via
+            :math:`\widehat{\pi} = 4 \,\widehat{p}`, where
+            :math:`\widehat{p}` is the observed fraction of darts that land inside
+            the unit disk.
+        """
+        rng = self._rng(_rng, self.rng)
+        if not antithetic:  # pragma: no cover
+            pts = rng.uniform(-1.0, 1.0, (n_points, 2))
             inside = np.sum(np.sum(pts * pts, axis=1) <= 1.0)
             return float(4.0 * inside / n_points)
-        # Antithetic sampling
+        # Antithetic sampling mirrors each draw (x, y) with (-x, -y)
         m = n_points // 2
-        u = r.uniform(-1.0, 1.0, (m, 2))
+        u = rng.uniform(-1.0, 1.0, (m, 2))
         ua = -u
         pts = np.vstack([u, ua])
         if pts.shape[0] < n_points:
-            pts = np.vstack([pts, r.uniform(-1.0, 1.0, (1, 2))])
+            pts = np.vstack([pts, rng.uniform(-1.0, 1.0, (1, 2))])
         inside = np.sum(np.sum(pts * pts, axis=1) <= 1.0)
         return float(4.0 * inside / n_points)
 
 
 class PortfolioSimulation(MonteCarloSimulation):
+    r"""
+    Compound an initial wealth under log-normal or arithmetic return models.
+
+    Let :math:`V_0` be the initial value. Under GBM dynamics the terminal value
+    after :math:`T` years with :math:`n = 252T` daily steps is
+
+    .. math::
+       V_T = V_0 \exp\left(\sum_{k=1}^n \Big[(\mu - \tfrac{1}{2}\sigma^2)\Delta t
+       + \sigma \sqrt{\Delta t}\,Z_k\Big]\right),
+
+    where :math:`Z_k \sim \mathcal{N}(0, 1)` i.i.d. The alternative branch
+    integrates arithmetic returns via :math:`\log(1 + R_k)`.
+
+    Attributes
+    ----------
+    name : str
+        Default registry label ``\"Portfolio Simulation\"``.
+    """
+
     def __init__(self):
         super().__init__("Portfolio Simulation")
 
@@ -70,14 +137,43 @@ class PortfolioSimulation(MonteCarloSimulation):
         _rng: Optional[Generator] = None,
         **kwargs,
     ) -> float:
-        r = self._rng(_rng, self.rng)
+        r"""
+        Simulate the terminal portfolio value under discrete compounding.
+
+        Parameters
+        ----------
+        initial_value : float, default ``10_000``
+            Starting wealth :math:`V_0` expressed in currency units.
+        annual_return : float, default ``0.07``
+            Drift :math:`\mu` expressed as an annualized continuously compounded
+            rate.
+        volatility : float, default ``0.20``
+            Annualized diffusion coefficient :math:`\sigma`.
+        years : int, default ``10``
+            Investment horizon :math:`T` in years. The simulation uses daily
+            steps :math:`\Delta t = 1/252`.
+        use_gbm : bool, default ``True``
+            If ``True`` evolve log returns via GBM; otherwise simulate simple
+            returns and compose them multiplicatively.
+        _rng : numpy.random.Generator, optional
+            Worker-local RNG supplied by the framework.
+        ``**kwargs`` :
+            Unused placeholder to maintain parity with the abstract signature.
+
+        Returns
+        -------
+        float
+            Terminal value :math:`V_T`. Under GBM the logarithm follows
+            :math:`\log V_T \sim \mathcal{N}\big(\log V_0 + (\mu - \tfrac{1}{2}\sigma^2)T,\;\sigma^2 T\big)`.
+        """
+        rng = self._rng(_rng, self.rng)
         dt = 1.0 / 252.0  # Daily steps
         n = int(years / dt)
         if use_gbm:  # Geometric Brownian Motion for returns
             mu, sigma = annual_return, volatility
-            rets = r.normal((mu - 0.5 * sigma * sigma) * dt, sigma * np.sqrt(dt), size=n)
+            rets = rng.normal((mu - 0.5 * sigma * sigma) * dt, sigma * np.sqrt(dt), size=n)
             return float(initial_value * np.exp(rets.sum()))
-        rets = r.normal(annual_return * dt, volatility * np.sqrt(dt), size=n)
+        rets = rng.normal(annual_return * dt, volatility * np.sqrt(dt), size=n)
         return float(initial_value * np.exp(np.log1p(rets).sum()))
 
 
@@ -87,22 +183,28 @@ class PortfolioSimulation(MonteCarloSimulation):
 
 
 def _european_payoff(S_T: float, K: float, option_type: str) -> float:
-    """
-    Calculate the payoff of a European option at maturity.
+    r"""
+    Evaluate the terminal payoff :math:`\Phi(S_T)` of a European option.
+
+    The payoff is given by
+
+    .. math::
+       \Phi_{\text{call}}(S_T) = \max(S_T - K, 0), \qquad
+       \Phi_{\text{put}}(S_T) = \max(K - S_T, 0).
 
     Parameters
     ----------
     S_T : float
-        Stock price at maturity.
+        Terminal stock price at maturity :math:`T`.
     K : float
-        Strike price.
-    option_type : {"call", "put"}
-        Type of option.
+        Strike level :math:`K`.
+    option_type : {\"call\", \"put\"}
+        Chooses :math:`\Phi_{\text{call}}` or :math:`\Phi_{\text{put}}`.
 
     Returns
     -------
     float
-        Option payoff.
+        Scalar payoff evaluated at the supplied :math:`S_T`.
     """
     if option_type == "call":
         return max(S_T - K, 0.0)
@@ -120,28 +222,45 @@ def _simulate_gbm_path(
     n_steps: int,
     rng: Generator,
 ) -> np.ndarray:
-    """
-    Simulate a single path of Geometric Brownian Motion.
+    r"""
+    Simulate a single Geometric Brownian Motion (GBM) path.
+
+    The solution of
+
+    .. math::
+       dS_t = r S_t\,dt + \sigma S_t\,dW_t,\qquad S_0 = S_0,
+
+    is
+
+    .. math::
+       S_t = S_0 \exp\!\left((r - \tfrac{1}{2}\sigma^2)t + \sigma W_t\right).
+
+    A discrete-time Euler scheme draws :math:`n_{\text{steps}}` increments
+    :math:`Z_k \sim \mathcal{N}(0, 1)` and sets
+
+    .. math::
+       S_{t_{k+1}} = S_{t_k} \exp\left((r - \tfrac{1}{2}\sigma^2)\Delta t
+       + \sigma \sqrt{\Delta t}\,Z_k\right).
 
     Parameters
     ----------
     S0 : float
-        Initial stock price.
+        Initial level :math:`S_0`.
     r : float
-        Risk-free rate (annualized).
+        Risk-free drift :math:`r`.
     sigma : float
-        Volatility (annualized).
+        Volatility :math:`\sigma`.
     T : float
-        Time to maturity in years.
+        Horizon in years.
     n_steps : int
-        Number of time steps.
-    rng : Generator
-        NumPy random generator.
+        Number of uniform time steps. The spacing is :math:`\Delta t = T / n_{\text{steps}}`.
+    rng : numpy.random.Generator
+        Source of randomness for :math:`Z_k`.
 
     Returns
     -------
-    ndarray
-        Stock price path of shape (n_steps + 1,), starting at S0.
+    numpy.ndarray
+        Array with shape ``(n_steps + 1,)`` containing the path :math:`(S_{t_k})_{k=0}^n`.
     """
     dt = T / n_steps
     # Generate random increments
@@ -160,26 +279,43 @@ def _american_exercise_lsm(
     dt: float,
     option_type: str,
 ) -> float:
-    """
-    Price an American option using the Longstaff-Schwartz LSM algorithm.
+    r"""
+    Apply the Longstaff–Schwartz (LSM) regression algorithm to American options.
+
+    For each simulated path :math:`\{S_{t_k}^{(i)}\}_{k=0}^n` we compute the
+    intrinsic value
+
+    .. math::
+       C_{t_k}^{(i)} =
+       \begin{cases}
+            \max(S_{t_k}^{(i)} - K, 0), & \text{call},\\
+            \max(K - S_{t_k}^{(i)}, 0), & \text{put},
+       \end{cases}
+
+    then regress discounted continuation values onto basis functions
+    :math:`\{1, S_{t_k}, S_{t_k}^2\}` to approximate the conditional expectation
+    :math:`\mathbb{E}\big[C_{t_{k+1}} \mid S_{t_k}\big]`. Early exercise occurs
+    when the intrinsic value exceeds this conditional expectation. The final
+    price is the Monte Carlo average of discounted cash flows.
 
     Parameters
     ----------
-    paths : ndarray
-        Stock price paths of shape (n_paths, n_steps + 1).
+    paths : numpy.ndarray
+        Array of shape ``(n_paths, n_steps + 1)`` storing simulated price paths.
     K : float
-        Strike price.
+        Strike :math:`K`.
     r : float
-        Risk-free rate (annualized).
+        Annualized risk-free rate used for discounting.
     dt : float
-        Time step size.
-    option_type : {"call", "put"}
-        Type of option.
+        Time-step length :math:`\Delta t`.
+    option_type : {\"call\", \"put\"}
+        Payoff family applied to :math:`C_{t_k}`.
 
     Returns
     -------
     float
-        Option price (average across all paths).
+        Estimated arbitrage-free price
+        :math:`V_0 = \frac{1}{N}\sum_{i=1}^N e^{-r t_{\\tau^{(i)}}} C_{t_{\\tau^{(i)}}}^{(i)}`.
     """
     n_paths, n_steps_plus_1 = paths.shape
     n_steps = n_steps_plus_1 - 1
@@ -277,11 +413,16 @@ class BlackScholesSimulation(MonteCarloSimulation):
     ...     S0=100.0,
     ...     K=100.0,
     ...     T=.25,
-    ...     r=0.05, 
+    ...     r=0.05,
     ...     sigma=0.20,
     ...     option_type="call",
     ...     exercise_type="european"
     ... )  # doctest: +SKIP
+
+    Attributes
+    ----------
+    name : str
+        Descriptive identifier, default ``\"Black-Scholes Option Pricing\"``.
     """
 
     def __init__(self, name: str = "Black-Scholes Option Pricing"):
@@ -301,39 +442,53 @@ class BlackScholesSimulation(MonteCarloSimulation):
         _rng: Optional[Generator] = None,
         **kwargs,
     ) -> float:
-        """
-        Simulate a single option price.
+        r"""
+        Price a single option instance under Black–Scholes dynamics.
 
         Parameters
         ----------
-        S0 : float, default 100.0
-            Initial stock price.
-        K : float, default 100.0
-            Strike price.
-        T : float, default 1.0
-            Time to maturity in years.
-        r : float, default 0.05
-            Risk-free interest rate (annualized).
-        sigma : float, default 0.20
-            Volatility (annualized).
-        option_type : {"call", "put"}, default "call"
-            Type of option.
-        exercise_type : {"european", "american"}, default "european"
-            Exercise style.
-        n_steps : int, default 252
-            Number of time steps (daily steps for 1 year by default).
-        _rng : Generator, optional
-            NumPy random generator (managed by framework).
+        S0 : float, default ``100``
+            Spot :math:`S_0`.
+        K : float, default ``100``
+            Strike.
+        T : float, default ``1``
+            Maturity in years.
+        r : float, default ``0.05``
+            Risk-free rate :math:`r`.
+        sigma : float, default ``0.20``
+            Volatility :math:`\sigma`.
+        option_type : {\"call\", \"put\"}, default ``\"call\"``
+            Payoff family.
+        exercise_type : {\"european\", \"american\"}, default ``\"european\"``
+            Exercise style; the American branch uses a heuristic early-exercise
+            proxy described below.
+        n_steps : int, default ``252``
+            Discrete grid size for the GBM path.
+        _rng : numpy.random.Generator, optional
+            RNG managed by the framework.
+        ``**kwargs`` :
+            Additional keyword arguments ignored by the implementation (slot for extensions).
 
         Returns
         -------
         float
-            Simulated option price.
+            Discounted payoff sample :math:`e^{-rT}\Phi(S_T)` (European) or the
+            maximal discounted intrinsic value along the path (American proxy).
 
         Raises
         ------
         ValueError
-            If option_type or exercise_type are invalid.
+            If ``option_type`` or ``exercise_type`` is invalid.
+
+        Notes
+        -----
+        * For European contracts the terminal price is simulated via
+          :math:`S_T = S_0 \exp((r - \tfrac{1}{2}\sigma^2)T + \sigma \sqrt{T} Z)`
+          with :math:`Z \sim \mathcal{N}(0, 1)`; the payoff is then discounted.
+        * For American contracts a single path is generated and the intrinsic
+          values :math:`\Phi(S_{t_k})` are discounted and maximized. This is a
+          coarse approximation; for production quality use many paths with
+          :func:`~mcframework.sims._american_exercise_lsm`.
         """
         rng = self._rng(_rng, self.rng)
 
@@ -392,56 +547,49 @@ class BlackScholesSimulation(MonteCarloSimulation):
         bump_pct: float = 0.01,
         time_bump_days: float = 1.0,
     ) -> dict[str, float]:
-        """
-        Calculate option Greeks using finite difference methods.
-
-        This method runs multiple simulations with perturbed parameters to
-        estimate the partial derivatives (Greeks) of the option price.
+        r"""
+        Estimate primary Greeks via finite differences.
 
         Parameters
         ----------
         n_simulations : int
-            Number of Monte Carlo simulations for each price calculation.
-        S0 : float, default 100.0
-            Initial stock price.
-        K : float, default 100.0
-            Strike price.
-        T : float, default 1.0
-            Time to maturity in years.
-        r : float, default 0.05
-            Risk-free interest rate.
-        sigma : float, default 0.20
-            Volatility.
-        option_type : {"call", "put"}, default "call"
-            Type of option.
-        exercise_type : {"european", "american"}, default "european"
-            Exercise style.
-        n_steps : int, default 252
-            Number of time steps.
-        parallel : bool, default False
-            Whether to use parallel execution.
-        bump_pct : float, default 0.01
-            Percentage bump for finite differences (1% by default).
-        time_bump_days : float, default 1.0
-            Time bump in days for Theta calculation.
+            Number of Monte Carlo draws per pricing run.
+        S0, K, T, r, sigma, option_type, exercise_type, n_steps :
+            Passed directly to :meth:`single_simulation`.
+        parallel : bool, default ``False``
+            Reuse parallel execution for each pricing call.
+        bump_pct : float, default ``0.01``
+            Relative bump :math:`\epsilon` applied to :math:`S_0`, :math:`\sigma`,
+            and :math:`r` (i.e. :math:`S_0(1 \pm \epsilon)`).
+        time_bump_days : float, default ``1``
+            Converts to :math:`\Delta T = \text{time\_bump\_days}/365` for the
+            forward-difference theta.
 
         Returns
         -------
-        dict
-            Dictionary containing:
-            - "price": base option price
-            - "delta": ∂V/∂S (change in price per unit change in stock price)
-            - "gamma": ∂²V/∂S² (rate of change of delta)
-            - "vega": ∂V/∂σ (change in price per unit change in volatility)
-            - "theta": ∂V/∂T (change in price per unit change in time)
-            - "rho": ∂V/∂r (change in price per unit change in interest rate)
+        dict[str, float]
+            Mapping with keys
+
+            ``price`` :
+                Baseline estimator :math:`V(S_0)`.
+            ``delta`` :
+                Central difference
+                :math:`\frac{V(S_0 + \epsilon S_0) - V(S_0 - \epsilon S_0)}{2 \epsilon S_0}`.
+            ``gamma`` :
+                Discrete Laplacian
+                :math:`\frac{V(S_0 + \epsilon S_0) - 2V(S_0) + V(S_0 - \epsilon S_0)}{(\epsilon S_0)^2}`.
+            ``vega`` :
+                Central difference in :math:`\sigma`, scaled to a 1% move.
+            ``theta`` :
+                Forward difference
+                :math:`\frac{V(T - \Delta T) - V(T)}{\Delta T}` expressed per day.
+            ``rho`` :
+                Central difference in :math:`r`, scaled to a 1% rate move.
 
         Notes
         -----
-        - Uses central difference for Delta and Gamma
-        - Uses forward difference for Theta (time decay)
-        - Uses central difference for Vega and Rho
-        - All simulations use the same seed for variance reduction
+        All perturbations reuse the same RNG seed (:math:`42`) for variance
+        reduction via common random numbers.
         """
         # Save current seed state
         original_seed = self.rng.bit_generator.state if self.rng else None
@@ -477,13 +625,21 @@ class BlackScholesSimulation(MonteCarloSimulation):
         dsigma = sigma * bump_pct
         self.set_seed(42)
         res_vol_up = self.run(
-            n_simulations, S0=S0, parallel=parallel, compute_stats=False,
-            sigma=sigma + dsigma, **{k: v for k, v in sim_kwargs.items() if k != "sigma"}
+            n_simulations,
+            S0=S0,
+            parallel=parallel,
+            compute_stats=False,
+            sigma=sigma + dsigma,
+            **{k: v for k, v in sim_kwargs.items() if k != "sigma"},
         )
         self.set_seed(42)
         res_vol_down = self.run(
-            n_simulations, S0=S0, parallel=parallel, compute_stats=False,
-            sigma=sigma - dsigma, **{k: v for k, v in sim_kwargs.items() if k != "sigma"}
+            n_simulations,
+            S0=S0,
+            parallel=parallel,
+            compute_stats=False,
+            sigma=sigma - dsigma,
+            **{k: v for k, v in sim_kwargs.items() if k != "sigma"},
         )
         vega = (res_vol_up.mean - res_vol_down.mean) / (2 * dsigma)
         # Scale to 1% volatility change (common convention)
@@ -494,8 +650,12 @@ class BlackScholesSimulation(MonteCarloSimulation):
         if T > dT:
             self.set_seed(42)
             res_time = self.run(
-                n_simulations, S0=S0, parallel=parallel, compute_stats=False,
-                T=T - dT, **{k: v for k, v in sim_kwargs.items() if k != "T"}
+                n_simulations,
+                S0=S0,
+                parallel=parallel,
+                compute_stats=False,
+                T=T - dT,
+                **{k: v for k, v in sim_kwargs.items() if k != "T"},
             )
             theta = (res_time.mean - V0) / dT
             # Scale to daily theta (common convention)
@@ -507,13 +667,21 @@ class BlackScholesSimulation(MonteCarloSimulation):
         dr = r * bump_pct if r > 0 else 0.0001  # Handle zero rate
         self.set_seed(42)
         res_rate_up = self.run(
-            n_simulations, S0=S0, parallel=parallel, compute_stats=False,
-            r=r + dr, **{k: v for k, v in sim_kwargs.items() if k != "r"}
+            n_simulations,
+            S0=S0,
+            parallel=parallel,
+            compute_stats=False,
+            r=r + dr,
+            **{k: v for k, v in sim_kwargs.items() if k != "r"},
         )
         self.set_seed(42)
         res_rate_down = self.run(
-            n_simulations, S0=S0, parallel=parallel, compute_stats=False,
-            r=r - dr, **{k: v for k, v in sim_kwargs.items() if k != "r"}
+            n_simulations,
+            S0=S0,
+            parallel=parallel,
+            compute_stats=False,
+            r=r - dr,
+            **{k: v for k, v in sim_kwargs.items() if k != "r"},
         )
         rho = (res_rate_up.mean - res_rate_down.mean) / (2 * dr)
         # Scale to 1% rate change (common convention)
@@ -575,6 +743,11 @@ class BlackScholesPathSimulation(MonteCarloSimulation):
     ...     T=1.0,
     ...     n_steps=252
     ... )  # doctest: +SKIP
+
+    Attributes
+    ----------
+    name : str
+        Friendly display name, default ``\"Black-Scholes Path Simulation\"``.
     """
 
     def __init__(self, name: str = "Black-Scholes Path Simulation"):
@@ -591,28 +764,23 @@ class BlackScholesPathSimulation(MonteCarloSimulation):
         _rng: Optional[Generator] = None,
         **kwargs,
     ) -> float:
-        """
-        Simulate a single stock price path and return the final price.
+        r"""
+        Draw a GBM path and return the terminal value :math:`S_T`.
 
         Parameters
         ----------
-        S0 : float, default 100.0
-            Initial stock price.
-        r : float, default 0.05
-            Risk-free interest rate (annualized).
-        sigma : float, default 0.20
-            Volatility (annualized).
-        T : float, default 1.0
-            Time horizon in years.
-        n_steps : int, default 252
-            Number of time steps (daily by default).
-        _rng : Generator, optional
-            NumPy random generator (managed by framework).
+        S0, r, sigma, T, n_steps :
+            See :func:`~mcframework.sims._simulate_gbm_path`.
+        _rng : numpy.random.Generator, optional
+            RNG wrapper provided by the framework.
+        ``**kwargs`` :
+            Extra keyword arguments ignored.
 
         Returns
         -------
         float
-            Final stock price at time T.
+            Final level ``path[-1]`` corresponding to
+            :math:`S_T = S_0 \exp((r - \tfrac{1}{2}\sigma^2)T + \sigma \sqrt{T} Z)`.
         """
         rng = self._rng(_rng, self.rng)
         path = _simulate_gbm_path(S0, r, sigma, T, n_steps, rng)
@@ -627,31 +795,23 @@ class BlackScholesPathSimulation(MonteCarloSimulation):
         T: float = 1.0,
         n_steps: int = 252,
     ) -> np.ndarray:
-        """
-        Generate multiple stock price paths for visualization or analysis.
+        r"""
+        Generate :math:`n_{\text{paths}}` independent GBM paths.
 
         Parameters
         ----------
         n_paths : int
-            Number of paths to generate.
-        S0 : float, default 100.0
-            Initial stock price.
-        r : float, default 0.05
-            Risk-free interest rate.
-        sigma : float, default 0.20
-            Volatility.
-        T : float, default 1.0
-            Time horizon in years.
-        n_steps : int, default 252
-            Number of time steps.
+            Number of trajectories to sample.
+        S0, r, sigma, T, n_steps :
+            Same semantics as in :func:`~mcframework.sims._simulate_gbm_path`.
 
         Returns
         -------
-        ndarray
-            Array of shape (n_paths, n_steps + 1) containing stock price paths.
+        numpy.ndarray
+            Array of shape ``(n_paths, n_steps + 1)`` where the :math:`i`-th row
+            stores :math:`\{S_{t_k}^{(i)}\}_{k=0}^n`.
         """
         paths = np.zeros((n_paths, n_steps + 1))
         for i in range(n_paths):
             paths[i] = _simulate_gbm_path(S0, r, sigma, T, n_steps, self.rng)
         return paths
-

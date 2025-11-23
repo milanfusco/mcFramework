@@ -23,3 +23,8 @@ htmlcov/
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Sphinx build + generated API docs
+docs/_build/
+docs/source/api/_autosummary/
+docs/source/api/_modules/generated/

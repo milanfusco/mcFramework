@@ -1,22 +1,26 @@
 r"""
 mcframework.stats_engine
 ========================
-Statistical metrics and the engine used by the Monte Carlo framework.
+Statistical metrics and the orchestration engine used by the Monte Carlo
+framework.
 
-This module defines:
+- :class:`~mcframework.stats_engine.StatsContext`: an explicit configuration object shared by all metrics.
+- :class:`FnMetric`: a lightweight adapter that binds a metric name to a
+  callable.
+- :class:`StatsEngine`: an evaluator that feeds arrays and contexts into one or
+  more metrics while tracking skips/errors.
 
-- :class:`StatsContext`: a typed, explicit configuration object shared by all metrics.
-- :class:`FnMetric`: a frozen adapter that names a metric function.
-- :class:`StatsEngine`: an orchestrator that evaluates one or more metrics.
-
-Common metrics include :func:`mean`, :func:`std`, :func:`percentiles`,
-:func:`skew`, :func:`kurtosis`, and confidence intervals such as
-:func:`ci_mean`, :func:`ci_mean_bootstrap`, and :func:`ci_mean_chebyshev`.
+Core metrics cover canonical descriptive statistics (mean, variance, skew,
+kurtosis), quantiles, and several flavors` of confidence intervals such as the
+parametric :func:`ci_mean`, the bootstrap :func:`ci_mean_bootstrap`, and the
+distribution-free :func:`ci_mean_chebyshev`. Helper utilities add probability
+inequalities (Markov, Chebyshev) and target-aware diagnostics (bias, MSE).
 
 See Also
 --------
 mcframework.utils.autocrit
-    Selects a z/t critical value for a target confidence level and effective sample size.
+    Selects a :math:`z` or :math:`t` critical value for a target confidence
+    level and effective sample size.
 """
 
 
@@ -147,6 +151,25 @@ class StatsContext:
     r"""
     Shared, explicit configuration for statistic and CI computations.
 
+    The context keeps track of three recurring quantities:
+
+    * Confidence level :math:`\gamma = \texttt{confidence}` with tail mass
+      :math:`\alpha = 1 - \gamma`.
+    * Effective sample size :math:`n_\text{eff}`, obtained from
+      :meth:`eff_n` and used by every finite-sample adjustment.
+    * Requested quantiles :math:`\mathcal{P} = \{p_i\}` that drive percentile
+      metrics.
+
+    Throughout the module we repeatedly use the identities
+
+    .. math::
+
+       \alpha = 1 - \gamma, \qquad
+       q_\text{low} = 100 \frac{\alpha}{2}, \qquad
+       q_\text{high} = 100 \left(1 - \frac{\alpha}{2}\right),
+
+    which are provided via the :meth:`alpha` and :meth:`q_bound` helpers.
+
     Attributes
     ----------
     n : int
@@ -209,7 +232,7 @@ class StatsContext:
 
         Parameters
         ----------
-        **changes :
+        ``**changes`` :
             Field overrides passed to :func:`dataclasses.replace`.
 
         Returns
@@ -257,6 +280,17 @@ class StatsContext:
         Priority is:
         1) explicit :attr:`ess`; 2) count of finite values if ``nan_policy="omit"``;
         3) declared :attr:`n` (fallback); else ``observed_len``.
+
+        In symbols,
+
+        .. math::
+
+           n_\text{eff} =
+           \begin{cases}
+              \texttt{ess}, & \text{if provided},\\[4pt]
+              \#\{i : x_i \text{ finite}\}, & \text{if nan policy = ``omit''},\\[4pt]
+              \texttt{n}, & \text{otherwise}.
+           \end{cases}
 
         Parameters
         ----------
@@ -324,6 +358,20 @@ class StatsContext:
 
 @dataclass(frozen=True)
 class _CIResult:
+    r"""
+    Internal helper that stores a confidence interval before converting to ``dict``.
+
+    Attributes
+    ----------
+    confidence : float
+        Confidence level :math:`\gamma`.
+    method : str
+        Human-readable label (e.g., ``"z"`` or ``"bootstrap-bca"``).
+    low, high : float
+        Interval endpoints :math:`(\ell, u)`.
+    extras : Mapping[str, SupportsFloat]
+        Optional diagnostics such as ``se`` or ``crit``.
+    """
     confidence: float
     method: str
     low: float
@@ -411,11 +459,11 @@ class Metric(Protocol):
     def __call__(self, x: np.ndarray, ctx: StatsContext, /) -> Any: ...
 
 
-T = TypeVar("T")  # abc
+_MetricT = TypeVar("_MetricT")  # Type parameter for FnMetric
 
 
 @dataclass(frozen=True)
-class FnMetric(Generic[T]):
+class FnMetric(Generic[_MetricT]):
     r"""
     Lightweight adapter that binds a human-readable ``name`` to a metric function.
 
@@ -437,10 +485,10 @@ class FnMetric(Generic[T]):
     """
 
     name: str
-    fn: Callable[[np.ndarray, StatsContext], T]
+    fn: Callable[[np.ndarray, StatsContext], _MetricT]
     doc: str = ""
 
-    def __call__(self, x: np.ndarray, ctx: StatsContext) -> T:
+    def __call__(self, x: np.ndarray, ctx: StatsContext) -> _MetricT:
         r"""
         Compute the metric.
 
@@ -469,6 +517,14 @@ class StatsEngine:
     r"""
     Orchestrator that evaluates a set of metrics over an input array.
 
+    Given a collection of metric callables :math:`\{\phi_j\}_{j=1}^m` and an
+    array :math:`x \in \mathbb{R}^n`, the engine returns the dictionary
+
+    .. math::
+       \{\phi_j(x, \texttt{ctx}) : j = 1,\dots,m\},
+
+    while recording any skipped/failed evaluations for downstream inspection.
+
     Parameters
     ----------
     metrics : iterable of Metric
@@ -476,7 +532,7 @@ class StatsEngine:
 
     Notes
     -----
-    All metrics receive the *same* :class:`StatsContext`. Prefer field names that
+    All metrics receive the *same* :class:`~mcframework.stats_engine.StatsContext`. Prefer field names that
     read well across multiple metrics and avoid collisions.
 
     Examples
@@ -509,10 +565,10 @@ class StatsEngine:
         x : ndarray
             Sample values.
         ctx : StatsContext, optional
-            Context parameters. If None, one is built from **kwargs.
+            Context parameters. If None, one is built from ``**kwargs``.
         select : sequence of str, optional
             If given, compute only the metrics with these names.
-        **kwargs :
+        ``**kwargs`` :
             Used to build a StatsContext if ctx is None.
             Required: 'n' (int)
             Optional: 'confidence', 'ci_method', 'percentiles', etc.
@@ -581,12 +637,12 @@ class StatsEngine:
 
 def _ensure_ctx(ctx: Any, x: np.ndarray) -> StatsContext:
     r"""
-    Normalize arbitrary context inputs into a :class:`StatsContext`.
+    Normalize arbitrary context inputs into a :class:`~mcframework.stats_engine.StatsContext`.
 
     Parameters
     ----------
     ctx : Any
-        A :class:`StatsContext`, mapping, object with attributes, or ``None``.
+        A :class:`~mcframework.stats_engine.StatsContext`, mapping, object with attributes, or ``None``.
     x : ndarray
         Sample used to infer the fallback ``n`` when missing.
 
@@ -634,7 +690,7 @@ def _clean(x: np.ndarray, ctx: Any) -> tuple[np.ndarray, np.ndarray]:
     x : ndarray
         Raw input sample.
     ctx : StatsContext
-        Context whose :attr:`~StatsContext.nan_policy` guides filtering.
+        Context whose :attr:`~mcframework.stats_engine.StatsContext.nan_policy` guides filtering.
 
     Returns
     -------
@@ -645,7 +701,7 @@ def _clean(x: np.ndarray, ctx: Any) -> tuple[np.ndarray, np.ndarray]:
     Raises
     ------
     ValueError
-        If an unknown :attr:`~StatsContext.nan_policy` is supplied.
+        If an unknown :attr:`~mcframework.stats_engine.StatsContext.nan_policy` is supplied.
     """
     arr = np.asarray(x, dtype=float)
     finite = np.isfinite(arr)
@@ -672,7 +728,7 @@ def _effective_sample_size(x: np.ndarray, ctx: StatsContext) -> int:
     Returns
     -------
     int
-        Effective sample size according to :meth:`StatsContext.eff_n`.
+        Effective sample size according to :meth:`~mcframework.stats_engine.StatsContext.eff_n`.
     """
     arr, finite = _clean(x, ctx)
     return ctx.eff_n(observed_len=arr.size, finite_count=finite)
@@ -680,7 +736,7 @@ def _effective_sample_size(x: np.ndarray, ctx: StatsContext) -> int:
 
 def mean(x: np.ndarray, ctx: StatsContext) -> float | None:
     r"""
-    Sample mean.
+    Sample mean :math:`\bar X = \frac{1}{n}\sum_{i=1}^n x_i`.
 
     Parameters
     ----------
@@ -692,8 +748,13 @@ def mean(x: np.ndarray, ctx: StatsContext) -> float | None:
     Returns
     -------
     float or None
-        :math:`\bar X = \frac{1}{n}\sum_i x_i`, or ``None`` if the sample is empty
-        after cleaning.
+        Estimate of :math:`\mathbb{E}[X]`, or ``None`` if the cleaned sample is empty.
+
+    Notes
+    -----
+    The averaging is performed on the filtered array returned by :func:`~mcframework.stats_engine._clean`,
+    so the effective sample size corresponds to the number of finite values that
+    survive the configured NaN policy.
 
     Examples
     --------
@@ -709,18 +770,23 @@ def std(x: np.ndarray, ctx: StatsContext) -> float | None:
     r"""
     Sample standard deviation with Bessel correction.
 
+    The estimator is
+
+    .. math::
+       s = \sqrt{\frac{1}{n_\text{eff} - \texttt{ddof}}
+       \sum_{i=1}^{n_\text{eff}} (x_i - \bar X)^2 }.
+
     Parameters
     ----------
     x : ndarray
         Input sample.
     ctx : StatsContext
-        Uses :attr:`StatsContext.ddof` (default 1).
+        Uses :attr:`~mcframework.stats_engine.StatsContext.ddof` (default 1).
         If ``nan_policy="omit"``, non-finite values are excluded.
     Returns
     -------
     float or None
-        :math:`s = \sqrt{\frac{1}{n-1}\sum_i (x_i-\bar X)^2}`, or ``None`` if
-        :math:`n_\text{eff} \le 1`.
+        :math:`s` when :math:`n_\text{eff} > \texttt{ddof}`, else ``None``.
 
     Examples
     --------
@@ -739,18 +805,21 @@ def percentiles(x: np.ndarray, ctx: StatsContext) -> dict[int, float]:
     r"""
     Empirical percentiles evaluated on the cleaned sample.
 
+    For each :math:`p \in \mathcal{P}` we compute the empirical quantile
+    :math:`Q_p(x)` using :func:`numpy.percentile` (linear interpolation).
+
     Parameters
     ----------
     x : ndarray
         Input sample.
     ctx : StatsContext
-        Uses :attr:`StatsContext.percentiles` and :attr:`StatsContext.nan_policy`.
+        Uses :attr:`~mcframework.stats_engine.StatsContext.percentiles` and
+        :attr:`~mcframework.stats_engine.StatsContext.nan_policy`.
 
     Returns
     -------
     dict[int, float]
-        Mapping :math:`p \mapsto Q_p(x)` where :math:`Q_p` is the
-        :math:`p`-th percentile.
+        Mapping :math:`p \mapsto Q_p(x)`.
 
     Examples
     --------
@@ -769,12 +838,17 @@ def skew(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
     Unbiased sample skewness (Fisher–Pearson standardized third central moment).
 
+    .. math::
+       \text{skew}(x) =
+       \frac{1}{n_\text{eff}} \sum_i
+       \left(\frac{x_i - \bar X}{s}\right)^3.
+
     Parameters
     ----------
     x : ndarray
         Input sample.
     ctx : StatsContext
-        Uses :attr:`StatsContext.nan_policy`.
+        Uses :attr:`~mcframework.stats_engine.StatsContext.nan_policy`.
 
     Returns
     -------
@@ -800,12 +874,17 @@ def kurtosis(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
     Unbiased sample **excess** kurtosis (Fisher definition).
 
+    .. math::
+       \text{kurt}(x) =
+       \frac{1}{n_\text{eff}} \sum_i
+       \left(\frac{x_i - \bar X}{s}\right)^4 - 3.
+
     Parameters
     ----------
     x : ndarray
         Input sample.
     ctx : StatsContext
-        Uses :attr:`StatsContext.nan_policy`.
+        Uses :attr:`~mcframework.stats_engine.StatsContext.nan_policy`.
 
     Returns
     -------
@@ -837,16 +916,17 @@ def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
        \bar X \pm c \cdot SE,
 
     where :math:`c` is selected by :func:`mcframework.utils.autocrit` according
-    to :attr:`StatsContext.ci_method` and :math:`n_\text{eff}`.
+    to :attr:`~mcframework.stats_engine.StatsContext.ci_method` and :math:`n_\text{eff}`.
 
     Parameters
     ----------
     x : ndarray
         Input sample.
     ctx : StatsContext or Mapping
-        Configuration supplying at least :attr:`StatsContext.n`. Additional
-        fields such as :attr:`StatsContext.confidence`, :attr:`StatsContext.ddof`,
-        and :attr:`StatsContext.ci_method` refine the interval.
+        Configuration supplying at least :attr:`~mcframework.stats_engine.StatsContext.n`. Additional
+        fields such as :attr:`~mcframework.stats_engine.StatsContext.confidence`,
+        :attr:`~mcframework.stats_engine.StatsContext.ddof`, and
+        :attr:`~mcframework.stats_engine.StatsContext.ci_method` refine the interval.
 
     Returns
     -------
@@ -1109,15 +1189,15 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     ctx : StatsContext or Mapping
         Configuration that may specify:
 
-        - :attr:`StatsContext.confidence`
+        - :attr:`~mcframework.stats_engine.StatsContext.confidence`
             Confidence level :math:`\in (0, 1)`.
-        - :attr:`StatsContext.n_bootstrap`
+        - :attr:`~mcframework.stats_engine.StatsContext.n_bootstrap`
             Number of bootstrap resamples (default ``10_000``).
-        - :attr:`StatsContext.nan_policy`
+        - :attr:`~mcframework.stats_engine.StatsContext.nan_policy`
             Whether to omit non-finite values before bootstrapping.
-        - :attr:`StatsContext.bootstrap`
+        - :attr:`~mcframework.stats_engine.StatsContext.bootstrap`
             Flavor (``"percentile"`` or ``"bca"``).
-        - :attr:`StatsContext.rng`
+        - :attr:`~mcframework.stats_engine.StatsContext.rng`
             Seed or generator for reproducibility.
 
     Returns
@@ -1203,8 +1283,8 @@ def ci_mean_chebyshev(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     x : ndarray
         Input sample.
     ctx : StatsContext or Mapping
-        Requires :attr:`StatsContext.n` and may specify
-        :attr:`StatsContext.confidence`.
+        Requires :attr:`~mcframework.stats_engine.StatsContext.n` and may specify
+        :attr:`~mcframework.stats_engine.StatsContext.confidence`.
 
     Returns
     -------
@@ -1244,8 +1324,8 @@ def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:
     x : ndarray
         Input sample.
     ctx : StatsContext or Mapping
-        Must supply :attr:`StatsContext.eps` (target half-width) and may
-        override :attr:`StatsContext.confidence`.
+        Must supply :attr:`~mcframework.stats_engine.StatsContext.eps` (target half-width) and may
+        override :attr:`~mcframework.stats_engine.StatsContext.confidence`.
 
     Returns
     -------
@@ -1284,8 +1364,9 @@ def markov_error_prob(x: np.ndarray, ctx: StatsContext) -> float:
     x : ndarray
         Input sample.
     ctx : StatsContext or Mapping
-        Requires :attr:`StatsContext.target` and :attr:`StatsContext.eps`. The
-        declared :attr:`StatsContext.n` influences the context but does not enter
+        Requires :attr:`~mcframework.stats_engine.StatsContext.target` and
+        :attr:`~mcframework.stats_engine.StatsContext.eps`. The declared
+        :attr:`~mcframework.stats_engine.StatsContext.n` influences the context but does not enter
         directly into the bound.
 
     Returns
@@ -1314,7 +1395,7 @@ def bias_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     x : ndarray
         Input sample.
     ctx : StatsContext or Mapping
-        Requires :attr:`StatsContext.target`.
+        Requires :attr:`~mcframework.stats_engine.StatsContext.target`.
 
     Returns
     -------
@@ -1341,7 +1422,7 @@ def mse_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     x : ndarray
         Input sample.
     ctx : StatsContext or Mapping
-        Requires :attr:`StatsContext.target`.
+        Requires :attr:`~mcframework.stats_engine.StatsContext.target`.
 
     Returns
     -------
@@ -1360,7 +1441,7 @@ def build_default_engine(
     include_target_bounds: bool = True,
 ) -> StatsEngine:
     r"""
-    Construct a :class:`StatsEngine` with a practical set of metrics.
+    Construct a :class:`~mcframework.stats_engine.StatsEngine` with a practical set of metrics.
 
     Parameters
     ----------
@@ -1411,9 +1492,13 @@ DEFAULT_ENGINE = build_default_engine(
 )
 
 __all__ = [
+    "CIMethod",
+    "NanPolicy",
+    "BootstrapMethod",
     "StatsContext",
     "ComputeResult",
     "Metric",
+    "MetricSet",
     "FnMetric",
     "StatsEngine",
     "MissingContextError",
