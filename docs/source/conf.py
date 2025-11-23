@@ -5,6 +5,7 @@
 
 # -- Path setup ----------------------------------------------------------------
 from __future__ import annotations
+
 import os
 import sys
 from datetime import datetime
@@ -62,7 +63,13 @@ html_theme = "pydata_sphinx_theme"
 html_theme_options = {
     "show_prev_next": False,
     "navigation_depth": 2,
-    # "logo": {"text": "mcframework"}, # or set an SVG logo via html_logo
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/milanfusco/mcframework",
+            "icon": "fa-brands fa-github",
+        },
+    ],
 }
 # Where to keep local assets (badges, images)
 # html_static_path = ["_static"]
