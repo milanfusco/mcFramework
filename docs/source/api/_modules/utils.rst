@@ -11,7 +11,7 @@ Utilities
     :toctree: generated
     :recursive:
 
-    mcframework.utils._validate_confidence
-    mcframework.utils.z_crit
-    mcframework.utils.t_crit
-    mcframework.utils.autocrit
+    _validate_confidence
+    z_crit
+    t_crit
+    autocrit
