@@ -453,7 +453,7 @@ class TestCalculateGreeks:
             if isinstance(left, np.ndarray):
                 return np.array_equal(left, right)
             if isinstance(left, (list, tuple)):
-                return all(_states_equal(l, r) for l, r in zip(left, right))
+                return all(_states_equal(left_val, right_val) for left_val, right_val in zip(left, right))
             return left == right
 
         assert _states_equal(state_before, sim.rng.bit_generator.state)
