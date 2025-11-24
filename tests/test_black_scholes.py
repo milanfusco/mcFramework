@@ -9,6 +9,8 @@ This module contains comprehensive tests for:
 - Error handling and edge cases
 """
 
+import copy
+
 import numpy as np
 import pytest
 
@@ -427,6 +429,34 @@ class TestCalculateGreeks:
 
         # Theta should be 0 when T < time_bump_days/365
         assert greeks["theta"] == 0.0
+
+    def test_calculate_greeks_restores_rng_state(self):
+        """calculate_greeks should not disturb the simulation RNG."""
+        sim = BlackScholesSimulation()
+        sim.set_seed(123)
+        state_before = copy.deepcopy(sim.rng.bit_generator.state)
+
+        sim.calculate_greeks(
+            n_simulations=50,
+            S0=100.0,
+            K=100.0,
+            T=1.0,
+            r=0.05,
+            sigma=0.20,
+            option_type="call",
+            exercise_type="european",
+        )
+
+        def _states_equal(left, right):
+            if isinstance(left, dict):
+                return all(_states_equal(left[k], right[k]) for k in left)
+            if isinstance(left, np.ndarray):
+                return np.array_equal(left, right)
+            if isinstance(left, (list, tuple)):
+                return all(_states_equal(left_val, right_val) for left_val, right_val in zip(left, right))
+            return left == right
+
+        assert _states_equal(state_before, sim.rng.bit_generator.state)
 
 
 # =============================================================================
