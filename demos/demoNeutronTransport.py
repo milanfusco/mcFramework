@@ -10,8 +10,6 @@ in both 1D and 2D geometries, including:
 Run this script to see neutron transport simulations in action.
 """
 
-import multiprocessing as mp
-
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -21,7 +19,6 @@ from mcframework.sims.neutron_transport import (
     KEFFSimulation,
     Material,
     NeutronTransportSimulation,
-    plot_flux_map_2d,
 )
 
 
@@ -54,7 +51,7 @@ def demo_1d_flux_distribution():
         geometry=geometry,
         source_position=(5.0,),  # Center source
         source_energy_group=2,   # Fast neutrons
-        flux_bins=50, 
+        flux_bins=50,
     )
     
     sim.set_seed(42)
@@ -66,8 +63,8 @@ def demo_1d_flux_distribution():
     print("  - Boundary: Vacuum")
     
     result = sim.run(
-        n_simulations=30000,
-        parallel=True,
+        n_simulations=1000,
+        parallel=False,
         return_type="flux",
     )
     
@@ -78,7 +75,7 @@ def demo_1d_flux_distribution():
     # Compute full flux distribution
     print("\nComputing spatial flux distribution...")
     flux_dist = sim.compute_flux_distribution(
-        n_histories=10000,
+        n_histories=5000,
         flux_bins=50,
     )
     
@@ -140,8 +137,8 @@ def demo_1d_heterogeneous():
     # Compute statistics
     print("\nComputing leakage probability...")
     result_leakage = sim.run(
-        n_simulations=10000,
-        parallel=True,
+        n_simulations=5000,
+        parallel=False,
         return_type="leakage_prob",
     )
     
@@ -149,8 +146,8 @@ def demo_1d_heterogeneous():
     
     print("\nComputing absorption probability...")
     result_absorption = sim.run(
-        n_simulations=10000,
-        parallel=True,
+        n_simulations=5000,
+        parallel=False,
         return_type="absorption_prob",
     )
     
@@ -227,8 +224,8 @@ def demo_2d_geometry():
     print("  - Source: Center (5.0, 5.0 cm)")
     
     result = sim.run(
-        n_simulations=30000,
-        parallel=True,
+        n_simulations=2000,
+        parallel=False,
         return_type="flux",
     )
     
@@ -238,8 +235,8 @@ def demo_2d_geometry():
     
     # Compute leakage
     result_leakage = sim.run(
-        n_simulations=30000,
-        parallel=True,
+        n_simulations=2000,
+        parallel=False,
         return_type="leakage_prob",
     )
     
@@ -300,18 +297,16 @@ def demo_keff_calculation():
     print(f"  Execution time: {result.execution_time:.2f} seconds")
     
     if result.mean > 1.0:
-        print("\n  System is SUPERCRITICAL (k-eff > 1)")
+        print(f"\n  System is SUPERCRITICAL (k-eff > 1)")
     elif result.mean < 1.0:
-        print("\n  System is SUBCRITICAL (k-eff < 1)")
+        print(f"\n  System is SUBCRITICAL (k-eff < 1)")
     else:
-        print("\n  System is CRITICAL (k-eff = 1)")
+        print(f"\n  System is CRITICAL (k-eff = 1)")
     
     # Plot k-eff distribution
     plt.figure(figsize=(10, 6))
     plt.hist(result.results, bins=20, alpha=0.7, edgecolor='black')
-    plt.axvline(x=result.mean, color='r', linestyle='--', linewidth=2,
-        label=f'Mean k-eff = {result.mean:.5f}',
-    )
+    plt.axvline(x=result.mean, color='r', linestyle='--', linewidth=2, label=f'Mean k-eff = {result.mean:.4f}')
     plt.axvline(x=1.0, color='g', linestyle='-', linewidth=2, label='Critical (k-eff = 1.0)')
     plt.xlabel('k-effective', fontsize=12)
     plt.ylabel('Frequency', fontsize=12)
@@ -363,7 +358,7 @@ def demo_keff_vs_size():
         sim.set_seed(42)
         
         result = sim.run(
-            n_simulations=5,
+            n_simulations=15,
             parallel=False,
             skip_generations=10,
         )
@@ -390,35 +385,6 @@ def demo_keff_vs_size():
     plt.close()
 
 
-def demo_2d_flux_tracklength():
-    print("\n" + "="*70)
-    print("DEMO 6: 2D Flux Map (Track-Length Estimator)")
-    print("="*70)
-
-    u235 = Material.create_u235()
-    h2o = Material.create_water()
-
-    geometry = Geometry2DPlane(
-        0, 10, 0, 10,
-        regions=[(2, 2, 8, 8, u235)],
-        default_material=h2o,
-        boundary_condition="vacuum",
-    )
-
-    sim = NeutronTransportSimulation(
-        name="2D Flux TL",
-        geometry=geometry,
-        source_position=(5.0, 5.0),
-    )
-    sim.set_seed(1)
-
-    print("Computing full track-length flux map...")
-    flux_map = sim.compute_flux_map_2d_tracklength(
-        nx=80, ny=80, n_histories=25000
-    )
-    plot_flux_map_2d(flux_map, geometry, "neutron_2d_flux_tracklength.png")
-
-
 def main():
     """Run all neutron transport demonstrations."""
     print("\n" + "="*70)
@@ -432,8 +398,7 @@ def main():
     demo_2d_geometry()
     demo_keff_calculation()
     demo_keff_vs_size()
-    demo_2d_flux_tracklength()
-
+    
     print("\n" + "="*70)
     print("ALL DEMONSTRATIONS COMPLETE")
     print("="*70)
@@ -442,22 +407,15 @@ def main():
     print("  - neutron_1d_heterogeneous.png")
     print("  - neutron_keff_distribution.png")
     print("  - neutron_keff_vs_size.png")
-    print("  - neutron_2d_flux_tracklength.png")
     print("\nThese demonstrations show:")
     print("  1. Neutron flux distribution in 1D geometries")
     print("  2. Heterogeneous materials (fuel + moderator)")
     print("  3. 2D geometry transport")
     print("  4. k-effective (criticality) calculations")
     print("  5. Critical mass estimation")
-    print("  6. 2D flux map (track-length estimator)")
     print("="*70 + "\n")
 
 
 if __name__ == "__main__":
-    
-    try:
-        mp.set_start_method("spawn", force=True)
-    except RuntimeError:
-        pass
     main()
 
