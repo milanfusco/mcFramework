@@ -914,17 +914,54 @@ class SparklineChart(InteractiveChart):
 
 
 class CandlestickChart(InteractiveChart):
-    """Interactive candlestick chart with aligned volume subplot."""
+    """Interactive candlestick chart with aligned volume subplot.
+
+    Features:
+    - Candlestick OHLC price bars
+    - Volume bars aligned below
+    - Crosshair spanning both subplots
+    - Hover tooltip with OHLC + volume info
+    """
 
     def __init__(self, parent: QWidget | None = None, max_points: int = 120):
         super().__init__(figsize=(8, 4), parent=parent)
         self._max_points = max_points
-        self._crosshair_enabled = False
+        # Enable crosshair for this chart
+        self._crosshair_enabled = True
         self._figure.clear()
         grid = self._figure.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.05)
         self._price_ax = self._figure.add_subplot(grid[0])
         self._volume_ax = self._figure.add_subplot(grid[1], sharex=self._price_ax)
         self._configure_candlestick_axes()
+
+        # Crosshair lines for price and volume axes
+        self._price_crosshair_h = None
+        self._price_crosshair_v = None
+        self._volume_crosshair_v = None
+
+        # Tooltip annotation on price axes
+        self._candle_annotation = None
+
+        # Data cache for hover lookups
+        self._x_values: np.ndarray | None = None
+        self._opens: np.ndarray | None = None
+        self._highs: np.ndarray | None = None
+        self._lows: np.ndarray | None = None
+        self._closes: np.ndarray | None = None
+        self._volumes: np.ndarray | None = None
+        self._dates: list[datetime] | None = None
+
+        # Cached axis limits to prevent rescaling on hover
+        self._price_xlim: tuple[float, float] | None = None
+        self._price_ylim: tuple[float, float] | None = None
+        self._volume_ylim: tuple[float, float] | None = None
+
+        # Track if user has zoomed/panned (don't restore limits in that case)
+        self._user_has_zoomed = False
+        self._canvas.mpl_connect('button_release_event', self._on_button_release)
+
+        # Connect to toolbar home button to reset zoom flag
+        self._toolbar.actions()[0].triggered.connect(self._on_home_clicked)
 
     def _configure_axes(self) -> None:
         """Override base hook to avoid configuring unused _axes."""
@@ -946,10 +983,185 @@ class CandlestickChart(InteractiveChart):
         self._volume_ax.set_ylabel('Volume', color='#bbbbbb', fontsize=8)
         self._price_ax.set_ylabel('Price ($)', color='#bbbbbb', fontsize=9)
 
+    # -------------------------------------------------------------------------
+    # Crosshair helpers (overrides base class for dual-axis support)
+    # -------------------------------------------------------------------------
+
+    def _setup_candlestick_crosshair(self) -> None:
+        """Create crosshair lines on both price and volume axes."""
+        if self._price_crosshair_h is not None:
+            return
+
+        # Get current axis limits to position lines within valid range
+        xlim = self._price_ax.get_xlim()
+        ylim = self._price_ax.get_ylim()
+        x_mid = (xlim[0] + xlim[1]) / 2
+        y_mid = (ylim[0] + ylim[1]) / 2
+
+        line_style = dict(
+            color=DARK_THEME["grid"],
+            linestyle='--',
+            linewidth=0.8,
+            alpha=0.6,
+            visible=False,
+        )
+        # Create lines at midpoint (within current limits) to avoid autoscale issues
+        self._price_crosshair_h = self._price_ax.axhline(y=y_mid, **line_style)
+        self._price_crosshair_v = self._price_ax.axvline(x=x_mid, **line_style)
+        self._volume_crosshair_v = self._volume_ax.axvline(x=x_mid, **line_style)
+
+        # Prevent these artists from affecting autoscale
+        self._price_crosshair_h.set_clip_on(True)
+        self._price_crosshair_v.set_clip_on(True)
+        self._volume_crosshair_v.set_clip_on(True)
+
+    def _update_candlestick_crosshair(self, x: float, y: float) -> None:
+        """Update crosshair position across both subplots."""
+        if not self._crosshair_enabled:
+            return
+
+        self._setup_candlestick_crosshair()
+
+        if self._price_crosshair_h is not None:
+            self._price_crosshair_h.set_ydata([y, y])
+            self._price_crosshair_h.set_visible(True)
+
+        if self._price_crosshair_v is not None:
+            self._price_crosshair_v.set_xdata([x, x])
+            self._price_crosshair_v.set_visible(True)
+
+        if self._volume_crosshair_v is not None:
+            self._volume_crosshair_v.set_xdata([x, x])
+            self._volume_crosshair_v.set_visible(True)
+
+    def _hide_candlestick_crosshair(self) -> None:
+        """Hide crosshair lines on both subplots."""
+        for line in (
+            self._price_crosshair_h,
+            self._price_crosshair_v,
+            self._volume_crosshair_v,
+        ):
+            if line is not None:
+                line.set_visible(False)
+
+    def _on_axes_leave(self, event) -> None:
+        """Handle mouse leaving the axes (override)."""
+        self._hide_candlestick_crosshair()
+        if self._candle_annotation is not None:
+            self._candle_annotation.set_visible(False)
+        self._restore_axis_limits()
+        self._canvas.draw_idle()
+
+    def _on_button_release(self, event) -> None:
+        """Detect when user finishes a zoom/pan operation."""
+        # Check if toolbar is in zoom or pan mode
+        mode = self._toolbar.mode if hasattr(self._toolbar, 'mode') else ''
+        if mode in ('zoom rect', 'pan/zoom'):
+            self._user_has_zoomed = True
+
+    def _on_home_clicked(self) -> None:
+        """Reset zoom flag when user clicks Home button."""
+        self._user_has_zoomed = False
+
+    def _restore_axis_limits(self) -> None:
+        """Restore cached axis limits to prevent rescaling (only if user hasn't zoomed)."""
+        if self._user_has_zoomed:
+            return
+        if self._price_xlim is not None:
+            self._price_ax.set_xlim(self._price_xlim)
+        if self._price_ylim is not None:
+            self._price_ax.set_ylim(self._price_ylim)
+        if self._volume_ylim is not None:
+            self._volume_ax.set_ylim(self._volume_ylim)
+
+    def _on_mouse_move(self, event) -> None:
+        """Handle hover: show crosshair and tooltip with OHLC + volume."""
+        if event.inaxes not in (self._price_ax, self._volume_ax):
+            self._hide_candlestick_crosshair()
+            if self._candle_annotation is not None:
+                self._candle_annotation.set_visible(False)
+            self._restore_axis_limits()
+            self._canvas.draw_idle()
+            return
+
+        if self._x_values is None or len(self._x_values) == 0:
+            return
+
+        x = event.xdata
+        if x is None:
+            return
+
+        # Find nearest candle index
+        idx = int(np.argmin(np.abs(self._x_values - x)))
+        if idx < 0 or idx >= len(self._x_values):
+            return
+
+        # Snap crosshair to candle center
+        snap_x = self._x_values[idx]
+        snap_y = self._closes[idx] if event.inaxes == self._price_ax else 0
+
+        self._update_candlestick_crosshair(snap_x, snap_y)
+
+        # Build tooltip text
+        date_str = self._dates[idx].strftime("%Y-%m-%d") if self._dates else ""
+        o = self._opens[idx]
+        h = self._highs[idx]
+        lo = self._lows[idx]
+        c = self._closes[idx]
+        vol = self._volumes[idx] if self._volumes is not None else 0
+        vol_str = f"{vol:,.0f}" if vol else "N/A"
+
+        tooltip_text = (
+            f"{date_str}\n"
+            f"O: ${o:.2f}  H: ${h:.2f}\n"
+            f"L: ${lo:.2f}  C: ${c:.2f}\n"
+            f"Vol: {vol_str}"
+        )
+
+        # Position annotation near cursor on price axes
+        if self._candle_annotation is None:
+            self._candle_annotation = self._price_ax.annotate(
+                tooltip_text,
+                xy=(snap_x, c),
+                xytext=(12, 12),
+                textcoords='offset points',
+                fontsize=9,
+                color=DARK_THEME["foreground"],
+                bbox=dict(
+                    boxstyle='round,pad=0.4',
+                    facecolor='#1a1a32',
+                    edgecolor=DARK_THEME["grid"],
+                    alpha=0.95,
+                ),
+                zorder=100,
+            )
+        else:
+            self._candle_annotation.set_text(tooltip_text)
+            self._candle_annotation.xy = (snap_x, c)
+            self._candle_annotation.set_visible(True)
+
+        # Restore axis limits before redrawing to prevent zoom-out
+        self._restore_axis_limits()
+        self._canvas.draw_idle()
+        self.hover_data.emit(f"{date_str} C=${c:.2f}")
+
     def clear(self) -> None:
         self._price_ax.clear()
         self._volume_ax.clear()
         self._configure_candlestick_axes()
+        # Reset crosshair lines (will be recreated on next hover)
+        self._price_crosshair_h = None
+        self._price_crosshair_v = None
+        self._volume_crosshair_v = None
+        self._candle_annotation = None
+        # Clear cached data
+        self._x_values = None
+        self._opens = None
+        self._highs = None
+        self._lows = None
+        self._closes = None
+        self._volumes = None
+        self._dates = None
         self.refresh()
 
     def update_data(
@@ -964,6 +1176,12 @@ class CandlestickChart(InteractiveChart):
         self._price_ax.clear()
         self._volume_ax.clear()
         self._configure_candlestick_axes()
+        # Reset crosshair and zoom state for fresh data
+        self._price_crosshair_h = None
+        self._price_crosshair_v = None
+        self._volume_crosshair_v = None
+        self._candle_annotation = None
+        self._user_has_zoomed = False
 
         if (
             opens is None
@@ -1005,10 +1223,20 @@ class CandlestickChart(InteractiveChart):
         lows = np.asarray(lows)[slice_obj]
         closes = np.asarray(closes)[slice_obj]
         volumes_slice = np.asarray(volumes)[slice_obj] if volumes is not None else None
-        date_slice = dates[slice_obj]
+        # dates may be a list, so slice explicitly
+        date_slice = dates[slice_obj.start:slice_obj.stop]
 
         x_values = mdates.date2num(date_slice)
         width = 0.6
+
+        # Cache data for hover lookups
+        self._x_values = x_values
+        self._opens = opens
+        self._highs = highs
+        self._lows = lows
+        self._closes = closes
+        self._volumes = volumes_slice
+        self._dates = date_slice
 
         for idx, x_val in enumerate(x_values):
             open_price = float(opens[idx])
@@ -1063,4 +1291,9 @@ class CandlestickChart(InteractiveChart):
         self._figure.autofmt_xdate()
 
         self.refresh()
+
+        # Cache axis limits after plotting to prevent rescaling on hover
+        self._price_xlim = self._price_ax.get_xlim()
+        self._price_ylim = self._price_ax.get_ylim()
+        self._volume_ylim = self._volume_ax.get_ylim()
 

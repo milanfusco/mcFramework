@@ -62,27 +62,33 @@ class MetricCard(QFrame):
         super().__init__(parent)
         self.setObjectName("metricCard")
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setMinimumWidth(160)
-        self.setMinimumHeight(90)
+        self.setMinimumWidth(110)
+        self.setMinimumHeight(85)
+        # Allow cards to shrink/expand proportionally
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(6)
-        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(2)
+        layout.setContentsMargins(8, 8, 8, 8)
 
-        # Title
+        # Title - allow word wrap for long titles
         self._title_label = QLabel(title)
         self._title_label.setObjectName("metricTitle")
+        self._title_label.setWordWrap(True)
+        self._title_label.setStyleSheet("font-size: 10px;")
         layout.addWidget(self._title_label)
 
-        # Value
+        # Value - allow word wrap for large numbers
         self._value_label = QLabel(value)
         self._value_label.setObjectName("metricValue")
+        self._value_label.setWordWrap(True)
         layout.addWidget(self._value_label)
 
         # Subtitle (optional)
         if subtitle:
             self._subtitle_label = QLabel(subtitle)
             self._subtitle_label.setObjectName("metricSubtitle")
+            self._subtitle_label.setStyleSheet("font-size: 9px;")
             layout.addWidget(self._subtitle_label)
         else:
             self._subtitle_label = None
@@ -277,20 +283,21 @@ class MarketDataTab(QWidget):
     def _build_metric_cards(self, parent_layout: QVBoxLayout) -> None:
         """Create the horizontal row of metric cards."""
         metrics_layout = QHBoxLayout()
-        metrics_layout.setSpacing(12)
+        metrics_layout.setSpacing(8)
 
         card_defs = [
-            ("_price_card", MetricCard("Current Price", "—", "Last close")),
-            ("_drift_card", MetricCard("Annual Drift", "—", "Estimated μ")),
-            ("_vol_card", MetricCard("Annual Volatility", "—", "Estimated σ")),
+            ("_price_card", MetricCard("Price", "—", "Last close")),
+            ("_drift_card", MetricCard("Drift (μ)", "—", "Annual")),
+            ("_vol_card", MetricCard("Volatility (σ)", "—", "Annual")),
             ("_data_points_card", MetricCard("Data Points", "—", "Trading days")),
-            ("_dividend_card", MetricCard("Dividend Yield", "—", "Trailing 12M")),
-            ("_volume_card", MetricCard("10-Day Avg Volume", "—")),
+            ("_dividend_card", MetricCard("Div Yield", "—", "TTM")),
+            ("_volume_card", MetricCard("Avg Vol", "—", "10-day")),
         ]
 
         for attr_name, card in card_defs:
             setattr(self, attr_name, card)
-            metrics_layout.addWidget(card)
+            # Equal stretch factor so cards share width evenly
+            metrics_layout.addWidget(card, 1)
 
         parent_layout.addLayout(metrics_layout)
 
@@ -497,10 +504,10 @@ class MarketDataTab(QWidget):
             or fast_info.get("threeMonthAverageVolume")
         )
         if avg_volume:
-            self._volume_card.set_value(f"{avg_volume:,.0f}", animate=False)
+            self._volume_card.set_value(self._format_compact_number(avg_volume), animate=False)
         elif state.volumes is not None and len(state.volumes) > 0:
             recent_vol = float(np.nanmean(state.volumes[-10:]))
-            self._volume_card.set_value(f"{recent_vol:,.0f}", animate=False)
+            self._volume_card.set_value(self._format_compact_number(recent_vol), animate=False)
         else:
             self._volume_card.set_value("—", animate=False)
 
@@ -552,6 +559,20 @@ class MarketDataTab(QWidget):
         if isinstance(value, (int, float, np.number, np.generic)):
             return f"{float(value):,.2f}"
         return str(value)
+
+    @staticmethod
+    def _format_compact_number(value: float | int) -> str:
+        """Format large numbers compactly (e.g., 44.9M, 1.2B)."""
+        if value is None:
+            return "—"
+        value = float(value)
+        if value >= 1_000_000_000:
+            return f"{value / 1_000_000_000:.1f}B"
+        if value >= 1_000_000:
+            return f"{value / 1_000_000:.1f}M"
+        if value >= 1_000:
+            return f"{value / 1_000:.1f}K"
+        return f"{value:,.0f}"
 
     @staticmethod
     def _format_key(key: str) -> str:
