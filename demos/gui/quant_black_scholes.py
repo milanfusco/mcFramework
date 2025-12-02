@@ -2,7 +2,7 @@
 """
 Quant Black-Scholes Simulator - Main Entry Point
 
-A Bloomberg-lite PySide6 application for Monte Carlo simulations
+A PySide6 application for Monte Carlo simulations
 on stock tickers using Black-Scholes option pricing.
 
 Usage:
@@ -176,7 +176,9 @@ class QuantBlackScholesWindow(QMainWindow):
         
         # Tab widget (center)
         self._tabs = QTabWidget()
-        self._tabs.setDocumentMode(True)
+        self._tabs.setTabPosition(QTabWidget.TabPosition.North)
+        self._tabs.setUsesScrollButtons(True)
+        self._tabs.setElideMode(Qt.TextElideMode.ElideNone)  # Don't truncate labels
         
         # Create tabs
         self._market_tab = MarketDataTab()
@@ -184,10 +186,11 @@ class QuantBlackScholesWindow(QMainWindow):
         self._options_tab = OptionsGreeksTab()
         self._surfaces_tab = SurfacesTab()
         
-        self._tabs.addTab(self._market_tab, "📊 Market Data")
-        self._tabs.addTab(self._mc_tab, "🎲 Monte Carlo")
-        self._tabs.addTab(self._options_tab, "📈 Options & Greeks")
-        self._tabs.addTab(self._surfaces_tab, "🌐 3D Surfaces")
+        # Add tabs with full labels (emojis provide visual identification)
+        self._tabs.addTab(self._market_tab, "📊  Market Data")
+        self._tabs.addTab(self._mc_tab, "🎲  Monte Carlo")
+        self._tabs.addTab(self._options_tab, "📈  Options & Greeks")
+        self._tabs.addTab(self._surfaces_tab, "🌐  3D Surfaces")
         
         splitter.addWidget(self._tabs)
         

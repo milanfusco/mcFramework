@@ -8,15 +8,23 @@ design with grouped sections.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generator
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import (
+    QPropertyAnimation,
+    QSequentialAnimationGroup,
+    QSettings,
+    Qt,
+    Signal,
+)
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFrame,
+    QGraphicsOpacityEffect,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -31,6 +39,94 @@ from PySide6.QtWidgets import (
 if TYPE_CHECKING:
     from ..models.state import SimulationConfig
 
+
+# =============================================================================
+# Constants
+# =============================================================================
+
+# Layout constants
+SIDEBAR_WIDTH = 280
+GROUP_SPACING = 12
+CONTENT_MARGINS = (12, 12, 12, 12)
+GROUP_CONTENT_MARGINS = (10, 14, 10, 10)
+GROUP_CONTENT_SPACING = 6
+LABEL_MIN_WIDTH = 100
+
+# Ticker input constraints
+TICKER_MAX_LENGTH = 10
+MAX_RECENT_TICKERS = 10
+DEFAULT_RECENT_TICKERS = ["AAPL", "MSFT", "GOOGL", "TSLA", "SPY"]
+
+# Historical days constraints
+MIN_HISTORICAL_DAYS = 30
+MAX_HISTORICAL_DAYS = 2520  # ~10 years
+DEFAULT_HISTORICAL_DAYS = 252
+
+# Simulation constraints
+MIN_SIMULATIONS = 100
+MAX_SIMULATIONS = 100_000_000
+DEFAULT_SIMULATIONS = 1000
+SIMULATIONS_STEP = 500
+
+MIN_VIZ_PATHS = 10
+MAX_VIZ_PATHS = 1000
+DEFAULT_VIZ_PATHS = 100
+
+MIN_SEED = 0
+MAX_SEED = 999_999
+DEFAULT_SEED = 42
+
+# Horizon constraints
+MIN_HORIZON = 0.1
+MAX_HORIZON = 10.0
+DEFAULT_HORIZON = 1.0
+HORIZON_STEP = 0.25
+
+# Rate constraints
+MIN_RATE = 0.0
+MAX_RATE = 0.20
+DEFAULT_RATE = 0.05
+RATE_STEP = 0.005
+RATE_DECIMALS = 3
+
+# Animation constants
+PULSE_FADE_DURATION_MS = 400
+PULSE_OPACITY_MIN = 0.6
+PULSE_OPACITY_MAX = 1.0
+
+# Settings keys
+SETTINGS_ORG = "McFramework"
+SETTINGS_APP = "QuantBlackScholes"
+SETTINGS_RECENT_TICKERS_KEY = "sidebar/recent_tickers"
+
+
+# =============================================================================
+# Utility Functions
+# =============================================================================
+
+@contextmanager
+def block_signals(*widgets: QWidget) -> Generator[None, None, None]:
+    """
+    Context manager to temporarily block signals from widgets.
+    
+    Args:
+        *widgets: Widgets to block signals on
+        
+    Yields:
+        None
+    """
+    for w in widgets:
+        w.blockSignals(True)
+    try:
+        yield
+    finally:
+        for w in widgets:
+            w.blockSignals(False)
+
+
+# =============================================================================
+# Data Classes
+# =============================================================================
 
 @dataclass
 class ScenarioPreset:
@@ -88,14 +184,60 @@ SCENARIO_PRESETS: list[ScenarioPreset] = [
 ]
 
 
-class CollapsibleGroup(QGroupBox):
+# =============================================================================
+# Group Widget Classes
+# =============================================================================
+
+class GroupMixin:
+    """
+    Mixin providing common functionality for group widgets.
+    
+    This eliminates duplicate add_row() implementations across group classes.
+    Subclasses must define self._layout as a QVBoxLayout.
+    """
+
+    _layout: QVBoxLayout  # Type hint for subclasses
+
+    def add_row(
+        self, label: str, widget: QWidget, label_width: int = LABEL_MIN_WIDTH
+    ) -> QHBoxLayout:
+        """
+        Add a labeled row to the group.
+        
+        Args:
+            label: Label text
+            widget: Widget to add
+            label_width: Minimum width for the label
+            
+        Returns:
+            The created row layout
+        """
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        
+        label_widget = QLabel(label)
+        label_widget.setMinimumWidth(label_width)
+        row.addWidget(label_widget)
+        row.addWidget(widget, 1)
+        
+        self._layout.addLayout(row)
+        return row
+
+    def add_widget(self, widget: QWidget) -> None:
+        """Add a widget to the group."""
+        self._layout.addWidget(widget)
+
+
+class CollapsibleGroup(GroupMixin, QGroupBox):
     """
     Collapsible group box for organizing controls.
     
     Click on the title to expand/collapse the group content.
     """
 
-    def __init__(self, title: str, collapsed: bool = False, parent: QWidget | None = None):
+    def __init__(
+        self, title: str, collapsed: bool = False, parent: QWidget | None = None
+    ):
         """
         Initialize the collapsible group.
 
@@ -109,9 +251,9 @@ class CollapsibleGroup(QGroupBox):
         self._collapsed = collapsed
         
         self._content = QWidget()
-        self._content_layout = QVBoxLayout(self._content)
-        self._content_layout.setSpacing(6)
-        self._content_layout.setContentsMargins(10, 6, 10, 10)
+        self._layout = QVBoxLayout(self._content)
+        self._layout.setSpacing(GROUP_CONTENT_SPACING)
+        self._layout.setContentsMargins(10, 6, 10, 10)
         
         layout = QVBoxLayout(self)
         layout.setSpacing(0)
@@ -155,25 +297,8 @@ class CollapsibleGroup(QGroupBox):
         self._header.setText(self._get_title_text())
         self._content.setVisible(not self._collapsed)
 
-    def add_widget(self, widget: QWidget) -> None:
-        """Add a widget to the group content."""
-        self._content_layout.addWidget(widget)
 
-    def add_row(self, label: str, widget: QWidget) -> QHBoxLayout:
-        """Add a labeled row to the group."""
-        row = QHBoxLayout()
-        row.setSpacing(8)
-        
-        label_widget = QLabel(label)
-        label_widget.setMinimumWidth(100)
-        row.addWidget(label_widget)
-        row.addWidget(widget, 1)
-        
-        self._content_layout.addLayout(row)
-        return row
-
-
-class ControlGroup(QGroupBox):
+class ControlGroup(GroupMixin, QGroupBox):
     """
     Styled group box for organizing related controls.
     
@@ -191,34 +316,8 @@ class ControlGroup(QGroupBox):
         """
         super().__init__(title, parent)
         self._layout = QVBoxLayout(self)
-        self._layout.setSpacing(6)
-        self._layout.setContentsMargins(10, 14, 10, 10)
-
-    def add_widget(self, widget: QWidget) -> None:
-        """Add a widget to the group."""
-        self._layout.addWidget(widget)
-
-    def add_row(self, label: str, widget: QWidget) -> QHBoxLayout:
-        """
-        Add a labeled row to the group.
-        
-        Args:
-            label: Label text
-            widget: Widget to add
-            
-        Returns:
-            The created row layout
-        """
-        row = QHBoxLayout()
-        row.setSpacing(8)
-        
-        label_widget = QLabel(label)
-        label_widget.setMinimumWidth(100)
-        row.addWidget(label_widget)
-        row.addWidget(widget, 1)
-        
-        self._layout.addLayout(row)
-        return row
+        self._layout.setSpacing(GROUP_CONTENT_SPACING)
+        self._layout.setContentsMargins(*GROUP_CONTENT_MARGINS)
 
 
 class SidebarWidget(QWidget):
@@ -245,9 +344,6 @@ class SidebarWidget(QWidget):
     preset_selected = Signal(int)
     reset_requested = Signal()
 
-    # Sidebar width constant
-    SIDEBAR_WIDTH = 280
-
     def __init__(self, parent: QWidget | None = None):
         """
         Initialize the sidebar widget.
@@ -256,11 +352,40 @@ class SidebarWidget(QWidget):
             parent: Optional parent widget
         """
         super().__init__(parent)
-        self.setFixedWidth(self.SIDEBAR_WIDTH)
+        self.setFixedWidth(SIDEBAR_WIDTH)
         self.setObjectName("sidebar")
+        
+        # Initialize animation state
+        self._pulse_group: QSequentialAnimationGroup | None = None
+        self._opacity_effect: QGraphicsOpacityEffect | None = None
+        
+        # Ticker validation state
+        self._ticker_valid = True
         
         self._setup_ui()
         self._connect_signals()
+
+    # -------------------------------------------------------------------------
+    # Settings Persistence
+    # -------------------------------------------------------------------------
+
+    def _load_recent_tickers(self) -> list[str]:
+        """
+        Load recent tickers from persistent settings.
+        
+        Returns:
+            List of recently used ticker symbols
+        """
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        tickers = settings.value(SETTINGS_RECENT_TICKERS_KEY, DEFAULT_RECENT_TICKERS)
+        if isinstance(tickers, list):
+            return tickers[:MAX_RECENT_TICKERS]
+        return list(DEFAULT_RECENT_TICKERS)
+
+    def _save_recent_tickers(self) -> None:
+        """Save recent tickers to persistent settings."""
+        settings = QSettings(SETTINGS_ORG, SETTINGS_APP)
+        settings.setValue(SETTINGS_RECENT_TICKERS_KEY, self._recent_tickers)
 
     def _setup_ui(self) -> None:
         """Set up the sidebar UI components."""
@@ -286,8 +411,8 @@ class SidebarWidget(QWidget):
         # Container widget for scrollable content
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setSpacing(12)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(GROUP_SPACING)
+        layout.setContentsMargins(*CONTENT_MARGINS)
         
         # Ticker & Data Group
         self._ticker_group = self._create_ticker_group()
@@ -319,15 +444,18 @@ class SidebarWidget(QWidget):
         """Create the ticker and data controls group."""
         group = ControlGroup("Ticker & Data")
         
-        # Recent tickers history
-        self._recent_tickers: list[str] = ["AAPL", "MSFT", "GOOGL", "TSLA", "SPY"]
-        self._max_recent = 10
+        # Load recent tickers from persistent storage
+        self._recent_tickers: list[str] = self._load_recent_tickers()
         
         # Ticker input
         self._ticker_input = QLineEdit()
         self._ticker_input.setPlaceholderText("e.g., AAPL")
         self._ticker_input.setText("AAPL")
-        self._ticker_input.setMaxLength(10)
+        self._ticker_input.setMaxLength(TICKER_MAX_LENGTH)
+        self._ticker_input.setAccessibleName("Ticker Symbol")
+        self._ticker_input.setAccessibleDescription(
+            "Enter a stock ticker symbol like AAPL or MSFT"
+        )
         group.add_row("Ticker:", self._ticker_input)
         
         # Recent tickers dropdown
@@ -341,8 +469,8 @@ class SidebarWidget(QWidget):
         
         # Historical days
         self._days_spin = QSpinBox()
-        self._days_spin.setRange(30, 2520)  # ~10 years max
-        self._days_spin.setValue(252)
+        self._days_spin.setRange(MIN_HISTORICAL_DAYS, MAX_HISTORICAL_DAYS)
+        self._days_spin.setValue(DEFAULT_HISTORICAL_DAYS)
         self._days_spin.setSuffix(" days")
         self._days_spin.setToolTip("Number of historical trading days to fetch")
         group.add_row("History:", self._days_spin)
@@ -358,7 +486,7 @@ class SidebarWidget(QWidget):
 
     def add_to_recent(self, ticker: str) -> None:
         """
-        Add a ticker to the recent history.
+        Add a ticker to the recent history and persist to settings.
         
         Args:
             ticker: Ticker symbol to add
@@ -375,13 +503,16 @@ class SidebarWidget(QWidget):
         self._recent_tickers.insert(0, ticker)
         
         # Trim to max
-        self._recent_tickers = self._recent_tickers[:self._max_recent]
+        self._recent_tickers = self._recent_tickers[:MAX_RECENT_TICKERS]
         
         # Update combo box
         self._recent_combo.clear()
         self._recent_combo.addItem("Recent Tickers...")
         for t in self._recent_tickers:
             self._recent_combo.addItem(t)
+        
+        # Persist to settings
+        self._save_recent_tickers()
 
     def _create_simulation_group(self) -> ControlGroup:
         """Create the simulation parameters group."""
@@ -389,50 +520,50 @@ class SidebarWidget(QWidget):
         
         # Forecast horizon
         self._horizon_spin = QDoubleSpinBox()
-        self._horizon_spin.setRange(0.1, 10.0)
-        self._horizon_spin.setValue(1.0)
-        self._horizon_spin.setSingleStep(0.25)
+        self._horizon_spin.setRange(MIN_HORIZON, MAX_HORIZON)
+        self._horizon_spin.setValue(DEFAULT_HORIZON)
+        self._horizon_spin.setSingleStep(HORIZON_STEP)
         self._horizon_spin.setSuffix(" years")
         self._horizon_spin.setDecimals(2)
         group.add_row("Horizon:", self._horizon_spin)
         
         # Number of simulations
         self._sims_spin = QSpinBox()
-        self._sims_spin.setRange(100, 100000)
-        self._sims_spin.setValue(1000)
-        self._sims_spin.setSingleStep(500)
+        self._sims_spin.setRange(MIN_SIMULATIONS, MAX_SIMULATIONS)
+        self._sims_spin.setValue(DEFAULT_SIMULATIONS)
+        self._sims_spin.setSingleStep(SIMULATIONS_STEP)
         self._sims_spin.setToolTip("Number of Monte Carlo simulations")
         group.add_row("Simulations:", self._sims_spin)
         
         # Paths for visualization
         self._paths_spin = QSpinBox()
-        self._paths_spin.setRange(10, 1000)
-        self._paths_spin.setValue(100)
+        self._paths_spin.setRange(MIN_VIZ_PATHS, MAX_VIZ_PATHS)
+        self._paths_spin.setValue(DEFAULT_VIZ_PATHS)
         self._paths_spin.setToolTip("Number of paths to visualize in charts")
         group.add_row("Viz Paths:", self._paths_spin)
         
         # Random seed
         self._seed_spin = QSpinBox()
-        self._seed_spin.setRange(0, 999999)
-        self._seed_spin.setValue(42)
+        self._seed_spin.setRange(MIN_SEED, MAX_SEED)
+        self._seed_spin.setValue(DEFAULT_SEED)
         self._seed_spin.setToolTip("Random seed for reproducibility")
         group.add_row("Seed:", self._seed_spin)
         
         # Risk-free rate
         self._rate_spin = QDoubleSpinBox()
-        self._rate_spin.setRange(0.0, 0.20)
-        self._rate_spin.setValue(0.05)
-        self._rate_spin.setSingleStep(0.005)
-        self._rate_spin.setDecimals(3)
+        self._rate_spin.setRange(MIN_RATE, MAX_RATE)
+        self._rate_spin.setValue(DEFAULT_RATE)
+        self._rate_spin.setSingleStep(RATE_STEP)
+        self._rate_spin.setDecimals(RATE_DECIMALS)
         self._rate_spin.setSuffix(" (r)")
         self._rate_spin.setToolTip("Risk-free interest rate")
         group.add_row("Rate:", self._rate_spin)
         
         return group
 
-    def _create_options_group(self) -> ControlGroup:
-        """Create the options toggles group."""
-        group = ControlGroup("Options")
+    def _create_options_group(self) -> CollapsibleGroup:
+        """Create the options toggles group (collapsible)."""
+        group = CollapsibleGroup("Options", collapsed=True)
         
         # Compute Greeks checkbox
         self._greeks_check = QCheckBox("Calculate Greeks")
@@ -454,9 +585,9 @@ class SidebarWidget(QWidget):
         
         return group
 
-    def _create_presets_group(self) -> ControlGroup:
-        """Create the scenario presets group."""
-        group = ControlGroup("Scenarios")
+    def _create_presets_group(self) -> CollapsibleGroup:
+        """Create the scenario presets group (collapsible)."""
+        group = CollapsibleGroup("Scenarios", collapsed=True)
         
         # Preset dropdown
         self._preset_combo = QComboBox()
@@ -494,6 +625,10 @@ class SidebarWidget(QWidget):
         # Fetch Only button
         self._fetch_btn = QPushButton("Fetch Data Only")
         self._fetch_btn.setToolTip("Fetch market data without running simulation")
+        self._fetch_btn.setAccessibleName("Fetch Data")
+        self._fetch_btn.setAccessibleDescription(
+            "Fetch historical market data without running Monte Carlo simulation"
+        )
         layout.addWidget(self._fetch_btn)
         
         # Run button (primary action)
@@ -501,20 +636,33 @@ class SidebarWidget(QWidget):
         self._run_btn.setObjectName("runButton")
         self._run_btn.setMinimumHeight(40)
         self._run_btn.setToolTip("Fetch data and run full simulation")
+        self._run_btn.setDefault(True)  # Enter key activates this button
+        self._run_btn.setAccessibleName("Run Analysis")
+        self._run_btn.setAccessibleDescription(
+            "Fetch market data and run full Monte Carlo simulation with options pricing"
+        )
         layout.addWidget(self._run_btn)
         
         # Reset button
         self._reset_btn = QPushButton("↺ Reset Workspace")
         self._reset_btn.setObjectName("resetButton")
         self._reset_btn.setToolTip("Clear all data and reset to initial state")
+        self._reset_btn.setAccessibleName("Reset Workspace")
+        self._reset_btn.setAccessibleDescription(
+            "Clear all charts, data, and results, returning to initial empty state"
+        )
         layout.addWidget(self._reset_btn)
         
         return frame
 
     def _connect_signals(self) -> None:
         """Connect internal signals to handlers."""
-        # Value change signals
+        # Ticker validation and quick-entry
+        self._ticker_input.textChanged.connect(self._validate_ticker)
         self._ticker_input.textChanged.connect(self._on_config_changed)
+        self._ticker_input.returnPressed.connect(self._on_ticker_enter_pressed)
+        
+        # Value change signals
         self._days_spin.valueChanged.connect(self._on_config_changed)
         self._horizon_spin.valueChanged.connect(self._on_config_changed)
         self._sims_spin.valueChanged.connect(self._on_config_changed)
@@ -532,6 +680,45 @@ class SidebarWidget(QWidget):
         self._fetch_btn.clicked.connect(self.fetch_requested.emit)
         self._run_btn.clicked.connect(self.run_requested.emit)
         self._reset_btn.clicked.connect(self.reset_requested.emit)
+
+    # -------------------------------------------------------------------------
+    # Ticker Validation
+    # -------------------------------------------------------------------------
+
+    def _validate_ticker(self, text: str) -> None:
+        """
+        Validate ticker input and provide visual feedback.
+        
+        Args:
+            text: Current ticker input text
+        """
+        text = text.strip().upper()
+        # Valid if: non-empty, alphabetic only, 1-5 characters
+        is_valid = bool(text) and text.isalpha() and 1 <= len(text) <= 5
+        
+        self._ticker_valid = is_valid
+        
+        if is_valid:
+            self._ticker_input.setStyleSheet("")
+        else:
+            self._ticker_input.setStyleSheet(
+                "QLineEdit { border: 1px solid #ff5a6a; }"
+            )
+        
+        # Update run button state (only if not currently running)
+        if self._run_btn.isEnabled() or not is_valid:
+            self._run_btn.setEnabled(is_valid)
+            self._fetch_btn.setEnabled(is_valid)
+
+    def _on_ticker_enter_pressed(self) -> None:
+        """Handle Enter key in ticker input - immediately run analysis."""
+        if not self._ticker_valid:
+            return
+        
+        ticker = self._ticker_input.text().strip().upper()
+        if ticker:
+            self.add_to_recent(ticker)
+            self.run_requested.emit()
 
     def _on_config_changed(self) -> None:
         """Handle configuration value changes."""
@@ -559,21 +746,18 @@ class SidebarWidget(QWidget):
         Args:
             preset: The preset to apply
         """
-        # Block signals to prevent multiple config_changed emissions
-        self._ticker_input.blockSignals(True)
-        self._days_spin.blockSignals(True)
-        self._horizon_spin.blockSignals(True)
-        self._sims_spin.blockSignals(True)
-        
+        # Use context manager to block signals during batch update
+        with block_signals(
+            self._ticker_input,
+            self._days_spin,
+            self._horizon_spin,
+            self._sims_spin,
+        ):
+            pass
         self._ticker_input.setText(preset.ticker)
         self._days_spin.setValue(preset.historical_days)
         self._horizon_spin.setValue(preset.forecast_horizon)
         self._sims_spin.setValue(preset.n_simulations)
-        
-        self._ticker_input.blockSignals(False)
-        self._days_spin.blockSignals(False)
-        self._horizon_spin.blockSignals(False)
-        self._sims_spin.blockSignals(False)
         
         # Emit single config changed signal
         self._on_config_changed()
@@ -640,10 +824,11 @@ class SidebarWidget(QWidget):
             self._stop_pulse_animation()
 
     def _start_pulse_animation(self) -> None:
-        """Start a subtle pulse animation on the run button."""
-        if hasattr(self, '_pulse_anim') and self._pulse_anim is not None:
+        """Start a real pulse animation with opacity fade on the run button."""
+        if self._pulse_group is not None:
             return
         
+        # Apply running style
         self._run_btn.setStyleSheet("""
             QPushButton#runButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -655,13 +840,42 @@ class SidebarWidget(QWidget):
                 border-radius: 8px;
             }
         """)
-    
-        # Note: For true pulse animation, we'd need QGraphicsOpacityEffect
-        # This is a simplified visual indication using style change
+        
+        # Create opacity effect
+        self._opacity_effect = QGraphicsOpacityEffect(self._run_btn)
+        self._run_btn.setGraphicsEffect(self._opacity_effect)
+        
+        # Create fade out animation
+        fade_out = QPropertyAnimation(self._opacity_effect, b"opacity")
+        fade_out.setDuration(PULSE_FADE_DURATION_MS)
+        fade_out.setStartValue(PULSE_OPACITY_MAX)
+        fade_out.setEndValue(PULSE_OPACITY_MIN)
+        
+        # Create fade in animation
+        fade_in = QPropertyAnimation(self._opacity_effect, b"opacity")
+        fade_in.setDuration(PULSE_FADE_DURATION_MS)
+        fade_in.setStartValue(PULSE_OPACITY_MIN)
+        fade_in.setEndValue(PULSE_OPACITY_MAX)
+        
+        # Combine into sequential group with infinite loop
+        self._pulse_group = QSequentialAnimationGroup()
+        self._pulse_group.addAnimation(fade_out)
+        self._pulse_group.addAnimation(fade_in)
+        self._pulse_group.setLoopCount(-1)  # Infinite loop
+        self._pulse_group.start()
 
     def _stop_pulse_animation(self) -> None:
-        """Stop the pulse animation."""
-        self._run_btn.setStyleSheet("")  # Reset to default stylesheet
+        """Stop the pulse animation and clean up effects."""
+        if self._pulse_group is not None:
+            self._pulse_group.stop()
+            self._pulse_group = None
+        
+        # Remove graphics effect
+        self._run_btn.setGraphicsEffect(None)
+        self._opacity_effect = None
+        
+        # Reset to default stylesheet
+        self._run_btn.setStyleSheet("")
 
     def get_ticker(self) -> str:
         """Get the current ticker symbol."""

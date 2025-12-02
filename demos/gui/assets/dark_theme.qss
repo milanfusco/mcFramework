@@ -379,35 +379,101 @@ QProgressBar::chunk {
    Tab Widget
    ========================================================================== */
 
+QTabWidget {
+    background-color: transparent;
+}
+
 QTabWidget::pane {
     border: 1px solid #2a2a45;
-    border-radius: 6px;
+    border-radius: 8px;
+    border-top-left-radius: 0;
     background-color: #1c1c32;
     top: -1px;
+    padding: 0;
+}
+
+QTabWidget::tab-bar {
+    left: 0;
+    alignment: left;
+}
+
+QTabBar {
+    background-color: transparent;
+    qproperty-drawBase: 0;
 }
 
 QTabBar::tab {
     background-color: #18182d;
     border: 1px solid #2a2a45;
-    border-bottom: none;
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
-    padding: 12px 24px;
-    margin-right: 3px;
-    color: #7a7a8a;
+    border-bottom: 2px solid transparent;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    padding: 12px 20px;
+    margin-right: 4px;
+    min-width: 120px;
+    min-height: 20px;
+    color: #7a7a9a;
+    font-size: 13px;
     font-weight: 500;
 }
 
 QTabBar::tab:selected {
-    background-color: #1c1c32;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #282850, stop:1 #1c1c32);
     color: #ffffff;
+    border-color: #3a3a55;
     border-bottom: 3px solid #5a9fd5;
+    font-weight: 600;
 }
 
 QTabBar::tab:hover:!selected {
-    background-color: #222245;
-    color: #b0b0c0;
-    border-bottom: 3px solid #3a5a75;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #252548, stop:1 #1f1f3a);
+    color: #c0c0d0;
+    border-bottom: 2px solid #4a6fa5;
+}
+
+QTabBar::tab:first {
+    margin-left: 0;
+}
+
+QTabBar::tab:last {
+    margin-right: 0;
+}
+
+/* Tab close button (if enabled) */
+QTabBar::close-button {
+    image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiI+PHBhdGggZD0iTTEgMUwxMSAxMU0xIDExTDExIDEiIHN0cm9rZT0iIzdhN2E5YSIgc3Ryb2tlLXdpZHRoPSIyIi8+PC9zdmc+);
+    subcontrol-position: right;
+    margin: 4px;
+}
+
+QTabBar::close-button:hover {
+    image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiI+PHBhdGggZD0iTTEgMUwxMSAxMU0xIDExTDExIDEiIHN0cm9rZT0iI2ZmNWE2YSIgc3Ryb2tlLXdpZHRoPSIyIi8+PC9zdmc+);
+}
+
+/* Scroll buttons for many tabs */
+QTabBar::scroller {
+    width: 32px;
+}
+
+QTabBar QToolButton {
+    background-color: #222240;
+    border: 1px solid #3a3a55;
+    border-radius: 4px;
+}
+
+QTabBar QToolButton:hover {
+    background-color: #2d2d4a;
+    border-color: #5a9fd5;
+}
+
+QTabBar QToolButton::left-arrow {
+    image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiI+PHBhdGggZD0iTTggMkw0IDZMOCAxMCIgc3Ryb2tlPSIjOGE4YTlhIiBzdHJva2Utd2lkdGg9IjIiIGZpbGw9Im5vbmUiLz48L3N2Zz4=);
+}
+
+QTabBar QToolButton::right-arrow {
+    image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSIxMiI+PHBhdGggZD0iTTQgMkw4IDZMNCAXMCB6c3Ryb2tlPSIjOGE4YTlhIiBzdHJva2Utd2lkdGg9IjIiIGZpbGw9Im5vbmUiLz48L3N2Zz4=);
 }
 
 /* ==========================================================================
