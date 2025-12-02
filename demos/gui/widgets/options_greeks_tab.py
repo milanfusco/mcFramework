@@ -17,12 +17,14 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QSlider,
-    QSplitter,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from .empty_state import OptionsEmptyState
 
 if TYPE_CHECKING:
     from ..models.state import GreeksResult, OptionPricingResult, TickerAnalysisState
@@ -53,41 +55,56 @@ class OptionPriceCard(QFrame):
         
         self.setObjectName("optionCard")
         self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setMinimumWidth(220)
+        self.setMinimumHeight(140)
         
         # Color based on type
-        self._color = '#00d26a' if option_type == "Call" else '#f23645'
+        self._color = '#2adf7a' if option_type == "Call" else '#ff5a6a'
         
         self._setup_ui()
 
     def _setup_ui(self) -> None:
         """Set up the card UI."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
+        layout.setContentsMargins(20, 16, 20, 16)
         
         # Type header
         header = QLabel(f"{self._option_type} Option")
         header.setObjectName("optionTypeHeader")
-        header.setStyleSheet(f"color: {self._color}; font-weight: bold; font-size: 14px;")
+        header.setStyleSheet(f"""
+            color: {self._color}; 
+            font-weight: 600; 
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        """)
         layout.addWidget(header)
         
         # Price
         self._price_label = QLabel("—")
         self._price_label.setObjectName("optionPrice")
-        self._price_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+        self._price_label.setStyleSheet("""
+            font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+            font-size: 28px; 
+            font-weight: 600;
+            color: #ffffff;
+        """)
         layout.addWidget(self._price_label)
         
         # Standard error
         self._se_label = QLabel("SE: —")
         self._se_label.setObjectName("optionSE")
-        self._se_label.setStyleSheet("color: #888; font-size: 11px;")
+        self._se_label.setStyleSheet("color: #8a8a9a; font-size: 11px;")
         layout.addWidget(self._se_label)
         
         # Confidence interval
         self._ci_label = QLabel("95% CI: [—, —]")
         self._ci_label.setObjectName("optionCI")
-        self._ci_label.setStyleSheet("color: #888; font-size: 11px;")
+        self._ci_label.setStyleSheet("color: #8a8a9a; font-size: 11px;")
         layout.addWidget(self._ci_label)
+        
+        layout.addStretch()
 
     def update_result(self, result: "OptionPricingResult") -> None:
         """
@@ -140,6 +157,13 @@ class GreeksTable(QTableWidget):
         self.verticalHeader().setVisible(False)
         self.horizontalHeader().setStretchLastSection(True)
         
+        # Disable scrollbars - show all rows at once
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
+        # Set fixed height for 5 rows (header ~30px + 5 rows ~30px each + padding)
+        self.setFixedHeight(200)
+        
         # Set column widths
         self.setColumnWidth(0, 100)
         self.setColumnWidth(1, 100)
@@ -155,7 +179,7 @@ class GreeksTable(QTableWidget):
             
             desc_item = QTableWidgetItem(desc)
             desc_item.setForeground(Qt.GlobalColor.gray)
-            self.setItem(i, 3, desc_item)
+            self.setItem(i, 3, desc_item) 
 
     def update_greeks(
         self,
@@ -528,6 +552,8 @@ class OptionsGreeksTab(QWidget):
     - Greeks table for both option types
     - Interactive what-if analysis sliders
     
+    Shows an empty state when no option pricing has been run.
+    
     Signals:
         sensitivity_requested: Emitted with (s0, sigma) for recalculation
     """
@@ -537,14 +563,34 @@ class OptionsGreeksTab(QWidget):
     def __init__(self, parent: QWidget | None = None):
         """Initialize the Options & Greeks tab."""
         super().__init__(parent)
+        self._has_data = False
         self._setup_ui()
         self._connect_signals()
 
     def _setup_ui(self) -> None:
         """Set up the tab UI."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(16)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Stacked widget for empty/content states
+        self._stack = QStackedWidget()
+        
+        # Empty state (index 0)
+        self._empty_state = OptionsEmptyState()
+        self._stack.addWidget(self._empty_state)
+        
+        # Content widget (index 1)
+        content = QWidget()
+        content_layout = QHBoxLayout(content)
+        content_layout.setSpacing(16)
+        content_layout.setContentsMargins(16, 16, 16, 16)
+        
+        # Left side: Cards and Greeks table stacked
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setSpacing(16)
+        left_layout.setContentsMargins(0, 0, 0, 0)
         
         # Option pricing cards
         cards_layout = QHBoxLayout()
@@ -555,25 +601,32 @@ class OptionsGreeksTab(QWidget):
         
         cards_layout.addWidget(self._call_card)
         cards_layout.addWidget(self._put_card)
+        cards_layout.addStretch()
         
-        layout.addLayout(cards_layout)
+        left_layout.addLayout(cards_layout)
         
-        # Splitter for Greeks and sensitivity
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        
-        # Greeks table
+        # Greeks table (compact)
         greeks_group = QGroupBox("Option Greeks")
         greeks_layout = QVBoxLayout(greeks_group)
+        greeks_layout.setContentsMargins(8, 16, 8, 8)
         self._greeks_table = GreeksTable()
         greeks_layout.addWidget(self._greeks_table)
-        splitter.addWidget(greeks_group)
+        left_layout.addWidget(greeks_group)
         
-        # Sensitivity panel
+        # Add stretch to push content to top
+        left_layout.addStretch()
+        
+        content_layout.addWidget(left_panel, 2)
+        
+        # Right side: Sensitivity panel
         self._sensitivity_panel = SensitivityPanel()
-        splitter.addWidget(self._sensitivity_panel)
+        content_layout.addWidget(self._sensitivity_panel, 1)
         
-        splitter.setSizes([600, 300])
-        layout.addWidget(splitter, 1)
+        self._stack.addWidget(content)
+        layout.addWidget(self._stack)
+        
+        # Start with empty state
+        self._stack.setCurrentIndex(0)
 
     def _connect_signals(self) -> None:
         """Connect internal signals."""
@@ -592,26 +645,38 @@ class OptionsGreeksTab(QWidget):
         Args:
             state: Current application state
         """
-        # Update pricing cards
-        if state.call_result:
-            self._call_card.update_result(state.call_result)
+        # Check if we have option pricing data
+        has_data = state.call_result is not None or state.put_result is not None
+        
+        if has_data:
+            # Show content
+            self._stack.setCurrentIndex(1)
+            self._has_data = True
+            
+            # Update pricing cards
+            if state.call_result:
+                self._call_card.update_result(state.call_result)
+            else:
+                self._call_card.clear()
+            
+            if state.put_result:
+                self._put_card.update_result(state.put_result)
+            else:
+                self._put_card.clear()
+            
+            # Update Greeks table
+            self._greeks_table.update_greeks(state.call_greeks, state.put_greeks)
+            
+            # Update sensitivity panel base parameters
+            if state.parameters:
+                self._sensitivity_panel.set_base_parameters(
+                    state.parameters.spot_price,
+                    state.parameters.volatility,
+                )
         else:
-            self._call_card.clear()
-        
-        if state.put_result:
-            self._put_card.update_result(state.put_result)
-        else:
-            self._put_card.clear()
-        
-        # Update Greeks table
-        self._greeks_table.update_greeks(state.call_greeks, state.put_greeks)
-        
-        # Update sensitivity panel base parameters
-        if state.parameters:
-            self._sensitivity_panel.set_base_parameters(
-                state.parameters.spot_price,
-                state.parameters.volatility,
-            )
+            # Show empty state
+            self._stack.setCurrentIndex(0)
+            self._has_data = False
 
     def update_adjusted_prices(self, call_price: float, put_price: float) -> None:
         """
@@ -638,9 +703,15 @@ class OptionsGreeksTab(QWidget):
         self._sensitivity_panel.update_adjusted_greeks(call_greeks, put_greeks)
 
     def clear(self) -> None:
-        """Clear all displayed data."""
+        """Clear all displayed data and show empty state."""
         self._call_card.clear()
         self._put_card.clear()
         self._greeks_table.clear()
         self._sensitivity_panel.clear()
+        self._has_data = False
+        self._stack.setCurrentIndex(0)
+
+    def set_run_callback(self, callback) -> None:
+        """Set callback for the empty state action button."""
+        self._empty_state.set_action_callback(callback)
 

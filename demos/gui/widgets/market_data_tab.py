@@ -14,18 +14,21 @@ import numpy as np
 # Matplotlib imports for embedded charts
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QSplitter,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from .empty_state import MarketDataEmptyState
 
 if TYPE_CHECKING:
     from ..models.state import MarketParameters, TickerAnalysisState
@@ -166,10 +169,12 @@ class MetricCard(QFrame):
         super().__init__(parent)
         self.setObjectName("metricCard")
         self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setMinimumWidth(160)
+        self.setMinimumHeight(90)
         
         layout = QVBoxLayout(self)
-        layout.setSpacing(4)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(6)
+        layout.setContentsMargins(16, 14, 16, 14)
         
         # Title
         self._title_label = QLabel(title)
@@ -188,18 +193,40 @@ class MetricCard(QFrame):
             layout.addWidget(self._subtitle_label)
         else:
             self._subtitle_label = None
+        
+        layout.addStretch()
 
-    def set_value(self, value: str, subtitle: str = "") -> None:
+    def set_value(self, value: str, subtitle: str = "", animate: bool = True) -> None:
         """
-        Update the displayed value.
+        Update the displayed value with optional animation.
         
         Args:
             value: New value text
             subtitle: Optional new subtitle
+            animate: Whether to animate the change
         """
+        old_value = self._value_label.text()
         self._value_label.setText(value)
+        
         if self._subtitle_label and subtitle:
             self._subtitle_label.setText(subtitle)
+        
+        # Flash animation on value change
+        if animate and old_value != value and value != "—":
+            self._flash_value()
+
+    def _flash_value(self) -> None:
+        """Flash the value label to indicate change."""
+        original_style = self._value_label.styleSheet()
+        
+        # Brief highlight
+        self._value_label.setStyleSheet(
+            original_style + "background-color: rgba(90, 159, 213, 0.3); "
+            "border-radius: 4px; padding: 2px 4px;"
+        )
+        
+        # Reset after delay
+        QTimer.singleShot(300, lambda: self._value_label.setStyleSheet(original_style))
 
     def set_color(self, color: str) -> None:
         """Set the value text color."""
@@ -264,6 +291,11 @@ class ParametersTable(QTableWidget):
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.setItem(i, 1, item)
 
+    def clear(self) -> None:
+        """Clear all parameter values."""
+        for i in range(len(self.PARAMETERS)):
+            self.setItem(i, 1, QTableWidgetItem("—"))
+
 
 class MarketDataTab(QWidget):
     """
@@ -273,18 +305,34 @@ class MarketDataTab(QWidget):
     - Key metrics in card format
     - Sparkline of recent price history
     - Full parameters table
+    
+    Shows an empty state when no data is loaded.
     """
 
     def __init__(self, parent: QWidget | None = None):
         """Initialize the Market Data tab."""
         super().__init__(parent)
+        self._has_data = False
         self._setup_ui()
 
     def _setup_ui(self) -> None:
         """Set up the tab UI components."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(16)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Stacked widget to toggle between empty state and content
+        self._stack = QStackedWidget()
+        
+        # Empty state (index 0)
+        self._empty_state = MarketDataEmptyState()
+        self._stack.addWidget(self._empty_state)
+        
+        # Content widget (index 1)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(16)
+        content_layout.setContentsMargins(16, 16, 16, 16)
         
         # Metrics cards row
         metrics_layout = QHBoxLayout()
@@ -300,7 +348,7 @@ class MarketDataTab(QWidget):
         metrics_layout.addWidget(self._vol_card)
         metrics_layout.addWidget(self._data_points_card)
         
-        layout.addLayout(metrics_layout)
+        content_layout.addLayout(metrics_layout)
         
         # Splitter for sparkline and table
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -320,7 +368,13 @@ class MarketDataTab(QWidget):
         params_layout.addWidget(self._params_table)
         splitter.addWidget(params_group)
         
-        layout.addWidget(splitter, 1)
+        content_layout.addWidget(splitter, 1)
+        
+        self._stack.addWidget(content)
+        layout.addWidget(self._stack)
+        
+        # Start with empty state
+        self._stack.setCurrentIndex(0)
 
     def update_from_state(self, state: "TickerAnalysisState") -> None:
         """
@@ -329,43 +383,55 @@ class MarketDataTab(QWidget):
         Args:
             state: Current application state
         """
-        # Update sparkline
-        if state.prices is not None:
+        # Check if we have data
+        has_data = state.prices is not None and len(state.prices) > 0
+        
+        if has_data:
+            # Show content
+            self._stack.setCurrentIndex(1)
+            self._has_data = True
+            
+            # Update sparkline
             self._sparkline.update_data(state.prices, state.config.ticker)
             self._data_points_card.set_value(str(len(state.prices)))
+            
+            # Update metric cards
+            if state.parameters is not None:
+                params = state.parameters
+                
+                # Price
+                self._price_card.set_value(f"${params.spot_price:.2f}")
+                
+                # Drift with color
+                drift_pct = params.drift * 100
+                self._drift_card.set_value(f"{drift_pct:+.2f}%")
+                drift_color = '#00d26a' if params.drift >= 0 else '#f23645'
+                self._drift_card.set_color(drift_color)
+                
+                # Volatility
+                vol_pct = params.volatility * 100
+                self._vol_card.set_value(f"{vol_pct:.2f}%")
+                
+                # Update table
+                self._params_table.update_parameters(params)
         else:
-            self._sparkline.clear()
-            self._data_points_card.set_value("—")
-        
-        # Update metric cards
-        if state.parameters is not None:
-            params = state.parameters
-            
-            # Price
-            self._price_card.set_value(f"${params.spot_price:.2f}")
-            
-            # Drift with color
-            drift_pct = params.drift * 100
-            self._drift_card.set_value(f"{drift_pct:+.2f}%")
-            drift_color = '#00d26a' if params.drift >= 0 else '#f23645'
-            self._drift_card.set_color(drift_color)
-            
-            # Volatility
-            vol_pct = params.volatility * 100
-            self._vol_card.set_value(f"{vol_pct:.2f}%")
-            
-            # Update table
-            self._params_table.update_parameters(params)
-        else:
-            self._price_card.set_value("—")
-            self._drift_card.set_value("—")
-            self._vol_card.set_value("—")
+            # Show empty state
+            self._stack.setCurrentIndex(0)
+            self._has_data = False
 
     def clear(self) -> None:
-        """Clear all displayed data."""
+        """Clear all displayed data and show empty state."""
         self._sparkline.clear()
         self._price_card.set_value("—")
         self._drift_card.set_value("—")
+        self._drift_card.set_color("#ffffff")  # Reset color
         self._vol_card.set_value("—")
         self._data_points_card.set_value("—")
+        self._params_table.clear()
+        self._has_data = False
+        self._stack.setCurrentIndex(0)
+
+    def set_fetch_callback(self, callback) -> None:
+        """Set callback for the empty state action button."""
+        self._empty_state.set_action_callback(callback)
 

@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QHBoxLayout,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QSplitter,
@@ -50,6 +51,7 @@ from demos.gui.widgets.option_calculator import OptionCalculatorDialog
 from demos.gui.widgets.options_greeks_tab import OptionsGreeksTab
 from demos.gui.widgets.sidebar import SidebarWidget
 from demos.gui.widgets.surfaces_tab import SurfacesTab
+from demos.gui.widgets.toast import ToastManager
 from demos.gui.workers.simulation_worker import DataFetchWorker, SimulationWorker
 
 if TYPE_CHECKING:
@@ -128,6 +130,14 @@ class QuantBlackScholesWindow(QMainWindow):
         
         toolbar.addSeparator()
         
+        # Reset action
+        self._reset_action = QAction("↺ Reset", self)
+        self._reset_action.setToolTip("Clear all data and reset workspace")
+        self._reset_action.triggered.connect(self._on_reset_clicked)
+        toolbar.addAction(self._reset_action)
+        
+        toolbar.addSeparator()
+        
         # Calculator action
         self._calc_action = QAction("🧮 Calculator", self)
         self._calc_action.setToolTip("Open Black-Scholes option calculator")
@@ -189,13 +199,109 @@ class QuantBlackScholesWindow(QMainWindow):
         splitter.setSizes([900, 320])
         
         layout.addWidget(splitter, 1)
+        
+        # Toast notification overlay
+        self._toast_manager = ToastManager(central)
+        self._toast_manager.raise_()
 
     def _setup_status_bar(self) -> None:
-        """Set up the status bar."""
+        """Set up the status bar with persistent widgets."""
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
         
+        # Ticker indicator (permanent widget)
+        self._ticker_indicator = QLabel("No ticker")
+        self._ticker_indicator.setStyleSheet("""
+            QLabel {
+                color: #8a8a9a;
+                font-size: 11px;
+                padding: 0 8px;
+                background: transparent;
+            }
+        """)
+        self._status_bar.addPermanentWidget(self._ticker_indicator)
+        
+        # Separator
+        sep1 = QLabel("|")
+        sep1.setStyleSheet("color: #3a3a55; padding: 0 4px; background: transparent;")
+        self._status_bar.addPermanentWidget(sep1)
+        
+        # Last update timestamp
+        self._timestamp_indicator = QLabel("—")
+        self._timestamp_indicator.setStyleSheet("""
+            QLabel {
+                color: #6a6a7a;
+                font-size: 10px;
+                padding: 0 8px;
+                background: transparent;
+            }
+        """)
+        self._status_bar.addPermanentWidget(self._timestamp_indicator)
+        
+        # Separator
+        sep2 = QLabel("|")
+        sep2.setStyleSheet("color: #3a3a55; padding: 0 4px; background: transparent;")
+        self._status_bar.addPermanentWidget(sep2)
+        
+        # Simulation count indicator
+        self._sim_indicator = QLabel("No simulation")
+        self._sim_indicator.setStyleSheet("""
+            QLabel {
+                color: #6a6a7a;
+                font-size: 10px;
+                padding: 0 8px;
+                background: transparent;
+            }
+        """)
+        self._status_bar.addPermanentWidget(self._sim_indicator)
+        
         self._status_bar.showMessage("Ready")
+
+    def _update_status_bar_indicators(self) -> None:
+        """Update the permanent status bar indicators."""
+        # Update ticker
+        if self._state.config.ticker:
+            ticker = self._state.config.ticker.upper()
+            if self._state.has_market_data():
+                price = self._state.get_current_price()
+                self._ticker_indicator.setText(f"📈 {ticker}: ${price:.2f}")
+                self._ticker_indicator.setStyleSheet("""
+                    QLabel {
+                        color: #5aa0e5;
+                        font-size: 11px;
+                        font-weight: bold;
+                        padding: 0 8px;
+                        background: transparent;
+                    }
+                """)
+            else:
+                self._ticker_indicator.setText(f"📊 {ticker}")
+                self._ticker_indicator.setStyleSheet("""
+                    QLabel {
+                        color: #8a8a9a;
+                        font-size: 11px;
+                        padding: 0 8px;
+                        background: transparent;
+                    }
+                """)
+        else:
+            self._ticker_indicator.setText("No ticker")
+        
+        # Update timestamp
+        if self._state.last_updated:
+            self._timestamp_indicator.setText(
+                f"Updated: {self._state.last_updated.strftime('%H:%M:%S')}"
+            )
+        else:
+            self._timestamp_indicator.setText("—")
+        
+        # Update simulation info
+        if self._state.has_simulation_results():
+            n_sims = self._state.config.n_simulations
+            n_paths = self._state.config.n_paths_viz
+            self._sim_indicator.setText(f"🎲 {n_sims:,} sims | {n_paths} paths")
+        else:
+            self._sim_indicator.setText("No simulation")
 
     def _load_stylesheet(self) -> None:
         """Load the dark theme stylesheet."""
@@ -216,6 +322,7 @@ class QuantBlackScholesWindow(QMainWindow):
         self._sidebar.run_requested.connect(self._on_run_clicked)
         self._sidebar.fetch_requested.connect(self._on_fetch_only_clicked)
         self._sidebar.config_changed.connect(self._on_config_changed)
+        self._sidebar.reset_requested.connect(self._on_reset_clicked)
         
         # Controller signals
         self._controller.log_message.connect(self._log_console.on_log_message)
@@ -227,6 +334,12 @@ class QuantBlackScholesWindow(QMainWindow):
         # Interactive chart exports
         self._mc_tab.chart_export_requested.connect(self._on_chart_export_requested)
         self._surfaces_tab.surface_export_requested.connect(self._on_surface_export_requested)
+        
+        # Empty state action callbacks
+        self._market_tab.set_fetch_callback(self._on_fetch_only_clicked)
+        self._mc_tab.set_run_callback(self._on_run_clicked)
+        self._options_tab.set_run_callback(self._on_run_clicked)
+        self._surfaces_tab.set_run_callback(self._on_run_clicked)
 
     def _update_ui_running_state(self, running: bool) -> None:
         """Update UI state for running/stopped status."""
@@ -234,6 +347,7 @@ class QuantBlackScholesWindow(QMainWindow):
         
         self._run_action.setEnabled(not running)
         self._stop_action.setEnabled(running)
+        self._reset_action.setEnabled(not running)
         self._sidebar.set_running(running)
         self._log_console.set_running(running)
         
@@ -270,6 +384,60 @@ class QuantBlackScholesWindow(QMainWindow):
             self._log_console.log_warning("Simulation cancelled by user")
         
         self._update_ui_running_state(False)
+
+    @Slot()
+    def _on_reset_clicked(self) -> None:
+        """Handle Reset Workspace action with confirmation."""
+        # Check if there's data to reset
+        if not self._state.has_market_data() and not self._state.has_simulation_results():
+            self._log_console.log_info("Workspace is already empty")
+            return
+        
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Reset Workspace",
+            "Are you sure you want to reset the workspace?\n\n"
+            "This will clear all fetched data, simulation results, and charts.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self._reset_workspace()
+
+    def _reset_workspace(self) -> None:
+        """Reset the workspace to initial state."""
+        # Stop any running workers
+        if self._sim_worker and self._sim_worker.isRunning():
+            self._sim_worker.cancel()
+            self._sim_worker.wait()
+        
+        if self._fetch_worker and self._fetch_worker.isRunning():
+            self._fetch_worker.wait()
+        
+        # Reset state (preserves config)
+        self._state.reset()
+        
+        # Clear all tabs
+        self._market_tab.clear()
+        self._mc_tab.clear()
+        self._options_tab.clear()
+        self._surfaces_tab.clear()
+        
+        # Clear log console
+        self._log_console.clear()
+        
+        # Reset UI state
+        self._update_ui_running_state(False)
+        
+        # Switch to Market Data tab
+        self._tabs.setCurrentWidget(self._market_tab)
+        
+        # Update status
+        self._log_console.log_success("Workspace reset successfully")
+        self._status_bar.showMessage("Workspace cleared - Ready for new analysis")
+        self._toast_manager.show_success("Workspace reset successfully")
 
     @Slot()
     def _on_calculator_clicked(self) -> None:
@@ -332,6 +500,7 @@ class QuantBlackScholesWindow(QMainWindow):
         """Handle error from controller or workers."""
         self._log_console.log_error(message)
         self._status_bar.showMessage(f"Error: {message}")
+        self._toast_manager.show_error(message)
 
     @Slot(float, float)
     def _on_sensitivity_requested(self, s0: float, sigma: float) -> None:
@@ -515,17 +684,27 @@ class QuantBlackScholesWindow(QMainWindow):
         self._update_ui_running_state(False)
         self._log_console.set_complete(True)
         
+        # Add to recent tickers
+        self._sidebar.add_to_recent(self._state.config.ticker)
+        
         # Update UI
         self._market_tab.update_from_state(self._state)
         self._tabs.setCurrentWidget(self._market_tab)
+        self._update_status_bar_indicators()
         
         self._status_bar.showMessage(
             f"Fetched {len(result.prices)} data points for {self._state.config.ticker}"
+        )
+        self._toast_manager.show_info(
+            f"Loaded {len(result.prices)} data points for {self._state.config.ticker}"
         )
 
     @Slot(object)
     def _on_fetch_complete_run(self, result: "FetchResult") -> None:
         """Handle fetch completion and start simulation."""
+        # Add to recent tickers
+        self._sidebar.add_to_recent(self._state.config.ticker)
+        
         self._market_tab.update_from_state(self._state)
         self._start_simulation(self._state.config)
 
@@ -570,9 +749,13 @@ class QuantBlackScholesWindow(QMainWindow):
         
         # Switch to Monte Carlo tab
         self._tabs.setCurrentWidget(self._mc_tab)
+        self._update_status_bar_indicators()
         
         self._log_console.log_success("Analysis complete!")
         self._status_bar.showMessage(
+            f"Analysis complete for {self._state.config.ticker}"
+        )
+        self._toast_manager.show_success(
             f"Analysis complete for {self._state.config.ticker}"
         )
 

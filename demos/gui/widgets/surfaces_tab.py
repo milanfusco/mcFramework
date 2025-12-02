@@ -20,9 +20,12 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
+
+from .empty_state import SurfacesEmptyState
 
 from .charts import OptionSurfaceChart
 
@@ -161,6 +164,8 @@ class SurfacesTab(QWidget):
     simulated price paths overlaid. Supports mouse rotation,
     zoom, and PNG export.
     
+    Shows an empty state when no simulation has been run.
+    
     Signals:
         surface_export_requested: Emitted with (surface_type, export_func)
     """
@@ -170,18 +175,32 @@ class SurfacesTab(QWidget):
     def __init__(self, parent: QWidget | None = None):
         """Initialize the Surfaces tab."""
         super().__init__(parent)
+        self._has_data = False
         self._setup_ui()
 
     def _setup_ui(self) -> None:
         """Set up the tab UI with interactive 3D charts."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Stacked widget for empty/content states
+        self._stack = QStackedWidget()
+        
+        # Empty state (index 0)
+        self._empty_state = SurfacesEmptyState()
+        self._stack.addWidget(self._empty_state)
+        
+        # Content widget (index 1)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(8)
+        content_layout.setContentsMargins(8, 8, 8, 8)
         
         # Export panel
         self._export_panel = SurfaceExportPanel()
         self._export_panel.export_requested.connect(self._on_export_requested)
-        layout.addWidget(self._export_panel)
+        content_layout.addWidget(self._export_panel)
         
         # Main splitter
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -225,7 +244,13 @@ class SurfacesTab(QWidget):
         main_splitter.addWidget(self._info_panel)
         
         main_splitter.setSizes([700, 260])
-        layout.addWidget(main_splitter, 1)
+        content_layout.addWidget(main_splitter, 1)
+        
+        self._stack.addWidget(content)
+        layout.addWidget(self._stack)
+        
+        # Start with empty state
+        self._stack.setCurrentIndex(0)
 
     def _on_export_requested(self, surface_type: str) -> None:
         """Handle surface export request."""
@@ -247,13 +272,23 @@ class SurfacesTab(QWidget):
         """
         # Check if we have required data and 3D plots are enabled
         if not state.has_simulation_results():
+            self._stack.setCurrentIndex(0)
+            self._has_data = False
             return
         
         if not state.config.generate_3d_plots:
+            self._stack.setCurrentIndex(0)
+            self._has_data = False
             return
         
         if state.parameters is None:
+            self._stack.setCurrentIndex(0)
+            self._has_data = False
             return
+        
+        # Show content
+        self._stack.setCurrentIndex(1)
+        self._has_data = True
         
         paths = state.simulated_paths
         params = state.parameters
@@ -281,9 +316,15 @@ class SurfacesTab(QWidget):
         )
 
     def clear(self) -> None:
-        """Clear all surfaces."""
+        """Clear all surfaces and show empty state."""
         self._call_surface.clear()
         self._put_surface.clear()
+        self._has_data = False
+        self._stack.setCurrentIndex(0)
+
+    def set_run_callback(self, callback) -> None:
+        """Set callback for the empty state action button."""
+        self._empty_state.set_action_callback(callback)
 
     def export_surface(self, surface_type: str, path: Path) -> bool:
         """

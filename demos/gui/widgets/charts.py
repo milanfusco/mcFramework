@@ -26,21 +26,21 @@ if TYPE_CHECKING:
 # =============================================================================
 
 DARK_THEME = {
-    "background": "#1a1a2e",
-    "foreground": "#e0e0e0",
-    "grid": "#444444",
-    "grid_alpha": 0.3,
-    "spine": "#444444",
-    "tick": "#888888",
-    "historical": "#4a9eff",
-    "simulated": "#666666",
-    "simulated_alpha": 0.15,
-    "mean": "#ff6b6b",
-    "confidence": "#ff6b6b",
-    "confidence_alpha": 0.15,
-    "call": "#00d26a",
-    "put": "#f23645",
-    "neutral": "#888888",
+    "background": "#1a1a32",
+    "foreground": "#e8e8f0",
+    "grid": "#3a3a55",
+    "grid_alpha": 0.25,
+    "spine": "#3a3a55",
+    "tick": "#9a9aaa",
+    "historical": "#5aa0e5",
+    "simulated": "#6a6a7a",
+    "simulated_alpha": 0.12,
+    "mean": "#ff7a7a",
+    "confidence": "#ff7a7a",
+    "confidence_alpha": 0.12,
+    "call": "#2adf7a",
+    "put": "#ff5a6a",
+    "neutral": "#8a8a9a",
 }
 
 
@@ -56,6 +56,11 @@ class InteractiveChart(QWidget):
     Provides a FigureCanvas with NavigationToolbar for zoom, pan, and save.
     All charts inherit from this and implement update_data() for their
     specific visualization.
+    
+    Features:
+    - Crosshair cursor for precise value reading
+    - Hover tooltips with data info
+    - Reset view button in toolbar
     
     Signals:
         hover_data: Emitted with data info when mouse hovers over data point
@@ -89,6 +94,14 @@ class InteractiveChart(QWidget):
         self._axes: Axes = self._figure.add_subplot(111)
         self._configure_axes()
         
+        # Crosshair lines
+        self._crosshair_h = None
+        self._crosshair_v = None
+        self._crosshair_enabled = True
+        
+        # Tooltip annotation
+        self._tooltip = None
+        
         # Navigation toolbar
         self._toolbar = NavigationToolbar2QT(self._canvas, self)
         self._style_toolbar()
@@ -100,8 +113,52 @@ class InteractiveChart(QWidget):
         layout.addWidget(self._toolbar)
         layout.addWidget(self._canvas, 1)
         
-        # Connect hover events
+        # Connect events
         self._canvas.mpl_connect('motion_notify_event', self._on_mouse_move)
+        self._canvas.mpl_connect('axes_leave_event', self._on_axes_leave)
+
+    def _setup_crosshair(self) -> None:
+        """Set up crosshair lines on the axes."""
+        if self._crosshair_h is not None:
+            return
+        
+        self._crosshair_h = self._axes.axhline(
+            y=0, color=DARK_THEME["grid"], linestyle='--',
+            linewidth=0.8, alpha=0.6, visible=False
+        )
+        self._crosshair_v = self._axes.axvline(
+            x=0, color=DARK_THEME["grid"], linestyle='--',
+            linewidth=0.8, alpha=0.6, visible=False
+        )
+
+    def _update_crosshair(self, x: float, y: float) -> None:
+        """Update crosshair position."""
+        if not self._crosshair_enabled:
+            return
+        
+        self._setup_crosshair()
+        
+        if self._crosshair_h is not None:
+            self._crosshair_h.set_ydata([y, y])
+            self._crosshair_h.set_visible(True)
+        
+        if self._crosshair_v is not None:
+            self._crosshair_v.set_xdata([x, x])
+            self._crosshair_v.set_visible(True)
+
+    def _hide_crosshair(self) -> None:
+        """Hide the crosshair lines."""
+        if self._crosshair_h is not None:
+            self._crosshair_h.set_visible(False)
+        if self._crosshair_v is not None:
+            self._crosshair_v.set_visible(False)
+
+    def _on_axes_leave(self, event) -> None:
+        """Handle mouse leaving the axes."""
+        self._hide_crosshair()
+        if self._tooltip is not None:
+            self._tooltip.set_visible(False)
+        self._canvas.draw_idle()
 
     def _configure_axes(self) -> None:
         """Apply dark theme styling to axes."""
@@ -291,15 +348,20 @@ class HistoricalVsSimulatedChart(InteractiveChart):
         self.refresh()
 
     def _on_mouse_move(self, event) -> None:
-        """Show price tooltip on hover."""
+        """Show price tooltip and crosshair on hover."""
         if event.inaxes != self._axes:
+            self._hide_crosshair()
             if self._annotation:
                 self._annotation.set_visible(False)
-                self._canvas.draw_idle()
+            self._canvas.draw_idle()
             return
         
         if self._historical_data is None:
             return
+        
+        # Update crosshair
+        if event.xdata is not None and event.ydata is not None:
+            self._update_crosshair(event.xdata, event.ydata)
         
         x = int(round(event.xdata)) if event.xdata else 0
         n_hist = len(self._historical_data)
@@ -307,16 +369,47 @@ class HistoricalVsSimulatedChart(InteractiveChart):
         if 0 <= x < n_hist:
             price = self._historical_data[x]
             label = f'Day {x}: ${price:.2f}'
+            tooltip_text = f'Historical\nDay {x}\n${price:.2f}'
         elif self._simulated_data is not None:
             sim_idx = x - n_hist
             if 0 <= sim_idx < self._simulated_data.shape[1]:
                 mean_price = np.mean(self._simulated_data[:, sim_idx])
+                p5 = np.percentile(self._simulated_data[:, sim_idx], 5)
+                p95 = np.percentile(self._simulated_data[:, sim_idx], 95)
                 label = f'Day {x}: ${mean_price:.2f} (mean)'
+                tooltip_text = (
+                    f'Forecast Day {sim_idx+1}\n'
+                    f'Mean: ${mean_price:.2f}\n5%: ${p5:.2f}\n95%: ${p95:.2f}'
+                )
             else:
+                self._canvas.draw_idle()
                 return
         else:
+            self._canvas.draw_idle()
             return
         
+        # Update or create annotation
+        if self._annotation is None:
+            self._annotation = self._axes.annotate(
+                tooltip_text,
+                xy=(event.xdata, event.ydata),
+                xytext=(10, 10),
+                textcoords='offset points',
+                fontsize=9,
+                color=DARK_THEME["foreground"],
+                bbox=dict(
+                    boxstyle='round,pad=0.5',
+                    facecolor=DARK_THEME["background"],
+                    edgecolor=DARK_THEME["grid"],
+                    alpha=0.9
+                ),
+            )
+        else:
+            self._annotation.set_text(tooltip_text)
+            self._annotation.xy = (event.xdata, event.ydata)
+            self._annotation.set_visible(True)
+        
+        self._canvas.draw_idle()
         self.hover_data.emit(label)
 
 
@@ -353,6 +446,14 @@ class ReturnDistributionChart(InteractiveChart):
         for spine in ax.spines.values():
             spine.set_color(DARK_THEME["spine"])
         ax.grid(True, alpha=DARK_THEME["grid_alpha"], color=DARK_THEME["grid"])
+
+    def clear(self) -> None:
+        """Clear both subplots."""
+        self._axes_hist.clear()
+        self._axes_sim.clear()
+        self._configure_subplot(self._axes_hist)
+        self._configure_subplot(self._axes_sim)
+        self._canvas.draw()
 
     def update_data(
         self,

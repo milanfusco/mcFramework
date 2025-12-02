@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -87,6 +88,91 @@ SCENARIO_PRESETS: list[ScenarioPreset] = [
 ]
 
 
+class CollapsibleGroup(QGroupBox):
+    """
+    Collapsible group box for organizing controls.
+    
+    Click on the title to expand/collapse the group content.
+    """
+
+    def __init__(self, title: str, collapsed: bool = False, parent: QWidget | None = None):
+        """
+        Initialize the collapsible group.
+
+        Args:
+            title: Group title
+            collapsed: Initial collapsed state
+            parent: Optional parent widget
+        """
+        super().__init__(parent)
+        self._title = title
+        self._collapsed = collapsed
+        
+        self._content = QWidget()
+        self._content_layout = QVBoxLayout(self._content)
+        self._content_layout.setSpacing(6)
+        self._content_layout.setContentsMargins(10, 6, 10, 10)
+        
+        layout = QVBoxLayout(self)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Header button
+        self._header = QPushButton(self._get_title_text())
+        self._header.setObjectName("collapsibleHeader")
+        self._header.setCheckable(True)
+        self._header.setChecked(not collapsed)
+        self._header.clicked.connect(self._toggle)
+        self._header.setStyleSheet("""
+            QPushButton#collapsibleHeader {
+                background-color: transparent;
+                border: none;
+                color: #9a9aaa;
+                font-weight: 600;
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                text-align: left;
+                padding: 8px 12px;
+            }
+            QPushButton#collapsibleHeader:hover {
+                color: #c0c0d0;
+            }
+        """)
+        layout.addWidget(self._header)
+        
+        layout.addWidget(self._content)
+        self._content.setVisible(not collapsed)
+
+    def _get_title_text(self) -> str:
+        """Get title with collapse indicator."""
+        arrow = "▼" if not self._collapsed else "▶"
+        return f"{arrow}  {self._title}"
+
+    def _toggle(self) -> None:
+        """Toggle collapsed state."""
+        self._collapsed = not self._collapsed
+        self._header.setText(self._get_title_text())
+        self._content.setVisible(not self._collapsed)
+
+    def add_widget(self, widget: QWidget) -> None:
+        """Add a widget to the group content."""
+        self._content_layout.addWidget(widget)
+
+    def add_row(self, label: str, widget: QWidget) -> QHBoxLayout:
+        """Add a labeled row to the group."""
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        
+        label_widget = QLabel(label)
+        label_widget.setMinimumWidth(100)
+        row.addWidget(label_widget)
+        row.addWidget(widget, 1)
+        
+        self._content_layout.addLayout(row)
+        return row
+
+
 class ControlGroup(QGroupBox):
     """
     Styled group box for organizing related controls.
@@ -105,8 +191,8 @@ class ControlGroup(QGroupBox):
         """
         super().__init__(title, parent)
         self._layout = QVBoxLayout(self)
-        self._layout.setSpacing(8)
-        self._layout.setContentsMargins(12, 16, 12, 12)
+        self._layout.setSpacing(6)
+        self._layout.setContentsMargins(10, 14, 10, 10)
 
     def add_widget(self, widget: QWidget) -> None:
         """Add a widget to the group."""
@@ -150,12 +236,14 @@ class SidebarWidget(QWidget):
         run_requested: Emitted when Run button is clicked
         fetch_requested: Emitted when Fetch Only is clicked
         preset_selected: Emitted with preset index when a preset is chosen
+        reset_requested: Emitted when Reset button is clicked
     """
     
     config_changed = Signal(object)  # SimulationConfig
     run_requested = Signal()
     fetch_requested = Signal()
     preset_selected = Signal(int)
+    reset_requested = Signal()
 
     # Sidebar width constant
     SIDEBAR_WIDTH = 280
@@ -176,8 +264,29 @@ class SidebarWidget(QWidget):
 
     def _setup_ui(self) -> None:
         """Set up the sidebar UI components."""
-        layout = QVBoxLayout(self)
-        layout.setSpacing(16)
+        # Main layout for the sidebar
+        main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Scroll area to handle overflow
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+            QScrollArea > QWidget > QWidget {
+                background-color: transparent;
+            }
+        """)
+        
+        # Container widget for scrollable content
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setSpacing(12)
         layout.setContentsMargins(12, 12, 12, 12)
         
         # Ticker & Data Group
@@ -200,12 +309,19 @@ class SidebarWidget(QWidget):
         self._action_buttons = self._create_action_buttons()
         layout.addWidget(self._action_buttons)
         
-        # Spacer
-        layout.addStretch()
+        # Small spacer at bottom
+        layout.addSpacing(12)
+        
+        scroll.setWidget(container)
+        main_layout.addWidget(scroll)
 
     def _create_ticker_group(self) -> ControlGroup:
         """Create the ticker and data controls group."""
         group = ControlGroup("Ticker & Data")
+        
+        # Recent tickers history
+        self._recent_tickers: list[str] = ["AAPL", "MSFT", "GOOGL", "TSLA", "SPY"]
+        self._max_recent = 10
         
         # Ticker input
         self._ticker_input = QLineEdit()
@@ -213,6 +329,15 @@ class SidebarWidget(QWidget):
         self._ticker_input.setText("AAPL")
         self._ticker_input.setMaxLength(10)
         group.add_row("Ticker:", self._ticker_input)
+        
+        # Recent tickers dropdown
+        self._recent_combo = QComboBox()
+        self._recent_combo.addItem("Recent Tickers...")
+        for ticker in self._recent_tickers:
+            self._recent_combo.addItem(ticker)
+        self._recent_combo.setToolTip("Select from recently used tickers")
+        self._recent_combo.currentIndexChanged.connect(self._on_recent_selected)
+        group.add_widget(self._recent_combo)
         
         # Historical days
         self._days_spin = QSpinBox()
@@ -223,6 +348,40 @@ class SidebarWidget(QWidget):
         group.add_row("History:", self._days_spin)
         
         return group
+
+    def _on_recent_selected(self, index: int) -> None:
+        """Handle selection from recent tickers dropdown."""
+        if index > 0:  # Skip the placeholder item
+            ticker = self._recent_combo.itemText(index)
+            self._ticker_input.setText(ticker)
+            self._recent_combo.setCurrentIndex(0)  # Reset to placeholder
+
+    def add_to_recent(self, ticker: str) -> None:
+        """
+        Add a ticker to the recent history.
+        
+        Args:
+            ticker: Ticker symbol to add
+        """
+        ticker = ticker.upper().strip()
+        if not ticker:
+            return
+        
+        # Remove if already exists (will re-add at top)
+        if ticker in self._recent_tickers:
+            self._recent_tickers.remove(ticker)
+        
+        # Add to front
+        self._recent_tickers.insert(0, ticker)
+        
+        # Trim to max
+        self._recent_tickers = self._recent_tickers[:self._max_recent]
+        
+        # Update combo box
+        self._recent_combo.clear()
+        self._recent_combo.addItem("Recent Tickers...")
+        for t in self._recent_tickers:
+            self._recent_combo.addItem(t)
 
     def _create_simulation_group(self) -> ControlGroup:
         """Create the simulation parameters group."""
@@ -344,6 +503,12 @@ class SidebarWidget(QWidget):
         self._run_btn.setToolTip("Fetch data and run full simulation")
         layout.addWidget(self._run_btn)
         
+        # Reset button
+        self._reset_btn = QPushButton("↺ Reset Workspace")
+        self._reset_btn.setObjectName("resetButton")
+        self._reset_btn.setToolTip("Clear all data and reset to initial state")
+        layout.addWidget(self._reset_btn)
+        
         return frame
 
     def _connect_signals(self) -> None:
@@ -366,6 +531,7 @@ class SidebarWidget(QWidget):
         # Action signals
         self._fetch_btn.clicked.connect(self.fetch_requested.emit)
         self._run_btn.clicked.connect(self.run_requested.emit)
+        self._reset_btn.clicked.connect(self.reset_requested.emit)
 
     def _on_config_changed(self) -> None:
         """Handle configuration value changes."""
@@ -464,11 +630,38 @@ class SidebarWidget(QWidget):
         self._run_btn.setEnabled(not running)
         self._fetch_btn.setEnabled(not running)
         self._apply_preset_btn.setEnabled(not running)
+        self._reset_btn.setEnabled(not running)
         
         if running:
             self._run_btn.setText("⏳ Running...")
+            self._start_pulse_animation()
         else:
             self._run_btn.setText("▶ Run Analysis")
+            self._stop_pulse_animation()
+
+    def _start_pulse_animation(self) -> None:
+        """Start a subtle pulse animation on the run button."""
+        if hasattr(self, '_pulse_anim') and self._pulse_anim is not None:
+            return
+        
+        self._run_btn.setStyleSheet("""
+            QPushButton#runButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #3abf6c, stop:1 #2a9f5c);
+                border: 2px solid #4acf7c;
+                color: #ffffff;
+                font-size: 14px;
+                font-weight: bold;
+                border-radius: 8px;
+            }
+        """)
+    
+        # Note: For true pulse animation, we'd need QGraphicsOpacityEffect
+        # This is a simplified visual indication using style change
+
+    def _stop_pulse_animation(self) -> None:
+        """Stop the pulse animation."""
+        self._run_btn.setStyleSheet("")  # Reset to default stylesheet
 
     def get_ticker(self) -> str:
         """Get the current ticker symbol."""

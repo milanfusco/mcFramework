@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -31,6 +32,7 @@ from .charts import (
     HistoricalVsSimulatedChart,
     ReturnDistributionChart,
 )
+from .empty_state import MonteCarloEmptyState
 
 if TYPE_CHECKING:
     from ..models.state import TickerAnalysisState
@@ -170,6 +172,8 @@ class MonteCarloTab(QWidget):
     - Return distributions (historical vs simulated)
     - Forecast price distribution
     
+    Shows an empty state when no simulation has been run.
+    
     Signals:
         chart_export_requested: Emitted with (chart_name, export_func)
     """
@@ -179,18 +183,32 @@ class MonteCarloTab(QWidget):
     def __init__(self, parent: QWidget | None = None):
         """Initialize the Monte Carlo tab."""
         super().__init__(parent)
+        self._has_data = False
         self._setup_ui()
 
     def _setup_ui(self) -> None:
         """Set up the tab UI with interactive charts."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Stacked widget for empty/content states
+        self._stack = QStackedWidget()
+        
+        # Empty state (index 0)
+        self._empty_state = MonteCarloEmptyState()
+        self._stack.addWidget(self._empty_state)
+        
+        # Content widget (index 1)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(8)
+        content_layout.setContentsMargins(8, 8, 8, 8)
         
         # Export panel at top
         self._export_panel = ChartExportPanel()
         self._export_panel.export_requested.connect(self._on_export_requested)
-        layout.addWidget(self._export_panel)
+        content_layout.addWidget(self._export_panel)
         
         # Scroll area for charts
         scroll = QScrollArea()
@@ -243,7 +261,13 @@ class MonteCarloTab(QWidget):
         
         scroll_layout.addStretch()
         scroll.setWidget(scroll_content)
-        layout.addWidget(scroll, 1)
+        content_layout.addWidget(scroll, 1)
+        
+        self._stack.addWidget(content)
+        layout.addWidget(self._stack)
+        
+        # Start with empty state
+        self._stack.setCurrentIndex(0)
 
     def _on_export_requested(self, chart_name: str) -> None:
         """Handle chart export request."""
@@ -266,7 +290,13 @@ class MonteCarloTab(QWidget):
         """
         # Check if we have the required data
         if not state.has_market_data() or not state.has_simulation_results():
+            self._stack.setCurrentIndex(0)
+            self._has_data = False
             return
+        
+        # Show content
+        self._stack.setCurrentIndex(1)
+        self._has_data = True
         
         prices = state.prices
         paths = state.simulated_paths
@@ -309,11 +339,17 @@ class MonteCarloTab(QWidget):
         )
 
     def clear(self) -> None:
-        """Clear all charts."""
+        """Clear all charts and show empty state."""
         self._hist_chart.clear()
         self._returns_chart.clear()
         self._forecast_chart.clear()
         self._forecast_summary.clear()
+        self._has_data = False
+        self._stack.setCurrentIndex(0)
+
+    def set_run_callback(self, callback) -> None:
+        """Set callback for the empty state action button."""
+        self._empty_state.set_action_callback(callback)
 
     def export_chart(self, chart_name: str, path: Path) -> bool:
         """
