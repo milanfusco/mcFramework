@@ -87,6 +87,7 @@ class QuantBlackScholesWindow(QMainWindow):
         self._calculator_dialog: OptionCalculatorDialog | None = None
         
         # Set up UI
+        self._central_splitter: QSplitter | None = None
         self._setup_window()
         self._setup_toolbar()
         self._setup_central_widget()
@@ -173,6 +174,7 @@ class QuantBlackScholesWindow(QMainWindow):
         
         # Main splitter for center + right panel
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._central_splitter = splitter
         
         # Tab widget (center)
         self._tabs = QTabWidget()
@@ -201,7 +203,9 @@ class QuantBlackScholesWindow(QMainWindow):
         # Set splitter sizes
         splitter.setSizes([900, 320])
         
+        splitter.splitterMoved.connect(self._on_splitter_moved)
         layout.addWidget(splitter, 1)
+        self._broadcast_tab_content_width()
         
         # Toast notification overlay
         self._toast_manager = ToastManager(central)
@@ -358,6 +362,29 @@ class QuantBlackScholesWindow(QMainWindow):
             self._status_bar.showMessage("Running simulation...")
         else:
             self._status_bar.showMessage("Ready")
+
+    def _on_splitter_moved(self, pos: int, index: int) -> None:
+        """Handle splitter movement to resize tab content."""
+        self._broadcast_tab_content_width()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._broadcast_tab_content_width()
+
+    def _broadcast_tab_content_width(self) -> None:
+        """Inform each tab of the currently available width."""
+        if not hasattr(self, "_tabs"):
+            return
+        available = self._tabs.width()
+        tabs = [
+            self._market_tab,
+            self._mc_tab,
+            self._options_tab,
+            self._surfaces_tab,
+        ]
+        for tab in tabs:
+            if hasattr(tab, "set_content_width"):
+                tab.set_content_width(available)
 
     @Slot()
     def _on_run_clicked(self) -> None:

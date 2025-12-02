@@ -25,9 +25,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .empty_state import SurfacesEmptyState
-
 from .charts import OptionSurfaceChart
+from .empty_state import SurfacesEmptyState
 
 if TYPE_CHECKING:
     from ..models.state import TickerAnalysisState
@@ -176,6 +175,10 @@ class SurfacesTab(QWidget):
         """Initialize the Surfaces tab."""
         super().__init__(parent)
         self._has_data = False
+        self._content_widget: QWidget | None = None
+        self._scroll_content: QWidget | None = None
+        self._main_splitter: QSplitter | None = None
+        self._current_content_width: int | None = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -204,6 +207,7 @@ class SurfacesTab(QWidget):
         
         # Main splitter
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._main_splitter = main_splitter
         
         # Scroll area for surfaces
         scroll = QScrollArea()
@@ -251,6 +255,25 @@ class SurfacesTab(QWidget):
         
         # Start with empty state
         self._stack.setCurrentIndex(0)
+
+    def set_content_width(self, width: int) -> None:
+        """Allow parent window to control layout width."""
+        self._current_content_width = width if width > 0 else None
+        self._apply_content_width()
+
+    def _apply_content_width(self) -> None:
+        width = self._current_content_width
+        if self._content_widget:
+            if width is None:
+                self._content_widget.setMaximumWidth(16777215)
+            else:
+                self._content_widget.setMaximumWidth(width)
+        if self._scroll_content and width is not None:
+            self._scroll_content.setMaximumWidth(max(640, width - 280))
+        if self._main_splitter and width is not None:
+            right = self._info_panel.maximumWidth() or 260
+            left = max(500, width - right - 24)
+            self._main_splitter.setSizes([left, right])
 
     def _on_export_requested(self, surface_type: str) -> None:
         """Handle surface export request."""

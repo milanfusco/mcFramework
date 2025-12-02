@@ -184,6 +184,10 @@ class MonteCarloTab(QWidget):
         """Initialize the Monte Carlo tab."""
         super().__init__(parent)
         self._has_data = False
+        self._content_widget: QWidget | None = None
+        self._scroll_content: QWidget | None = None
+        self._middle_splitter: QSplitter | None = None
+        self._current_content_width: int | None = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -201,6 +205,7 @@ class MonteCarloTab(QWidget):
         
         # Content widget (index 1)
         content = QWidget()
+        self._content_widget = content
         content_layout = QVBoxLayout(content)
         content_layout.setSpacing(8)
         content_layout.setContentsMargins(8, 8, 8, 8)
@@ -217,6 +222,7 @@ class MonteCarloTab(QWidget):
         scroll.setStyleSheet("QScrollArea { border: none; }")
         
         scroll_content = QWidget()
+        self._scroll_content = scroll_content
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setSpacing(12)
         scroll_layout.setContentsMargins(0, 0, 0, 0)
@@ -232,6 +238,7 @@ class MonteCarloTab(QWidget):
         
         # Returns and Summary side by side
         middle_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._middle_splitter = middle_splitter
         
         # Return distributions chart (interactive)
         returns_group = QGroupBox("Return Distributions")
@@ -268,6 +275,26 @@ class MonteCarloTab(QWidget):
         
         # Start with empty state
         self._stack.setCurrentIndex(0)
+
+    def set_content_width(self, width: int) -> None:
+        """Allow parent window to broadcast available width."""
+        self._current_content_width = width if width > 0 else None
+        self._apply_content_width()
+
+    def _apply_content_width(self) -> None:
+        """Clamp scroll content width based on available space."""
+        width = self._current_content_width
+        if self._content_widget:
+            if width is None:
+                self._content_widget.setMaximumWidth(16777215)
+            else:
+                self._content_widget.setMaximumWidth(width)
+        if self._scroll_content and width is not None:
+            self._scroll_content.setMaximumWidth(width)
+        if self._middle_splitter and width is not None:
+            right = self._forecast_summary.maximumWidth() or 280
+            left = max(400, width - right - 48)
+            self._middle_splitter.setSizes([left, right])
 
     def _on_export_requested(self, chart_name: str) -> None:
         """Handle chart export request."""

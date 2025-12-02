@@ -7,13 +7,16 @@ matplotlib figures directly in the Qt UI with zoom, pan, and hover support.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
+from matplotlib import dates as mdates
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT
 from matplotlib.figure import Figure
+from matplotlib.patches import Rectangle
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
@@ -788,4 +791,276 @@ class OptionSurfaceChart(InteractiveChart):
             result[~mask] = intrinsic[~mask] if intrinsic.ndim > 0 else intrinsic
         
         return result
+
+
+# =============================================================================
+# Market Data Charts
+# =============================================================================
+
+
+class SparklineChart(InteractiveChart):
+    """Lightweight sparkline chart built atop the InteractiveChart base."""
+
+    def __init__(self, parent: QWidget | None = None, n_points: int = 60):
+        super().__init__(figsize=(6, 2), parent=parent)
+        self._n_points = n_points
+        self._crosshair_enabled = False
+        self._configure_sparkline_axes()
+
+    def _configure_sparkline_axes(self) -> None:
+        ax = self._axes
+        ax.set_facecolor('#1a1a2e')
+        ax.tick_params(colors='#888888', labelsize=8)
+        for spine in ('top', 'right'):
+            ax.spines[spine].set_visible(False)
+        ax.spines['bottom'].set_color('#444444')
+        ax.spines['left'].set_color('#444444')
+        ax.grid(True, alpha=0.2, color='#444444')
+
+    def clear(self) -> None:
+        super().clear()
+        self._configure_sparkline_axes()
+
+    def update_data(
+        self,
+        prices: np.ndarray | None,
+        ticker: str = "",
+        dates: list[datetime] | None = None,
+        events: list[tuple[int, str]] | None = None,
+    ) -> None:
+        self._axes.clear()
+        self._configure_sparkline_axes()
+
+        if prices is None or len(prices) == 0:
+            self._axes.text(
+                0.5,
+                0.5,
+                "No data",
+                ha='center',
+                va='center',
+                color='#888888',
+                fontsize=12,
+                transform=self._axes.transAxes,
+            )
+            self.refresh()
+            return
+
+        display_prices = prices[-self._n_points :] if len(prices) > self._n_points else prices
+        if dates is not None and len(dates) == len(prices):
+            display_dates = dates[-len(display_prices):]
+        else:
+            display_dates = None
+        x = np.arange(len(display_prices))
+
+        is_up = display_prices[-1] >= display_prices[0]
+        color = '#00d26a' if is_up else '#f23645'
+
+        self._axes.plot(x, display_prices, color=color, linewidth=1.5)
+        self._axes.fill_between(x, display_prices, alpha=0.2, color=color)
+
+        current_price = display_prices[-1]
+        self._axes.annotate(
+            f'${current_price:.2f}',
+            xy=(len(display_prices) - 1, current_price),
+            xytext=(5, 0),
+            textcoords='offset points',
+            color=color,
+            fontsize=10,
+            fontweight='bold',
+            va='center',
+        )
+
+        if ticker:
+            self._axes.set_title(
+                f'{ticker} - Last {len(display_prices)} Days',
+                color='#cccccc',
+                fontsize=10,
+                loc='left',
+            )
+
+        if events:
+            for idx, label in events:
+                if 0 <= idx < len(display_prices):
+                    price_point = display_prices[idx]
+                    self._axes.scatter(
+                        idx,
+                        price_point,
+                        color='#ffd166',
+                        s=30,
+                        zorder=5,
+                        marker='o',
+                    )
+                    self._axes.annotate(
+                        label,
+                        xy=(idx, price_point),
+                        xytext=(0, 12),
+                        textcoords='offset points',
+                        color='#ffd166',
+                        fontsize=8,
+                        ha='center',
+                    )
+
+        self._axes.set_ylabel('Price ($)', color='#888888', fontsize=9)
+        if display_dates:
+            tick_indices = np.linspace(0, len(display_prices) - 1, num=3, dtype=int)
+            tick_labels = [display_dates[idx].strftime("%b %d") for idx in tick_indices]
+            self._axes.set_xticks(tick_indices)
+            self._axes.set_xticklabels(tick_labels, color='#888888', fontsize=8)
+            self._axes.set_xlabel('Date', color='#888888', fontsize=9)
+        else:
+            self._axes.set_xlabel('Trading Days', color='#888888', fontsize=9)
+
+        self.refresh()
+
+
+class CandlestickChart(InteractiveChart):
+    """Interactive candlestick chart with aligned volume subplot."""
+
+    def __init__(self, parent: QWidget | None = None, max_points: int = 120):
+        super().__init__(figsize=(8, 4), parent=parent)
+        self._max_points = max_points
+        self._crosshair_enabled = False
+        self._figure.clear()
+        grid = self._figure.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.05)
+        self._price_ax = self._figure.add_subplot(grid[0])
+        self._volume_ax = self._figure.add_subplot(grid[1], sharex=self._price_ax)
+        self._configure_candlestick_axes()
+
+    def _configure_axes(self) -> None:
+        """Override base hook to avoid configuring unused _axes."""
+        # Candlestick chart manages its own axes pair.
+        pass
+
+    def _configure_candlestick_axes(self) -> None:
+        background = '#101020'
+        grid_color = '#2a2a40'
+
+        for ax in (self._price_ax, self._volume_ax):
+            ax.set_facecolor(background)
+            for spine in ax.spines.values():
+                spine.set_color('#444444')
+            ax.tick_params(colors='#bbbbbb', labelsize=8)
+            ax.grid(True, color=grid_color, alpha=0.3, linestyle='--', linewidth=0.5)
+
+        self._volume_ax.ticklabel_format(style='plain', axis='y')
+        self._volume_ax.set_ylabel('Volume', color='#bbbbbb', fontsize=8)
+        self._price_ax.set_ylabel('Price ($)', color='#bbbbbb', fontsize=9)
+
+    def clear(self) -> None:
+        self._price_ax.clear()
+        self._volume_ax.clear()
+        self._configure_candlestick_axes()
+        self.refresh()
+
+    def update_data(
+        self,
+        opens: np.ndarray | None,
+        highs: np.ndarray | None,
+        lows: np.ndarray | None,
+        closes: np.ndarray | None,
+        volumes: np.ndarray | None,
+        dates: list[datetime] | None,
+    ) -> None:
+        self._price_ax.clear()
+        self._volume_ax.clear()
+        self._configure_candlestick_axes()
+
+        if (
+            opens is None
+            or highs is None
+            or lows is None
+            or closes is None
+            or dates is None
+            or len(closes) == 0
+        ):
+            self._price_ax.text(
+                0.5,
+                0.5,
+                "No OHLC data available",
+                transform=self._price_ax.transAxes,
+                ha='center',
+                va='center',
+                color='#888888',
+            )
+            self.refresh()
+            return
+
+        total_points = min(
+            len(opens),
+            len(highs),
+            len(lows),
+            len(closes),
+            len(dates),
+        )
+
+        if total_points == 0:
+            self.refresh()
+            return
+
+        slice_len = min(self._max_points, total_points)
+        slice_obj = slice(total_points - slice_len, total_points)
+
+        opens = np.asarray(opens)[slice_obj]
+        highs = np.asarray(highs)[slice_obj]
+        lows = np.asarray(lows)[slice_obj]
+        closes = np.asarray(closes)[slice_obj]
+        volumes_slice = np.asarray(volumes)[slice_obj] if volumes is not None else None
+        date_slice = dates[slice_obj]
+
+        x_values = mdates.date2num(date_slice)
+        width = 0.6
+
+        for idx, x_val in enumerate(x_values):
+            open_price = float(opens[idx])
+            high_price = float(highs[idx])
+            low_price = float(lows[idx])
+            close_price = float(closes[idx])
+
+            color = '#00d26a' if close_price >= open_price else '#f23645'
+            body_bottom = min(open_price, close_price)
+            body_height = max(abs(close_price - open_price), 0.01)
+
+            self._price_ax.vlines(
+                x_val,
+                low_price,
+                high_price,
+                color=color,
+                linewidth=1.0,
+            )
+            candle = Rectangle(
+                (x_val - width / 2, body_bottom),
+                width,
+                body_height,
+                facecolor=color,
+                edgecolor=color,
+                alpha=0.9,
+            )
+            self._price_ax.add_patch(candle)
+
+        self._price_ax.set_title(
+            f"Last {slice_len} Sessions",
+            color='#dddddd',
+            fontsize=10,
+            loc='left',
+        )
+        self._price_ax.xaxis.set_visible(False)
+
+        if volumes_slice is not None:
+            colors = [
+                '#00d26a' if closes[i] >= opens[i] else '#f23645'
+                for i in range(len(x_values))
+            ]
+            self._volume_ax.bar(
+                x_values,
+                volumes_slice,
+                width=width,
+                color=colors,
+                alpha=0.6,
+            )
+
+        formatter = mdates.DateFormatter("%b %d")
+        self._volume_ax.xaxis.set_major_formatter(formatter)
+        self._figure.autofmt_xdate()
+
+        self.refresh()
 

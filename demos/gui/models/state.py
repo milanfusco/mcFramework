@@ -1,9 +1,9 @@
 """
 State model for ticker analysis data.
 
-This module defines the central state container that holds all data
-related to a ticker analysis session, following the Single Responsibility
-Principle by focusing solely on state representation.
+This module defines the central state container that holds 
+all data related to a ticker analysis session, focusing solely 
+on state representation.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, List
 
 import numpy as np
 
@@ -196,8 +196,19 @@ class TickerAnalysisState:
     
     # Historical data
     prices: np.ndarray | None = None
+    open_prices: np.ndarray | None = None
+    high_prices: np.ndarray | None = None
+    low_prices: np.ndarray | None = None
+    volumes: np.ndarray | None = None
+    price_dates: List[datetime] | None = None
     start_date: datetime | None = None
     end_date: datetime | None = None
+    dividends: list[dict[str, Any]] = field(default_factory=list)
+    splits: list[dict[str, Any]] = field(default_factory=list)
+    fast_info: dict[str, Any] = field(default_factory=dict)
+    history_metadata: dict[str, Any] = field(default_factory=dict)
+    recommendations: dict[str, Any] | None = None
+    price_targets: dict[str, Any] | None = None
     
     # Estimated parameters
     parameters: MarketParameters | None = None
@@ -221,8 +232,19 @@ class TickerAnalysisState:
     def reset(self) -> None:
         """Reset all results while preserving configuration."""
         self.prices = None
+        self.open_prices = None
+        self.high_prices = None
+        self.low_prices = None
+        self.volumes = None
+        self.price_dates = None
         self.start_date = None
         self.end_date = None
+        self.dividends.clear()
+        self.splits.clear()
+        self.fast_info.clear()
+        self.history_metadata.clear()
+        self.recommendations = None
+        self.price_targets = None
         self.parameters = None
         self.simulated_paths = None
         self.call_result = None

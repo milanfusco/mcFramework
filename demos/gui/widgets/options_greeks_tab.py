@@ -564,6 +564,8 @@ class OptionsGreeksTab(QWidget):
         """Initialize the Options & Greeks tab."""
         super().__init__(parent)
         self._has_data = False
+        self._content_widget: QWidget | None = None
+        self._current_content_width: int | None = None
         self._setup_ui()
         self._connect_signals()
 
@@ -582,6 +584,7 @@ class OptionsGreeksTab(QWidget):
         
         # Content widget (index 1)
         content = QWidget()
+        self._content_widget = content
         content_layout = QHBoxLayout(content)
         content_layout.setSpacing(16)
         content_layout.setContentsMargins(16, 16, 16, 16)
@@ -714,4 +717,14 @@ class OptionsGreeksTab(QWidget):
     def set_run_callback(self, callback) -> None:
         """Set callback for the empty state action button."""
         self._empty_state.set_action_callback(callback)
+
+    def set_content_width(self, width: int) -> None:
+        """Allow parent window to cap content width."""
+        self._current_content_width = width if width > 0 else None
+        if self._content_widget is None:
+            return
+        if self._current_content_width is None:
+            self._content_widget.setMaximumWidth(16777215)
+        else:
+            self._content_widget.setMaximumWidth(self._current_content_width)
 

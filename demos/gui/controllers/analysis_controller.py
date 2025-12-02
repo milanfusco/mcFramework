@@ -9,10 +9,10 @@ abstractions (signals) rather than concrete UI components.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import numpy as np
 from PySide6.QtCore import QObject, Signal
@@ -27,7 +27,6 @@ from ..models.state import (
     TickerAnalysisState,
 )
 
-
 # Risk-free rate constant (approximate US Treasury rate)
 DEFAULT_RISK_FREE_RATE = 0.05
 
@@ -36,8 +35,19 @@ DEFAULT_RISK_FREE_RATE = 0.05
 class FetchResult:
     """Result of a data fetch operation."""
     prices: np.ndarray
+    opens: np.ndarray | None
+    highs: np.ndarray | None
+    lows: np.ndarray | None
     start_date: datetime
     end_date: datetime
+    volumes: np.ndarray | None = None
+    dates: list[datetime] | None = None
+    fast_info: dict[str, Any] = field(default_factory=dict)
+    history_metadata: dict[str, Any] = field(default_factory=dict)
+    dividends: list[dict[str, Any]] = field(default_factory=list)
+    splits: list[dict[str, Any]] = field(default_factory=list)
+    recommendations: dict[str, Any] | None = None
+    price_targets: dict[str, Any] | None = None
 
 
 @dataclass
@@ -119,6 +129,89 @@ class TickerAnalysisController(QObject):
             self.progress_updated.emit(current, total)
         return callback
 
+    @staticmethod
+    def _extract_fast_info(stock: Any) -> dict[str, Any]:
+        """Return a serializable snapshot of yfinance fast_info."""
+        fast_info: dict[str, Any] = {}
+        raw = getattr(stock, "fast_info", None)
+        if raw is None:
+            return fast_info
+        if isinstance(raw, dict):
+            return raw
+        if hasattr(raw, "items"):
+            return dict(raw.items())
+        if hasattr(raw, "__dict__"):
+            return {
+                key: value
+                for key, value in raw.__dict__.items()
+                if not key.startswith("_")
+            }
+        return fast_info
+
+    @staticmethod
+    def _extract_series(
+        stock: Any,
+        attr: str,
+        *,
+        value_field: str = "value",
+        max_items: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Convert a pandas Series attribute into a list of dicts."""
+        series = getattr(stock, attr, None)
+        if series is None:
+            return []
+        try:
+            if series.empty:
+                return []
+            recent = series.tail(max_items)
+            return [
+                {
+                    "date": idx.to_pydatetime(),
+                    value_field: float(value),
+                }
+                for idx, value in recent.items()
+            ]
+        except Exception:
+            return []
+
+    @staticmethod
+    def _safe_get_history_metadata(stock: Any) -> dict[str, Any]:
+        """Safely access get_history_metadata(), handling API quirks."""
+        try:
+            metadata = stock.get_history_metadata()
+            return metadata or {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _extract_dataframe_row(stock: Any, attr: str) -> dict[str, Any] | None:
+        """Serialize the latest row of a yfinance DataFrame attribute."""
+        df = getattr(stock, attr, None)
+        if df is None:
+            return None
+        try:
+            if df.empty:
+                return None
+            row = df.iloc[0].to_dict()
+            result: dict[str, Any] = {}
+            for key, value in row.items():
+                result[key] = TickerAnalysisController._normalize_value(value)
+            try:
+                period = df.index[0]
+                result["period"] = str(period)
+            except Exception:
+                pass
+            return result
+        except Exception:
+            return None
+
+    @staticmethod
+    def _normalize_value(value: Any) -> Any:
+        """Convert numpy / pandas scalars to builtin types."""
+        if isinstance(value, (np.generic,)):
+            return float(value)
+        return value
+
     def fetch_ticker_data(self, ticker: str, days: int = 252) -> FetchResult | None:
         """
         Fetch historical stock data from Yahoo Finance.
@@ -153,14 +246,29 @@ class TickerAnalysisController(QObject):
                 self.error_occurred.emit(f"No data found for ticker '{ticker}'")
                 return None
             
-            prices = hist['Close'].values
+            prices = hist["Close"].to_numpy()
+            opens = hist["Open"].to_numpy() if "Open" in hist.columns else None
+            highs = hist["High"].to_numpy() if "High" in hist.columns else None
+            lows = hist["Low"].to_numpy() if "Low" in hist.columns else None
+            volumes = hist["Volume"].to_numpy() if "Volume" in hist.columns else None
+            dates = [idx.to_pydatetime() for idx in hist.index]
             
-            # Take last 'days' data points
+            # Take last 'days' data points consistently across arrays
             if len(prices) > days:
-                prices = prices[-days:]
+                slice_idx = -days
+                prices = prices[slice_idx:]
+                if opens is not None:
+                    opens = opens[slice_idx:]
+                if highs is not None:
+                    highs = highs[slice_idx:]
+                if lows is not None:
+                    lows = lows[slice_idx:]
+                if volumes is not None:
+                    volumes = volumes[slice_idx:]
+                dates = dates[slice_idx:]
             
-            actual_start = hist.index[0].to_pydatetime()
-            actual_end = hist.index[-1].to_pydatetime()
+            actual_start = dates[0]
+            actual_end = dates[-1]
             
             self._log(
                 f"✓ Fetched {len(prices)} data points from "
@@ -168,16 +276,54 @@ class TickerAnalysisController(QObject):
             )
             self._log(f"  Current price: ${prices[-1]:.2f}")
             
+            fast_info = self._extract_fast_info(stock)
+            dividends = self._extract_series(
+                stock, "dividends", value_field="amount", max_items=5
+            )
+            splits = self._extract_series(
+                stock, "splits", value_field="ratio", max_items=5
+            )
+            history_metadata = self._safe_get_history_metadata(stock)
+            recommendations = self._extract_dataframe_row(stock, "recommendations_summary")
+            price_targets = self._extract_dataframe_row(stock, "analyst_price_targets")
+            
+            if history_metadata:
+                warning = history_metadata.get("warning")
+                if warning:
+                    self._log(f"⚠ Yahoo Finance metadata warning: {warning}")
+            
             result = FetchResult(
                 prices=prices,
+                opens=opens,
+                highs=highs,
+                lows=lows,
                 start_date=actual_start,
                 end_date=actual_end,
+                volumes=volumes,
+                dates=dates,
+                fast_info=fast_info,
+                history_metadata=history_metadata,
+                dividends=dividends,
+                splits=splits,
+                recommendations=recommendations,
+                price_targets=price_targets,
             )
             
             # Update state
             self._state.prices = prices
+            self._state.open_prices = opens
+            self._state.high_prices = highs
+            self._state.low_prices = lows
+            self._state.volumes = volumes
+            self._state.price_dates = dates
             self._state.start_date = actual_start
             self._state.end_date = actual_end
+            self._state.dividends = dividends
+            self._state.splits = splits
+            self._state.fast_info = fast_info
+            self._state.history_metadata = history_metadata
+            self._state.recommendations = recommendations
+            self._state.price_targets = price_targets
             self._state.update_timestamp()
             
             self.data_fetched.emit(result)
@@ -484,13 +630,22 @@ class TickerAnalysisController(QObject):
                 return max(spot - strike, 0.0)
             return max(strike - spot, 0.0)
         
-        d1 = (np.log(spot / strike) + (risk_free_rate + 0.5 * volatility**2) * time_to_maturity) / (volatility * np.sqrt(time_to_maturity))
+        d1 = (
+            np.log(spot / strike)
+            + (risk_free_rate + 0.5 * volatility**2) * time_to_maturity
+        ) / (volatility * np.sqrt(time_to_maturity))
         d2 = d1 - volatility * np.sqrt(time_to_maturity)
         
         if option_type == "call":
-            price = spot * norm.cdf(d1) - strike * np.exp(-risk_free_rate * time_to_maturity) * norm.cdf(d2)
+            price = (
+                spot * norm.cdf(d1)
+                - strike * np.exp(-risk_free_rate * time_to_maturity) * norm.cdf(d2)
+            )
         else:
-            price = strike * np.exp(-risk_free_rate * time_to_maturity) * norm.cdf(-d2) - spot * norm.cdf(-d1)
+            price = (
+                strike * np.exp(-risk_free_rate * time_to_maturity) * norm.cdf(-d2)
+                - spot * norm.cdf(-d1)
+            )
         
         return float(price)
 
@@ -524,7 +679,10 @@ class TickerAnalysisController(QObject):
             return GreeksResult()
         
         sqrt_t = np.sqrt(time_to_maturity)
-        d1 = (np.log(spot / strike) + (risk_free_rate + 0.5 * volatility**2) * time_to_maturity) / (volatility * sqrt_t)
+        d1 = (
+            np.log(spot / strike)
+            + (risk_free_rate + 0.5 * volatility**2) * time_to_maturity
+        ) / (volatility * sqrt_t)
         d2 = d1 - volatility * sqrt_t
         
         # Common terms

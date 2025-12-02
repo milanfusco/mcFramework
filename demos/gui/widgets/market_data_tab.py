@@ -7,19 +7,19 @@ estimated parameters, and a sparkline of recent closes.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-
-# Matplotlib imports for embedded charts
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
+    QScrollArea,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
     QTableWidget,
@@ -28,124 +28,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .charts import CandlestickChart, SparklineChart
 from .empty_state import MarketDataEmptyState
 
 if TYPE_CHECKING:
     from ..models.state import MarketParameters, TickerAnalysisState
 
 
-class SparklineCanvas(FigureCanvas):
-    """
-    Matplotlib canvas for displaying a sparkline chart.
-    
-    This lightweight chart shows price history in a compact form
-    suitable for the Market Data tab.
-    """
-
-    def __init__(self, parent: QWidget | None = None):
-        """
-        Initialize the sparkline canvas.
-        
-        Args:
-            parent: Optional parent widget
-        """
-        self._figure = Figure(figsize=(6, 2), dpi=100)
-        self._figure.patch.set_facecolor('#1a1a2e')
-        
-        super().__init__(self._figure)
-        self.setParent(parent)
-        
-        self._axes = self._figure.add_subplot(111)
-        self._configure_axes()
-
-    def _configure_axes(self) -> None:
-        """Configure axes styling for dark theme."""
-        self._axes.set_facecolor('#1a1a2e')
-        self._axes.tick_params(colors='#888888', labelsize=8)
-        self._axes.spines['top'].set_visible(False)
-        self._axes.spines['right'].set_visible(False)
-        self._axes.spines['bottom'].set_color('#444444')
-        self._axes.spines['left'].set_color('#444444')
-        self._axes.grid(True, alpha=0.2, color='#444444')
-
-    def update_data(
-        self,
-        prices: np.ndarray,
-        ticker: str = "",
-        n_points: int = 60,
-    ) -> None:
-        """
-        Update the sparkline with new price data.
-        
-        Args:
-            prices: Array of historical prices
-            ticker: Ticker symbol for title
-            n_points: Number of recent points to display
-        """
-        self._axes.clear()
-        self._configure_axes()
-        
-        if prices is None or len(prices) == 0:
-            self._axes.text(
-                0.5, 0.5, "No data",
-                ha='center', va='center',
-                color='#888888', fontsize=12,
-                transform=self._axes.transAxes
-            )
-            self.draw()
-            return
-        
-        # Take last n_points
-        display_prices = prices[-n_points:] if len(prices) > n_points else prices
-        x = np.arange(len(display_prices))
-        
-        # Determine color based on trend
-        is_up = display_prices[-1] >= display_prices[0]
-        color = '#00d26a' if is_up else '#f23645'
-        
-        # Plot line and fill
-        self._axes.plot(x, display_prices, color=color, linewidth=1.5)
-        self._axes.fill_between(x, display_prices, alpha=0.2, color=color)
-        
-        # Add current price annotation
-        current_price = display_prices[-1]
-        self._axes.annotate(
-            f'${current_price:.2f}',
-            xy=(len(display_prices) - 1, current_price),
-            xytext=(5, 0),
-            textcoords='offset points',
-            color=color,
-            fontsize=10,
-            fontweight='bold',
-            va='center',
-        )
-        
-        # Title
-        if ticker:
-            self._axes.set_title(
-                f'{ticker} - Last {len(display_prices)} Days',
-                color='#cccccc',
-                fontsize=10,
-                loc='left',
-            )
-        
-        self._axes.set_ylabel('Price ($)', color='#888888', fontsize=9)
-        self._axes.set_xlabel('Trading Days', color='#888888', fontsize=9)
-        
-        self._figure.tight_layout()
-        self.draw()
-
-    def clear(self) -> None:
-        """Clear the sparkline."""
-        self._axes.clear()
-        self._configure_axes()
-        self.draw()
-
-
 class MetricCard(QFrame):
     """
     Card widget for displaying a single metric.
-    
+
     This component provides consistent styling for key metrics
     displayed in the Market Data tab.
     """
@@ -159,7 +52,7 @@ class MetricCard(QFrame):
     ):
         """
         Initialize the metric card.
-        
+
         Args:
             title: Metric title
             value: Initial value text
@@ -171,21 +64,21 @@ class MetricCard(QFrame):
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setMinimumWidth(160)
         self.setMinimumHeight(90)
-        
+
         layout = QVBoxLayout(self)
         layout.setSpacing(6)
         layout.setContentsMargins(16, 14, 16, 14)
-        
+
         # Title
         self._title_label = QLabel(title)
         self._title_label.setObjectName("metricTitle")
         layout.addWidget(self._title_label)
-        
+
         # Value
         self._value_label = QLabel(value)
         self._value_label.setObjectName("metricValue")
         layout.addWidget(self._value_label)
-        
+
         # Subtitle (optional)
         if subtitle:
             self._subtitle_label = QLabel(subtitle)
@@ -193,13 +86,13 @@ class MetricCard(QFrame):
             layout.addWidget(self._subtitle_label)
         else:
             self._subtitle_label = None
-        
+
         layout.addStretch()
 
     def set_value(self, value: str, subtitle: str = "", animate: bool = True) -> None:
         """
         Update the displayed value with optional animation.
-        
+
         Args:
             value: New value text
             subtitle: Optional new subtitle
@@ -207,10 +100,10 @@ class MetricCard(QFrame):
         """
         old_value = self._value_label.text()
         self._value_label.setText(value)
-        
+
         if self._subtitle_label and subtitle:
             self._subtitle_label.setText(subtitle)
-        
+
         # Flash animation on value change
         if animate and old_value != value and value != "—":
             self._flash_value()
@@ -218,13 +111,13 @@ class MetricCard(QFrame):
     def _flash_value(self) -> None:
         """Flash the value label to indicate change."""
         original_style = self._value_label.styleSheet()
-        
+
         # Brief highlight
         self._value_label.setStyleSheet(
             original_style + "background-color: rgba(90, 159, 213, 0.3); "
             "border-radius: 4px; padding: 2px 4px;"
         )
-        
+
         # Reset after delay
         QTimer.singleShot(300, lambda: self._value_label.setStyleSheet(original_style))
 
@@ -236,7 +129,7 @@ class MetricCard(QFrame):
 class ParametersTable(QTableWidget):
     """
     Table widget for displaying estimated market parameters.
-    
+
     This table shows the full set of parameters estimated from
     historical data in a structured format.
     """
@@ -254,18 +147,18 @@ class ParametersTable(QTableWidget):
     def __init__(self, parent: QWidget | None = None):
         """Initialize the parameters table."""
         super().__init__(parent)
-        
+
         self.setColumnCount(2)
         self.setHorizontalHeaderLabels(["Parameter", "Value"])
         self.setRowCount(len(self.PARAMETERS))
-        
+
         # Style
         self.setAlternatingRowColors(True)
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.verticalHeader().setVisible(False)
-        self.horizontalHeader().setStretchLastSection(True)
-        
+        self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
         # Populate row labels
         for i, (name, _, _, *_) in enumerate(self.PARAMETERS):
             item = QTableWidgetItem(name)
@@ -275,17 +168,17 @@ class ParametersTable(QTableWidget):
     def update_parameters(self, params: "MarketParameters") -> None:
         """
         Update the table with new parameters.
-        
+
         Args:
             params: Market parameters to display
         """
         for i, param_def in enumerate(self.PARAMETERS):
             name, attr, fmt, *transform = param_def
-            
+
             value = getattr(params, attr, 0.0)
             if transform:
                 value = transform[0](value)
-            
+
             formatted = fmt.format(value)
             item = QTableWidgetItem(formatted)
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -300,12 +193,12 @@ class ParametersTable(QTableWidget):
 class MarketDataTab(QWidget):
     """
     Market Data tab displaying price information and sparkline.
-    
+
     This tab provides a quick overview of the current market data:
     - Key metrics in card format
     - Sparkline of recent price history
     - Full parameters table
-    
+
     Shows an empty state when no data is loaded.
     """
 
@@ -313,6 +206,10 @@ class MarketDataTab(QWidget):
         """Initialize the Market Data tab."""
         super().__init__(parent)
         self._has_data = False
+        self._sparkline_points = 60
+        self._content_widget: QWidget | None = None
+        self._current_content_width: int | None = None
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -320,113 +217,165 @@ class MarketDataTab(QWidget):
         layout = QVBoxLayout(self)
         layout.setSpacing(0)
         layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Stacked widget to toggle between empty state and content
+
         self._stack = QStackedWidget()
-        
-        # Empty state (index 0)
         self._empty_state = MarketDataEmptyState()
         self._stack.addWidget(self._empty_state)
-        
-        # Content widget (index 1)
-        content = QWidget()
+        self._stack.addWidget(self._create_scrollable_content())
+        layout.addWidget(self._stack)
+        self._stack.setCurrentIndex(0)
+
+    def _create_scrollable_content(self) -> QWidget:
+        """Build the scrollable container that hosts all market widgets."""
+        container = QWidget()  # level 1
+        container_layout = QVBoxLayout(container)  # level 2
+        container_layout.setSpacing(0)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll_area = QScrollArea()  # level 3
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setStyleSheet("QScrollArea { border: none; }")
+        scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        content = QWidget()  # level 4
+        self._content_widget = content
+        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         content_layout = QVBoxLayout(content)
         content_layout.setSpacing(16)
-        content_layout.setContentsMargins(16, 16, 16, 16)
-        
-        # Metrics cards row
+        content_layout.setContentsMargins(32, 16, 32, 16)
+
+        self._build_metric_cards(content_layout)
+        self._build_chart_section(content_layout)
+        self._build_splitter_section(content_layout)
+        self._build_sentiment_section(content_layout)
+
+        content_layout.addStretch()
+
+        scroll_area.setWidget(content)
+        container_layout.addWidget(scroll_area, 1)
+        return container
+
+    def set_content_width(self, width: int) -> None:
+        """Adjust maximum width to match available center panel size."""
+        self._current_content_width = width if width > 0 else None
+        self._apply_content_width()
+
+    def _apply_content_width(self) -> None:
+        """Apply stored width constraints to the scroll content."""
+        if self._content_widget is None:
+            return
+        width = self._current_content_width
+        if width is None:
+            self._content_widget.setMaximumWidth(16777215)
+            self._content_widget.setMinimumWidth(0)
+            return
+        target = max(720, width - 48)
+        self._content_widget.setMaximumWidth(target)
+        self._content_widget.setMinimumWidth(min(target, 1100))
+
+    def _build_metric_cards(self, parent_layout: QVBoxLayout) -> None:
+        """Create the horizontal row of metric cards."""
         metrics_layout = QHBoxLayout()
         metrics_layout.setSpacing(12)
-        
-        self._price_card = MetricCard("Current Price", "—", "Last close")
-        self._drift_card = MetricCard("Annual Drift", "—", "Estimated μ")
-        self._vol_card = MetricCard("Annual Volatility", "—", "Estimated σ")
-        self._data_points_card = MetricCard("Data Points", "—", "Trading days")
-        
-        metrics_layout.addWidget(self._price_card)
-        metrics_layout.addWidget(self._drift_card)
-        metrics_layout.addWidget(self._vol_card)
-        metrics_layout.addWidget(self._data_points_card)
-        
-        content_layout.addLayout(metrics_layout)
-        
-        # Splitter for sparkline and table
+
+        card_defs = [
+            ("_price_card", MetricCard("Current Price", "—", "Last close")),
+            ("_drift_card", MetricCard("Annual Drift", "—", "Estimated μ")),
+            ("_vol_card", MetricCard("Annual Volatility", "—", "Estimated σ")),
+            ("_data_points_card", MetricCard("Data Points", "—", "Trading days")),
+            ("_dividend_card", MetricCard("Dividend Yield", "—", "Trailing 12M")),
+            ("_volume_card", MetricCard("10-Day Avg Volume", "—")),
+        ]
+
+        for attr_name, card in card_defs:
+            setattr(self, attr_name, card)
+            metrics_layout.addWidget(card)
+
+        parent_layout.addLayout(metrics_layout)
+
+    def _build_chart_section(self, parent_layout: QVBoxLayout) -> None:
+        """Create the candlestick chart section."""
+        chart_group = QGroupBox("Candlestick & Volume")
+        chart_layout = QVBoxLayout(chart_group)
+        self._candlestick = CandlestickChart(max_points=120)
+        self._candlestick.setMinimumHeight(380)
+        chart_layout.addWidget(self._candlestick)
+        parent_layout.addWidget(chart_group)
+
+    def _build_splitter_section(self, parent_layout: QVBoxLayout) -> None:
+        """Create splitter containing sparkline and parameters table."""
         splitter = QSplitter(Qt.Orientation.Vertical)
-        
-        # Sparkline group
+
         sparkline_group = QGroupBox("Price History")
         sparkline_layout = QVBoxLayout(sparkline_group)
-        self._sparkline = SparklineCanvas()
-        self._sparkline.setMinimumHeight(200)
+        self._sparkline = SparklineChart(n_points=self._sparkline_points)
+        self._sparkline.setMinimumHeight(240)
         sparkline_layout.addWidget(self._sparkline)
         splitter.addWidget(sparkline_group)
-        
-        # Parameters table group
+
         params_group = QGroupBox("Estimated Parameters")
         params_layout = QVBoxLayout(params_group)
         self._params_table = ParametersTable()
+        self._params_table.setMinimumHeight(265)
         params_layout.addWidget(self._params_table)
         splitter.addWidget(params_group)
-        
-        content_layout.addWidget(splitter, 1)
-        
-        self._stack.addWidget(content)
-        layout.addWidget(self._stack)
-        
-        # Start with empty state
-        self._stack.setCurrentIndex(0)
+
+        parent_layout.addWidget(splitter, 1)
+
+    def _build_sentiment_section(self, parent_layout: QVBoxLayout) -> None:
+        """Create analyst sentiment widgets."""
+        sentiment_group = QGroupBox("Analyst Sentiment")
+        sentiment_layout = QVBoxLayout(sentiment_group)
+
+        self._recommendations_period = QLabel("Period: —")
+        self._recommendations_period.setObjectName("recommendationsPeriod")
+
+        self._recs_table = QTableWidget(0, 2)
+        self._recs_table.setMinimumHeight(205)
+        self._recs_table.setHorizontalHeaderLabels(["Metric", "Value"])
+        self._recs_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._recs_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self._recs_table.verticalHeader().setVisible(False)
+        self._recs_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        self._price_target_label = QLabel("No analyst price targets available.")
+        self._price_target_label.setObjectName("priceTargetLabel")
+
+        sentiment_layout.addWidget(self._recommendations_period)
+        sentiment_layout.addWidget(self._recs_table)
+        sentiment_layout.addWidget(self._price_target_label)
+        parent_layout.addWidget(sentiment_group)
 
     def update_from_state(self, state: "TickerAnalysisState") -> None:
         """
         Update all components from the application state.
-        
+
         Args:
             state: Current application state
         """
         # Check if we have data
         has_data = state.prices is not None and len(state.prices) > 0
-        
+
         if has_data:
-            # Show content
-            self._stack.setCurrentIndex(1)
-            self._has_data = True
-            
-            # Update sparkline
-            self._sparkline.update_data(state.prices, state.config.ticker)
+            self._show_content()
+            self._update_charts(state)
             self._data_points_card.set_value(str(len(state.prices)))
-            
-            # Update metric cards
-            if state.parameters is not None:
-                params = state.parameters
-                
-                # Price
-                self._price_card.set_value(f"${params.spot_price:.2f}")
-                
-                # Drift with color
-                drift_pct = params.drift * 100
-                self._drift_card.set_value(f"{drift_pct:+.2f}%")
-                drift_color = '#00d26a' if params.drift >= 0 else '#f23645'
-                self._drift_card.set_color(drift_color)
-                
-                # Volatility
-                vol_pct = params.volatility * 100
-                self._vol_card.set_value(f"{vol_pct:.2f}%")
-                
-                # Update table
-                self._params_table.update_parameters(params)
+            self._update_market_metrics(state)
+            self._update_metric_cards(state.parameters)
+            self._update_recommendations_table(state.recommendations)
+            self._update_price_targets_label(state.price_targets)
         else:
-            # Show empty state
-            self._stack.setCurrentIndex(0)
-            self._has_data = False
+            self._show_empty_state()
 
     def clear(self) -> None:
         """Clear all displayed data and show empty state."""
         self._sparkline.clear()
-        self._price_card.set_value("—")
-        self._drift_card.set_value("—")
-        self._drift_card.set_color("#ffffff")  # Reset color
-        self._vol_card.set_value("—")
-        self._data_points_card.set_value("—")
+        self._candlestick.clear()
+        self._reset_metric_cards()
+        self._recs_table.setRowCount(0)
+        self._recommendations_period.setText("Period: —")
+        self._price_target_label.setText("No analyst price targets available.")
         self._params_table.clear()
         self._has_data = False
         self._stack.setCurrentIndex(0)
@@ -435,3 +384,183 @@ class MarketDataTab(QWidget):
         """Set callback for the empty state action button."""
         self._empty_state.set_action_callback(callback)
 
+    def _show_content(self) -> None:
+        """Display populated content view."""
+        if self._stack.currentIndex() != 1:
+            self._stack.setCurrentIndex(1)
+        self._has_data = True
+
+    def _show_empty_state(self) -> None:
+        """Display the empty-state view."""
+        if self._stack.currentIndex() != 0:
+            self._stack.setCurrentIndex(0)
+        self._has_data = False
+
+    def _update_charts(self, state: "TickerAnalysisState") -> None:
+        """Refresh sparkline and candlestick charts."""
+        events = self._build_event_markers(state)
+        self._sparkline.update_data(
+            state.prices,
+            state.config.ticker,
+            dates=state.price_dates,
+            events=events,
+        )
+        self._candlestick.update_data(
+            opens=state.open_prices,
+            highs=state.high_prices,
+            lows=state.low_prices,
+            closes=state.prices,
+            volumes=state.volumes,
+            dates=state.price_dates,
+        )
+
+    def _update_metric_cards(self, params: "MarketParameters" | None) -> None:
+        """Refresh the core metric cards and parameters table."""
+        if params is None:
+            return
+
+        self._price_card.set_value(f"${params.spot_price:.2f}")
+
+        drift_pct = params.drift * 100
+        self._drift_card.set_value(f"{drift_pct:+.2f}%")
+        drift_color = "#00d26a" if params.drift >= 0 else "#f23645"
+        self._drift_card.set_color(drift_color)
+
+        vol_pct = params.volatility * 100
+        self._vol_card.set_value(f"{vol_pct:.2f}%")
+
+        self._params_table.update_parameters(params)
+
+    def _reset_metric_cards(self) -> None:
+        """Return metric cards to default state."""
+        self._price_card.set_value("—")
+        self._drift_card.set_value("—")
+        self._drift_card.set_color("#ffffff")
+        self._vol_card.set_value("—")
+        self._data_points_card.set_value("—")
+        self._dividend_card.set_value("—", subtitle="Trailing 12M", animate=False)
+        self._volume_card.set_value("—", animate=False)
+
+    def _build_event_markers(self, state: "TickerAnalysisState") -> list[tuple[int, str]]:
+        """Convert dividend/split events into sparkline annotations."""
+        if state.price_dates is None:
+            return []
+        window = min(self._sparkline_points, len(state.price_dates))
+        recent_dates = state.price_dates[-window:]
+        date_to_index = {recent_dates[idx].date(): idx for idx in range(len(recent_dates))}
+        markers: list[tuple[int, str]] = []
+        for event in state.dividends or []:
+            event_date = event.get("date")
+            if not isinstance(event_date, datetime):
+                continue
+            idx = date_to_index.get(event_date.date())
+            if idx is not None:
+                markers.append((idx, "Div"))
+        for event in state.splits or []:
+            event_date = event.get("date")
+            if not isinstance(event_date, datetime):
+                continue
+            idx = date_to_index.get(event_date.date())
+            if idx is not None:
+                markers.append((idx, "Split"))
+        return markers
+
+    def _update_market_metrics(self, state: "TickerAnalysisState") -> None:
+        """Update dividend and volume cards from state extras."""
+        fast_info = state.fast_info or {}
+        dividend_yield = fast_info.get("dividendYield")
+        last_dividend = (state.dividends or [])[-1] if state.dividends else None
+        subtitle = (
+            f"Last: {last_dividend['date'].strftime('%b %d, %Y')}"
+            if last_dividend and isinstance(last_dividend.get("date"), datetime)
+            else "Trailing 12M"
+        )
+        if dividend_yield is not None:
+            self._dividend_card.set_value(
+                f"{dividend_yield * 100:.2f}%",
+                subtitle=subtitle,
+                animate=False,
+            )
+        elif last_dividend and last_dividend.get("amount") is not None:
+            amount = last_dividend["amount"]
+            self._dividend_card.set_value(
+                f"${amount:.2f}",
+                subtitle=subtitle,
+                animate=False,
+            )
+        else:
+            self._dividend_card.set_value("—", subtitle="No dividends", animate=False)
+
+        avg_volume = (
+            fast_info.get("tenDayAverageVolume")
+            or fast_info.get("tenDayAverageVolume3Month")
+            or fast_info.get("threeMonthAverageVolume")
+        )
+        if avg_volume:
+            self._volume_card.set_value(f"{avg_volume:,.0f}", animate=False)
+        elif state.volumes is not None and len(state.volumes) > 0:
+            recent_vol = float(np.nanmean(state.volumes[-10:]))
+            self._volume_card.set_value(f"{recent_vol:,.0f}", animate=False)
+        else:
+            self._volume_card.set_value("—", animate=False)
+
+    def _update_recommendations_table(self, data: dict[str, Any] | None) -> None:
+        """Populate the recommendations table with yfinance summary data."""
+        self._recs_table.setRowCount(0)
+        if not data:
+            self._recommendations_period.setText("Period: —")
+            return
+        self._recommendations_period.setText(f"Period: {data.get('period', '—')}")
+        for key, value in data.items():
+            if key == "period":
+                continue
+            row = self._recs_table.rowCount()
+            self._recs_table.insertRow(row)
+            metric_item = QTableWidgetItem(self._format_key(key))
+            metric_item.setFlags(metric_item.flags() ^ Qt.ItemFlag.ItemIsEditable)
+            value_item = QTableWidgetItem(self._format_number(value))
+            value_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._recs_table.setItem(row, 0, metric_item)
+            self._recs_table.setItem(row, 1, value_item)
+
+    def _update_price_targets_label(self, targets: dict[str, Any] | None) -> None:
+        """Update analyst price target summary label."""
+        if not targets:
+            self._price_target_label.setText("No analyst price targets available.")
+            return
+        parts: list[str] = []
+        if targets.get("targetMean") is not None:
+            parts.append(f"Mean ${targets['targetMean']:,.2f}")
+        if targets.get("targetMedian") is not None:
+            parts.append(f"Median ${targets['targetMedian']:,.2f}")
+        range_parts: list[str] = []
+        if targets.get("targetHigh") is not None:
+            range_parts.append(f"High ${targets['targetHigh']:,.2f}")
+        if targets.get("targetLow") is not None:
+            range_parts.append(f"Low ${targets['targetLow']:,.2f}")
+        text = " | ".join(parts)
+        if range_parts:
+            range_text = " / ".join(range_parts)
+            text = f"{text} ({range_text})" if text else range_text
+        self._price_target_label.setText(text or "Analyst targets unavailable.")
+
+    @staticmethod
+    def _format_number(value: Any) -> str:
+        """Format numeric table values with commas."""
+        if value is None:
+            return "—"
+        if isinstance(value, (int, float, np.number, np.generic)):
+            return f"{float(value):,.2f}"
+        return str(value)
+
+    @staticmethod
+    def _format_key(key: str) -> str:
+        """Convert camelCase/underscored keys into readable labels."""
+        if not key:
+            return ""
+        lowered = key.lower()
+        for prefix in ("rating", "target"):
+            if lowered.startswith(prefix):
+                key = key[len(prefix) :]
+                break
+        return key.replace("_", " ").strip().title()
