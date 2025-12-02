@@ -213,7 +213,7 @@ class InteractiveChart(QWidget):
 
     def refresh(self) -> None:
         """Refresh the canvas."""
-        self._figure.tight_layout()
+        # self._figure.tight_layout() # commented out to prevent layout issues
         self._canvas.draw()
 
     def export_to_png(self, path: Path, dpi: int = 150) -> None:

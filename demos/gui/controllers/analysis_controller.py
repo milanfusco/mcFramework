@@ -437,28 +437,39 @@ class TickerAnalysisController(QObject):
         self,
         config: SimulationConfig,
         params: MarketParameters,
-        option_maturity: float = 0.25,
     ) -> tuple[OptionPricingResult, OptionPricingResult] | None:
         """
         Price call and put options using Monte Carlo.
         
+        Uses config.option_maturity for time to expiry and config.strike_pct
+        to calculate strike price as a percentage of spot.
+        
         Args:
             config: Simulation configuration
             params: Market parameters
-            option_maturity: Time to maturity in years (default 3 months)
             
         Returns:
             Tuple of (call_result, put_result) if successful, None otherwise
         """
         try:
-            self._log("Pricing options...")
+            # Calculate strike from percentage of spot price
+            strike = params.spot_price * (config.strike_pct / 100.0)
+            option_maturity = config.option_maturity
+            
+            # Determine moneyness description
+            if config.strike_pct < 98:
+                moneyness = "ITM Call"
+            elif config.strike_pct > 102:
+                moneyness = "OTM Call"
+            else:
+                moneyness = "ATM"
+            
+            self._log(f"Pricing {moneyness} options (K=${strike:.2f}, T={option_maturity:.2f}y)...")
             
             self._option_sim = BlackScholesSimulation(
                 name=f"{config.ticker} Option Pricing"
             )
             self._option_sim.set_seed(config.seed)
-            
-            strike = params.spot_price  # ATM option
             
             # Price call option
             call_mc_result = self._option_sim.run(
@@ -489,7 +500,8 @@ class TickerAnalysisController(QObject):
             call_result = OptionPricingResult.from_simulation_result(call_mc_result)
             put_result = OptionPricingResult.from_simulation_result(put_mc_result)
             
-            self._log(f"\n3-Month ATM Options (K=${strike:.2f}):")
+            days_to_expiry = int(option_maturity * 252)
+            self._log(f"\n{moneyness} Options (K=${strike:.2f}, {days_to_expiry}d to expiry):")
             self._log(f"  Call Price: ${call_result.price:.2f} ± ${call_result.std_error:.2f}")
             self._log(f"  Put Price:  ${put_result.price:.2f} ± ${put_result.std_error:.2f}")
             
@@ -508,15 +520,16 @@ class TickerAnalysisController(QObject):
         self,
         config: SimulationConfig,
         params: MarketParameters,
-        option_maturity: float = 0.25,
     ) -> tuple[GreeksResult, GreeksResult] | None:
         """
         Calculate option Greeks using finite differences.
         
+        Uses config.option_maturity for time to expiry and config.strike_pct
+        to calculate strike price as a percentage of spot.
+        
         Args:
             config: Simulation configuration
             params: Market parameters
-            option_maturity: Time to maturity in years
             
         Returns:
             Tuple of (call_greeks, put_greeks) if successful, None otherwise
@@ -525,6 +538,10 @@ class TickerAnalysisController(QObject):
             return None
 
         try:
+            # Calculate strike from percentage of spot price
+            strike = params.spot_price * (config.strike_pct / 100.0)
+            option_maturity = config.option_maturity
+            
             self._log("Calculating Greeks...")
             
             if self._option_sim is None:
@@ -532,8 +549,6 @@ class TickerAnalysisController(QObject):
                     name=f"{config.ticker} Greeks"
                 )
             self._option_sim.set_seed(config.seed)
-            
-            strike = params.spot_price
             
             # Calculate call Greeks
             call_greeks_dict = self._option_sim.calculate_greeks(

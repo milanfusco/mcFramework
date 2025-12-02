@@ -116,19 +116,19 @@ class ToastWidget(QFrame):
             QFrame#toast {{
                 background-color: {style['bg']};
                 border: 1px solid {style['border']};
-                border-radius: 8px;
-                padding: 8px;
+                border-radius: 6px;
+                padding: 4px;
             }}
         """)
         
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
         
         # Icon
         icon = QLabel(style["icon"])
         icon.setStyleSheet(f"""
-            font-size: 16px;
+            font-size: 12px;
             color: {style['text']};
         """)
         layout.addWidget(icon)
@@ -137,23 +137,23 @@ class ToastWidget(QFrame):
         msg_label = QLabel(message)
         msg_label.setStyleSheet(f"""
             color: {style['text']};
-            font-size: 13px;
+            font-size: 11px;
             font-weight: 500;
         """)
         msg_label.setWordWrap(True)
-        msg_label.setMaximumWidth(350)
+        msg_label.setMaximumWidth(200)
         layout.addWidget(msg_label, 1)
         
         # Close button
         close_btn = QPushButton("×")
-        close_btn.setFixedSize(20, 20)
+        close_btn.setFixedSize(14, 14)
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
                 border: none;
                 color: {style['text']};
-                font-size: 16px;
+                font-size: 12px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
@@ -163,7 +163,8 @@ class ToastWidget(QFrame):
         close_btn.clicked.connect(self._fade_out)
         layout.addWidget(close_btn)
         
-        self.setMinimumWidth(280)
+        self.setMinimumWidth(160)
+        self.setMaximumWidth(260)
         self.adjustSize()
 
     def _setup_animation(self) -> None:
@@ -198,8 +199,8 @@ class ToastManager(QWidget):
     """
     Manager for displaying toast notifications.
     
-    Handles positioning and stacking of multiple toasts.
-    Should be added as an overlay on the main window.
+    Can be embedded in a toolbar or used as an overlay.
+    Shows the most recent toast inline.
     """
 
     def __init__(self, parent: QWidget | None = None):
@@ -207,19 +208,18 @@ class ToastManager(QWidget):
         Initialize the toast manager.
         
         Args:
-            parent: Parent widget (usually main window)
+            parent: Parent widget (toolbar or main window)
         """
         super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
         self._toasts: list[ToastWidget] = []
         
-        # Layout for stacking toasts
-        layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
-        layout.setContentsMargins(0, 20, 20, 0)
-        layout.setSpacing(10)
+        # Horizontal layout for inline toolbar display
+        layout = QHBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(4)
 
     def show_toast(
         self,
@@ -238,15 +238,17 @@ class ToastManager(QWidget):
         Returns:
             The created toast widget
         """
+        # Remove old toasts if we have too many (keep max 1 for toolbar)
+        while len(self._toasts) >= 1:
+            old_toast = self._toasts[0]
+            old_toast.deleteLater()
+            self._toasts.remove(old_toast)
+        
         toast = ToastWidget(message, toast_type, duration, self)
         toast.closed.connect(lambda: self._remove_toast(toast))
         
         self._toasts.append(toast)
         self.layout().addWidget(toast)
-        
-        # Ensure manager is visible and sized
-        self.raise_()
-        self._update_geometry()
         
         return toast
 
@@ -270,15 +272,4 @@ class ToastManager(QWidget):
         """Remove a toast from the list."""
         if toast in self._toasts:
             self._toasts.remove(toast)
-
-    def _update_geometry(self) -> None:
-        """Update manager geometry to match parent."""
-        if self.parent():
-            parent = self.parent()
-            self.setGeometry(0, 0, parent.width(), parent.height())
-
-    def resizeEvent(self, event) -> None:
-        """Handle resize events."""
-        super().resizeEvent(event)
-        self._update_geometry()
 

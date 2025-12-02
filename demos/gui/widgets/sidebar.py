@@ -53,9 +53,9 @@ GROUP_CONTENT_SPACING = 6
 LABEL_MIN_WIDTH = 100
 
 # Ticker input constraints
-TICKER_MAX_LENGTH = 10
+TICKER_MAX_LENGTH = 10  # Allows ^GSPC, BRK.A, etc.
 MAX_RECENT_TICKERS = 10
-DEFAULT_RECENT_TICKERS = ["AAPL", "MSFT", "GOOGL", "TSLA", "SPY"]
+DEFAULT_RECENT_TICKERS = ["AAPL", "MSFT", "GOOGL", "TSLA", "^SPX"]
 
 # Historical days constraints
 MIN_HISTORICAL_DAYS = 30
@@ -88,6 +88,19 @@ MAX_RATE = 0.20
 DEFAULT_RATE = 0.05
 RATE_STEP = 0.005
 RATE_DECIMALS = 3
+
+# Option maturity constraints
+MIN_MATURITY = 0.01  # ~3.6 days
+MAX_MATURITY = 2.0   # 2 years
+DEFAULT_MATURITY = 0.25  # 3 months
+MATURITY_STEP = 0.01
+MATURITY_DECIMALS = 2
+
+# Strike percentage constraints (as % of spot)
+MIN_STRIKE_PCT = 50.0
+MAX_STRIKE_PCT = 150.0
+DEFAULT_STRIKE_PCT = 100.0  # ATM
+STRIKE_PCT_STEP = 1.0
 
 # Animation constants
 PULSE_FADE_DURATION_MS = 400
@@ -422,7 +435,11 @@ class SidebarWidget(QWidget):
         self._sim_group = self._create_simulation_group()
         layout.addWidget(self._sim_group)
         
-        # Options Group
+        # Option Pricing Group
+        self._option_pricing_group = self._create_option_pricing_group()
+        layout.addWidget(self._option_pricing_group)
+        
+        # Advanced Options Group
         self._options_group = self._create_options_group()
         layout.addWidget(self._options_group)
         
@@ -449,9 +466,12 @@ class SidebarWidget(QWidget):
         
         # Ticker input
         self._ticker_input = QLineEdit()
-        self._ticker_input.setPlaceholderText("e.g., AAPL")
+        self._ticker_input.setPlaceholderText("e.g., AAPL, ^SPX")
         self._ticker_input.setText("AAPL")
         self._ticker_input.setMaxLength(TICKER_MAX_LENGTH)
+        self._ticker_input.setToolTip(
+            "Enter ticker symbol (AAPL, MSFT) or index (^SPX, ^DJI, ^VIX)"
+        )
         self._ticker_input.setAccessibleName("Ticker Symbol")
         self._ticker_input.setAccessibleDescription(
             "Enter a stock ticker symbol like AAPL or MSFT"
@@ -561,9 +581,73 @@ class SidebarWidget(QWidget):
         
         return group
 
+    def _create_option_pricing_group(self) -> ControlGroup:
+        """Create the option pricing parameters group."""
+        group = ControlGroup("Option Contract")
+        
+        # Option maturity
+        self._maturity_spin = QDoubleSpinBox()
+        self._maturity_spin.setRange(MIN_MATURITY, MAX_MATURITY)
+        self._maturity_spin.setValue(DEFAULT_MATURITY)
+        self._maturity_spin.setSingleStep(MATURITY_STEP)
+        self._maturity_spin.setSuffix(" years")
+        self._maturity_spin.setDecimals(MATURITY_DECIMALS)
+        self._maturity_spin.setToolTip(
+            "Time to option expiration (0.25 = 3 months, 1.0 = 1 year)"
+        )
+        group.add_row("Maturity:", self._maturity_spin)
+        
+        # Days equivalent label
+        self._maturity_days_label = QLabel()
+        self._maturity_days_label.setStyleSheet("color: #888; font-size: 10px;")
+        self._update_maturity_days_label()
+        group.add_widget(self._maturity_days_label)
+        
+        # Strike percentage
+        self._strike_spin = QDoubleSpinBox()
+        self._strike_spin.setRange(MIN_STRIKE_PCT, MAX_STRIKE_PCT)
+        self._strike_spin.setValue(DEFAULT_STRIKE_PCT)
+        self._strike_spin.setSingleStep(STRIKE_PCT_STEP)
+        self._strike_spin.setSuffix("%")
+        self._strike_spin.setDecimals(0)
+        self._strike_spin.setToolTip(
+            "Strike as % of spot price (100% = ATM, <100% = ITM call, >100% = OTM call)"
+        )
+        group.add_row("Strike:", self._strike_spin)
+        
+        # Moneyness hint label
+        self._strike_hint_label = QLabel()
+        self._strike_hint_label.setStyleSheet("color: #888; font-size: 10px;")
+        self._update_strike_hint_label()
+        group.add_widget(self._strike_hint_label)
+        
+        return group
+
+    def _update_maturity_days_label(self) -> None:
+        """Update the maturity days equivalent label."""
+        years = self._maturity_spin.value()
+        days = int(years * 252)  # Trading days
+        calendar_days = int(years * 365)
+        self._maturity_days_label.setText(f"≈ {days} trading days ({calendar_days} calendar)")
+
+    def _update_strike_hint_label(self) -> None:
+        """Update the strike moneyness hint label."""
+        pct = self._strike_spin.value()
+        if pct < 98:
+            hint = "ITM Call / OTM Put"
+            color = "#2adf7a"
+        elif pct > 102:
+            hint = "OTM Call / ITM Put"
+            color = "#ff5a6a"
+        else:
+            hint = "At-the-Money (ATM)"
+            color = "#f0b90b"
+        self._strike_hint_label.setText(hint)
+        self._strike_hint_label.setStyleSheet(f"color: {color}; font-size: 10px;")
+
     def _create_options_group(self) -> CollapsibleGroup:
         """Create the options toggles group (collapsible)."""
-        group = CollapsibleGroup("Options", collapsed=True)
+        group = CollapsibleGroup("Advanced Options", collapsed=True)
         
         # Compute Greeks checkbox
         self._greeks_check = QCheckBox("Calculate Greeks")
@@ -672,6 +756,12 @@ class SidebarWidget(QWidget):
         self._greeks_check.stateChanged.connect(self._on_config_changed)
         self._3d_check.stateChanged.connect(self._on_config_changed)
         
+        # Option pricing signals
+        self._maturity_spin.valueChanged.connect(self._on_config_changed)
+        self._maturity_spin.valueChanged.connect(self._update_maturity_days_label)
+        self._strike_spin.valueChanged.connect(self._on_config_changed)
+        self._strike_spin.valueChanged.connect(self._update_strike_hint_label)
+        
         # Preset signals
         self._preset_combo.currentIndexChanged.connect(self._update_preset_hint)
         self._apply_preset_btn.clicked.connect(self._on_apply_preset)
@@ -689,12 +779,25 @@ class SidebarWidget(QWidget):
         """
         Validate ticker input and provide visual feedback.
         
+        Supports:
+        - Standard tickers: AAPL, MSFT, GOOGL
+        - Index symbols: ^SPX, ^GSPC, ^DJI, ^VIX
+        - Share classes: BRK.A, BRK.B
+        - Preferred/warrants: BAC-PL, SPCE.WS
+        
         Args:
             text: Current ticker input text
         """
+        import re
+        
         text = text.strip().upper()
-        # Valid if: non-empty, alphabetic only, 1-5 characters
-        is_valid = bool(text) and text.isalpha() and 1 <= len(text) <= 5
+        
+        # Pattern allows:
+        # - Optional ^ prefix for indexes
+        # - Alphanumeric base (1-5 chars)
+        # - Optional suffix with . or - followed by 1-2 alphanumeric chars
+        pattern = r"^\^?[A-Z]{1,5}([.\-][A-Z0-9]{1,2})?$"
+        is_valid = bool(text) and bool(re.match(pattern, text))
         
         self._ticker_valid = is_valid
         
@@ -781,6 +884,8 @@ class SidebarWidget(QWidget):
             compute_greeks=self._greeks_check.isChecked(),
             generate_3d_plots=self._3d_check.isChecked(),
             risk_free_rate=self._rate_spin.value(),
+            option_maturity=self._maturity_spin.value(),
+            strike_pct=self._strike_spin.value(),
         )
 
     def set_config(self, config: "SimulationConfig") -> None:
@@ -799,6 +904,8 @@ class SidebarWidget(QWidget):
         self._greeks_check.setChecked(config.compute_greeks)
         self._3d_check.setChecked(config.generate_3d_plots)
         self._rate_spin.setValue(config.risk_free_rate)
+        self._maturity_spin.setValue(config.option_maturity)
+        self._strike_spin.setValue(config.strike_pct)
 
     def is_auto_fetch_enabled(self) -> bool:
         """Check if auto-fetch is enabled."""

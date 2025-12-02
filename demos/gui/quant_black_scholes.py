@@ -158,6 +158,20 @@ class QuantBlackScholesWindow(QMainWindow):
         self._folder_action.setToolTip("Open output folder in file explorer")
         self._folder_action.triggered.connect(self._on_open_folder_clicked)
         toolbar.addAction(self._folder_action)
+        
+        # Spacer to push toast area to right
+        spacer = QWidget()
+        spacer.setStyleSheet("background: transparent;")
+        spacer.setSizePolicy(
+            spacer.sizePolicy().horizontalPolicy().Expanding,
+            spacer.sizePolicy().verticalPolicy().Preferred,
+        )
+        toolbar.addWidget(spacer)
+        
+        # Toast notification area (embedded in toolbar)
+        self._toast_manager = ToastManager(toolbar)
+        self._toast_manager.setFixedWidth(280)
+        toolbar.addWidget(self._toast_manager)
 
     def _setup_central_widget(self) -> None:
         """Set up the main layout with sidebar, tabs, and log panel."""
@@ -206,10 +220,6 @@ class QuantBlackScholesWindow(QMainWindow):
         splitter.splitterMoved.connect(self._on_splitter_moved)
         layout.addWidget(splitter, 1)
         self._broadcast_tab_content_width()
-        
-        # Toast notification overlay
-        self._toast_manager = ToastManager(central)
-        self._toast_manager.raise_()
 
     def _setup_status_bar(self) -> None:
         """Set up the status bar with persistent widgets."""
@@ -538,8 +548,10 @@ class QuantBlackScholesWindow(QMainWindow):
         if not self._state.has_market_data():
             return
         
-        strike = self._state.parameters.spot_price  # ATM strike
-        T = 0.25  # 3-month option
+        # Use config values for strike and maturity
+        spot_for_strike = self._state.parameters.spot_price
+        strike = spot_for_strike * (self._state.config.strike_pct / 100.0)
+        T = self._state.config.option_maturity
         r = self._state.config.risk_free_rate
         
         # Calculate adjusted prices using analytical formulas

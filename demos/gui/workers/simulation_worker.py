@@ -163,7 +163,7 @@ class SimulationWorker(QThread):
             # Phase 2: Option pricing
             self.phase_started.emit("Option Pricing")
             pricing_result = self._controller.price_options(
-                self._config, params, option_maturity=0.25
+                self._config, params
             )
             
             if self._is_cancelled:
@@ -183,7 +183,7 @@ class SimulationWorker(QThread):
             if self._config.compute_greeks:
                 self.phase_started.emit("Greeks Calculation")
                 greeks_result = self._controller.calculate_greeks(
-                    self._config, params, option_maturity=0.25
+                    self._config, params
                 )
                 
                 if self._is_cancelled:

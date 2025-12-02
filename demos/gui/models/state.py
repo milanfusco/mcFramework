@@ -147,13 +147,15 @@ class SimulationConfig:
     Attributes:
         ticker: Stock ticker symbol
         historical_days: Number of historical days to fetch
-        forecast_horizon: Forecast horizon in years
+        forecast_horizon: Forecast horizon in years (for path simulation)
         n_simulations: Number of Monte Carlo simulations
         n_paths_viz: Number of paths for visualization
         seed: Random seed for reproducibility
         compute_greeks: Whether to calculate Greeks
         generate_3d_plots: Whether to generate 3D surface plots
         risk_free_rate: Risk-free interest rate
+        option_maturity: Option time to expiration in years
+        strike_pct: Strike price as percentage of spot (100 = ATM)
     """
     ticker: str = "AAPL"
     historical_days: int = 252
@@ -164,6 +166,8 @@ class SimulationConfig:
     compute_greeks: bool = True
     generate_3d_plots: bool = True
     risk_free_rate: float = 0.05
+    option_maturity: float = 0.25  # 3 months default
+    strike_pct: float = 100.0  # ATM by default
 
 
 @dataclass

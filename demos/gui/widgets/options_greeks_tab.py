@@ -7,6 +7,7 @@ results, Greeks sensitivities, and interactive parameter sliders.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
@@ -28,6 +29,147 @@ from .empty_state import OptionsEmptyState
 
 if TYPE_CHECKING:
     from ..models.state import GreeksResult, OptionPricingResult, TickerAnalysisState
+
+
+@dataclass
+class ContractParameters:
+    """Parameters defining the option contract being priced."""
+
+    ticker: str = ""
+    spot_price: float = 0.0
+    strike_price: float = 0.0
+    time_to_expiry: float = 0.25  # Years
+    risk_free_rate: float = 0.05
+    volatility: float = 0.2
+    exercise_style: str = "European"
+
+    @property
+    def moneyness(self) -> str:
+        """Determine if option is ITM, ATM, or OTM (relative to call)."""
+        if self.spot_price == 0 or self.strike_price == 0:
+            return "—"
+        ratio = self.spot_price / self.strike_price
+        if ratio > 1.02:
+            return "ITM (Call) / OTM (Put)"
+        elif ratio < 0.98:
+            return "OTM (Call) / ITM (Put)"
+        return "ATM"
+
+    @property
+    def days_to_expiry(self) -> int:
+        """Convert years to approximate trading days."""
+        return int(self.time_to_expiry * 252)
+
+
+class ContractDetailsPanel(QGroupBox):
+    """
+    Panel displaying the option contract parameters.
+
+    Shows all parameters used to price the options so users
+    understand exactly what is being calculated.
+    """
+
+    def __init__(self, parent: QWidget | None = None):
+        """Initialize the contract details panel."""
+        super().__init__("Contract Details", parent)
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        """Set up the panel UI."""
+        layout = QGridLayout(self)
+        layout.setSpacing(8)
+        layout.setContentsMargins(12, 16, 12, 12)
+
+        # Create styled labels for parameters
+        self._labels: dict[str, QLabel] = {}
+
+        params = [
+            ("ticker", "Underlying", "—"),
+            ("spot", "Spot Price (S₀)", "—"),
+            ("strike", "Strike Price (K)", "—"),
+            ("moneyness", "Moneyness", "—"),
+            ("expiry", "Time to Expiry", "—"),
+            ("rate", "Risk-free Rate (r)", "—"),
+            ("vol", "Volatility (σ)", "—"),
+            ("style", "Exercise Style", "—"),
+        ]
+
+        for i, (key, label_text, default) in enumerate(params):
+            # Parameter name
+            name_label = QLabel(f"{label_text}:")
+            name_label.setStyleSheet("color: #8a8a9a; font-size: 11px;")
+            layout.addWidget(name_label, i, 0)
+
+            # Parameter value
+            value_label = QLabel(default)
+            value_label.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            value_label.setStyleSheet(
+                "font-family: 'JetBrains Mono', 'SF Mono', monospace; "
+                "font-size: 11px; font-weight: 500; color: #e0e0e0;"
+            )
+            layout.addWidget(value_label, i, 1)
+            self._labels[key] = value_label
+
+        # Add stretch column
+        layout.setColumnStretch(1, 1)
+
+    def update_parameters(self, params: ContractParameters) -> None:
+        """
+        Update the display with contract parameters.
+
+        Args:
+            params: Contract parameters to display
+        """
+        self._labels["ticker"].setText(params.ticker or "—")
+
+        if params.spot_price > 0:
+            self._labels["spot"].setText(f"${params.spot_price:,.2f}")
+        else:
+            self._labels["spot"].setText("—")
+
+        if params.strike_price > 0:
+            self._labels["strike"].setText(f"${params.strike_price:,.2f}")
+        else:
+            self._labels["strike"].setText("—")
+
+        self._labels["moneyness"].setText(params.moneyness)
+
+        if params.time_to_expiry > 0:
+            days = params.days_to_expiry
+            years_str = f"{params.time_to_expiry:.2f}Y"
+            self._labels["expiry"].setText(f"{days}d ({years_str})")
+        else:
+            self._labels["expiry"].setText("—")
+
+        self._labels["rate"].setText(f"{params.risk_free_rate:.2%}")
+        self._labels["vol"].setText(f"{params.volatility:.2%}")
+        self._labels["style"].setText(params.exercise_style)
+
+        # Highlight moneyness with color
+        moneyness = params.moneyness
+        if "ITM (Call)" in moneyness:
+            self._labels["moneyness"].setStyleSheet(
+                "color: #2adf7a; font-weight: bold; font-size: 11px;"
+            )
+        elif "OTM (Call)" in moneyness:
+            self._labels["moneyness"].setStyleSheet(
+                "color: #ff5a6a; font-weight: bold; font-size: 11px;"
+            )
+        else:
+            self._labels["moneyness"].setStyleSheet(
+                "color: #f0b90b; font-weight: bold; font-size: 11px;"
+            )
+
+    def clear(self) -> None:
+        """Clear all displayed values."""
+        for label in self._labels.values():
+            label.setText("—")
+            label.setStyleSheet(
+                "font-family: 'JetBrains Mono', 'SF Mono', monospace; "
+                "font-size: 11px; font-weight: 500; color: #e0e0e0;"
+            )
 
 
 class OptionPriceCard(QFrame):
@@ -589,24 +731,44 @@ class OptionsGreeksTab(QWidget):
         content_layout.setSpacing(16)
         content_layout.setContentsMargins(16, 16, 16, 16)
         
-        # Left side: Cards and Greeks table stacked
+        # Left side: Contract details, Cards, and Greeks table
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setSpacing(16)
         left_layout.setContentsMargins(0, 0, 0, 0)
         
+        # Top row: Contract details + pricing cards side by side
+        top_row = QHBoxLayout()
+        top_row.setSpacing(16)
+        
+        # Contract details panel
+        self._contract_details = ContractDetailsPanel()
+        self._contract_details.setMinimumWidth(220)
+        self._contract_details.setMaximumWidth(280)
+        top_row.addWidget(self._contract_details)
+        
         # Option pricing cards
-        cards_layout = QHBoxLayout()
-        cards_layout.setSpacing(16)
+        cards_container = QWidget()
+        cards_layout = QVBoxLayout(cards_container)
+        cards_layout.setSpacing(8)
+        cards_layout.setContentsMargins(0, 0, 0, 0)
+        
+        cards_row = QHBoxLayout()
+        cards_row.setSpacing(16)
         
         self._call_card = OptionPriceCard("Call")
         self._put_card = OptionPriceCard("Put")
         
-        cards_layout.addWidget(self._call_card)
-        cards_layout.addWidget(self._put_card)
+        cards_row.addWidget(self._call_card)
+        cards_row.addWidget(self._put_card)
+        cards_row.addStretch()
+        
+        cards_layout.addLayout(cards_row)
         cards_layout.addStretch()
         
-        left_layout.addLayout(cards_layout)
+        top_row.addWidget(cards_container, 1)
+        
+        left_layout.addLayout(top_row)
         
         # Greeks table (compact)
         greeks_group = QGroupBox("Option Greeks")
@@ -627,6 +789,9 @@ class OptionsGreeksTab(QWidget):
         
         self._stack.addWidget(content)
         layout.addWidget(self._stack)
+        
+        # Store current contract parameters
+        self._contract_params = ContractParameters()
         
         # Start with empty state
         self._stack.setCurrentIndex(0)
@@ -655,6 +820,22 @@ class OptionsGreeksTab(QWidget):
             # Show content
             self._stack.setCurrentIndex(1)
             self._has_data = True
+            
+            # Update contract details panel
+            if state.parameters:
+                spot = state.parameters.spot_price
+                # Strike is calculated from strike_pct in config
+                strike = spot * (state.config.strike_pct / 100.0)
+                self._contract_params = ContractParameters(
+                    ticker=state.config.ticker,
+                    spot_price=spot,
+                    strike_price=strike,
+                    time_to_expiry=state.config.option_maturity,
+                    risk_free_rate=state.config.risk_free_rate,
+                    volatility=state.parameters.volatility,
+                    exercise_style="European",
+                )
+                self._contract_details.update_parameters(self._contract_params)
             
             # Update pricing cards
             if state.call_result:
@@ -707,6 +888,8 @@ class OptionsGreeksTab(QWidget):
 
     def clear(self) -> None:
         """Clear all displayed data and show empty state."""
+        self._contract_details.clear()
+        self._contract_params = ContractParameters()
         self._call_card.clear()
         self._put_card.clear()
         self._greeks_table.clear()
