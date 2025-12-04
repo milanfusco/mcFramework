@@ -1,26 +1,45 @@
 r"""
-mcframework.stats_engine
-========================
-Statistical metrics and the orchestration engine used by the Monte Carlo
-framework.
+Statistical metrics and orchestration engine for Monte Carlo simulations.
 
-- :class:`~mcframework.stats_engine.StatsContext`: an explicit configuration object shared by all metrics.
-- :class:`FnMetric`: a lightweight adapter that binds a metric name to a
-  callable.
-- :class:`StatsEngine`: an evaluator that feeds arrays and contexts into one or
-  more metrics while tracking skips/errors.
+This module provides:
 
-Core metrics cover canonical descriptive statistics (mean, variance, skew,
-kurtosis), quantiles, and several flavors` of confidence intervals such as the
-parametric :func:`ci_mean`, the bootstrap :func:`ci_mean_bootstrap`, and the
-distribution-free :func:`ci_mean_chebyshev`. Helper utilities add probability
-inequalities (Markov, Chebyshev) and target-aware diagnostics (bias, MSE).
+Configuration
+    :class:`StatsContext` — Shared configuration for all metric computations
+    (confidence level, NaN policy, bootstrap settings, etc.)
+
+Descriptive Metrics
+    :func:`mean`, :func:`std`, :func:`percentiles`, :func:`skew`, :func:`kurtosis`
+
+Confidence Intervals
+    - :func:`ci_mean` — Parametric CI using z/t critical values
+    - :func:`ci_mean_bootstrap` — Bootstrap CI (percentile or BCa)
+    - :func:`ci_mean_chebyshev` — Distribution-free Chebyshev bound
+
+Target-Based Metrics
+    :func:`bias_to_target`, :func:`mse_to_target`, :func:`markov_error_prob`,
+    :func:`chebyshev_required_n`
+
+Engine
+    :class:`StatsEngine` — Orchestrator that evaluates multiple metrics
+    :class:`FnMetric` — Adapter to bind a name to a metric function
+    :obj:`DEFAULT_ENGINE` — Pre-configured engine with all standard metrics
+
+Example
+-------
+>>> from mcframework.stats_engine import DEFAULT_ENGINE, StatsContext
+>>> import numpy as np
+>>> data = np.random.normal(0, 1, 10000)
+>>> ctx = StatsContext(n=len(data), confidence=0.95)
+>>> result = DEFAULT_ENGINE.compute(data, ctx)
+>>> result.metrics['mean']  # doctest: +SKIP
+0.0012
 
 See Also
 --------
 mcframework.utils.autocrit
-    Selects a :math:`z` or :math:`t` critical value for a target confidence
-    level and effective sample size.
+    Selects z or t critical value based on sample size.
+mcframework.core.MonteCarloSimulation
+    Simulation base class that uses this engine.
 """
 
 
@@ -188,7 +207,7 @@ class StatsContext:
     eps : float, optional
         Tolerance used by Chebyshev sizing and Markov bounds, when required.
     ddof : int, default 1
-        Degrees of freedom for :func:`std` (1 => Bessel correction).
+        Degrees of freedom for :func:`numpy.std` (1 => Bessel correction).
     ess : int, optional
         Effective sample size override (e.g., from MCMC diagnostics).
     rng : int or numpy.random.Generator, optional

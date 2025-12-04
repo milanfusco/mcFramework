@@ -1,43 +1,40 @@
 r"""
-
-mcframework.core
-================
-
 Core primitives for building and running Monte Carlo simulations.
-
-The core module of the Monte Carlo Framework provides essential classes and functions to set up and
-run Monte Carlo simulations. It includes tools for defining simulation parameters, executing
-simulations, and managing results.
 
 This module provides:
 
-* :class:`~mcframework.core.MonteCarloSimulation` - abstract base for simulations.
-* :class:`~mcframework.core.SimulationResult` - a lightweight container for outputs.
-* :class:`~mcframework.core.MonteCarloFramework` - registry + convenience runner.
-* :func:`~mcframework.core.make_blocks` - chunking helper for parallel runs.
+Classes
+    :class:`MonteCarloSimulation` — Abstract base class for defining simulations
+    :class:`SimulationResult` — Container for simulation outputs and statistics
+    :class:`MonteCarloFramework` — Registry and runner for multiple simulations
 
-Parallel backends
--------------------
+Functions
+    :func:`make_blocks` — Chunking helper for parallel work distribution
 
-``MonteCarloSimulation.run(..., parallel=True)`` can use threads or processes.
-By default (``MonteCarloSimulation.parallel_backend`` = ``"auto"``),
-the framework **prefers threads** because NumPy's random generators release the Global
-Interpreter Lock (GIL), avoiding the heavy spawn/pickle cost of processes on macOS.
-On Windows, ``"auto"`` resolves to processes to sidestep thread serialization effects.
+Parallel Backends
+    - ``"thread"`` — ThreadPoolExecutor (default on POSIX, NumPy releases GIL)
+    - ``"process"`` — ProcessPoolExecutor with spawn (default on Windows)
+    - ``"auto"`` — Platform-appropriate selection
 
-Set ``parallel_backend = "process"`` for heavy, Python-bound work that does **not**
-release the GIL (the default on Windows).
+Example
+-------
+>>> from mcframework.core import MonteCarloSimulation
+>>> class DiceSim(MonteCarloSimulation):
+...     def single_simulation(self, _rng=None):
+...         rng = self._rng(_rng, self.rng)
+...         return float(rng.integers(1, 7, size=2).sum())
+>>> sim = DiceSim(name="2d6")
+>>> sim.set_seed(42)
+>>> result = sim.run(10_000)  # doctest: +SKIP
+>>> result.mean  # doctest: +SKIP
+7.0
 
-Confidence intervals
---------------------
-
-By default a 95% confidence interval for the mean uses the usual formula
-
-.. math::
-
-   \bar{X} \pm z_{\alpha/2}\,\frac{s}{\sqrt{n}}
-
-or a t–critical value if requested via the stats engine.
+See Also
+--------
+mcframework.stats_engine
+    Statistical metrics and confidence intervals.
+mcframework.sims
+    Built-in simulations (Pi, Portfolio, Black-Scholes).
 """
 
 from __future__ import annotations
@@ -144,23 +141,23 @@ class SimulationResult:
 
     Attributes
     ----------
-    results : ndarray of float
-        Raw simulation values of length :attr:`n_simulations`.
+    results : :class:`numpy.ndarray`
+        Float array of raw simulation values of length :attr:`n_simulations`.
     n_simulations : int
         Number of simulations performed.
     execution_time : float
-        Wall-clock time in seconds.
+        Time taken to execute the simulations in seconds.
     mean : float
         Sample mean :math:`\bar X`.
     std : float
-        Sample standard deviation with ``ddof=1``.
+        Sample standard deviation with ``ddof=1`` (default for NumPy's :func:`numpy.std`).
     percentiles : dict[int, float]
-        Map of computed percentiles, e.g. ``{5: ..., 50: ..., 95: ...}``.
+        Dictionary of computed percentiles, e.g. ``{5: 0.05, 50: 0.50, 95: 0.95}``.
     stats : dict
-        Additional statistics from the stats engine (e.g. ``"ci_mean"``).
+        Additional statistics from the stats engine (e.g. ``"ci_mean"``, ``"skew"``, etc.).
     metadata : dict
-        Freeform metadata. Includes ``"simulation_name"``, ``"timestamp"``,
-        ``"seed_entropy"``, ``"requested_percentiles"`` and ``"engine_defaults_used"``.
+        Freeform metadata. Includes ``"simulation_name"``, ``"timestamp"``, ``"seed_entropy"``,
+        ``"requested_percentiles"``, and ``"engine_defaults_used"``.
     """
 
     results: np.ndarray
@@ -184,10 +181,10 @@ class SimulationResult:
 
         Parameters
         ----------
-        confidence : float, default ``0.95``
-            Confidence level for the displayed CI.
-        method : {"auto", "z", "t"}, default ``"auto"`` Which critical value to use (``"auto"``
-            chooses based on ``n``).
+        confidence : float
+            Confidence level for the displayed CI. (default ``0.95``)
+        method : str
+            Which critical value to use (``"auto"`` chooses based on ``n``). (default ``"auto"``)
 
         Returns
         -------
@@ -196,7 +193,7 @@ class SimulationResult:
 
         Notes
         -----
-        The CI in the string is
+        The parametric CI method for the mean is given by:
 
         .. math::
 
@@ -343,7 +340,8 @@ class MonteCarloSimulation(ABC):
 
         Returns
         -------
-        the result of the simulation run.
+        float
+            The result of the simulation run.
         """
 
     def set_seed(self, seed: int | None) -> None:
@@ -353,7 +351,7 @@ class MonteCarloSimulation(ABC):
         Parameters
         ----------
         seed : int or None
-            Seed for :class:`numpy.random.SeedSequence`. ``None`` chooses entropy
+            Seed for :class:`numpy.random.SeedSequence`. :data:`None` chooses entropy
             from the OS.
 
         Notes
