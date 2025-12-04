@@ -105,6 +105,9 @@ class InteractiveChart(QWidget):
         # Tooltip annotation
         self._tooltip = None
         
+        # Watermark text
+        self._watermark_text = None
+        
         # Navigation toolbar
         self._toolbar = NavigationToolbar2QT(self._canvas, self)
         self._style_toolbar()
@@ -214,7 +217,34 @@ class InteractiveChart(QWidget):
     def refresh(self) -> None:
         """Refresh the canvas."""
         # self._figure.tight_layout() # commented out to prevent layout issues
+        self._add_watermark()
         self._canvas.draw()
+
+    def _add_watermark(self) -> None:
+        """Add a watermark with date and mcframework branding."""
+        # Remove existing watermark if present
+        if hasattr(self, '_watermark_text') and self._watermark_text is not None:
+            try:
+                self._watermark_text.remove()
+            except ValueError:
+                pass
+        
+        # Create watermark text with date
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        watermark = f"mcframework • {date_str}"
+        
+        # Add watermark in the bottom-left corner, below the axes
+        self._watermark_text = self._figure.text(
+            0.01, 0.005,  # Position: bottom-left, very low
+            watermark,
+            fontsize=7,
+            color="#5a5a7a",
+            alpha=0.5,
+            ha='left',
+            va='bottom',
+            transform=self._figure.transFigure,
+            style='italic',
+        )
 
     def export_to_png(self, path: Path, dpi: int = 150) -> None:
         """

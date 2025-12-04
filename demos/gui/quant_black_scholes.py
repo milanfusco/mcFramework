@@ -729,6 +729,10 @@ class QuantBlackScholesWindow(QMainWindow):
         # Add to recent tickers
         self._sidebar.add_to_recent(self._state.config.ticker)
         
+        # Update sidebar with spot price for strike calculations
+        if self._state.parameters:
+            self._sidebar.set_spot_price(self._state.parameters.spot_price)
+        
         # Update UI
         self._market_tab.update_from_state(self._state)
         self._tabs.setCurrentWidget(self._market_tab)
@@ -746,6 +750,10 @@ class QuantBlackScholesWindow(QMainWindow):
         """Handle fetch completion and start simulation."""
         # Add to recent tickers
         self._sidebar.add_to_recent(self._state.config.ticker)
+        
+        # Update sidebar with spot price for strike calculations
+        if self._state.parameters:
+            self._sidebar.set_spot_price(self._state.parameters.spot_price)
         
         self._market_tab.update_from_state(self._state)
         self._start_simulation(self._state.config)

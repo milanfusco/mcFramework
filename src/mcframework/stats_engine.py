@@ -731,7 +731,9 @@ def _effective_sample_size(x: np.ndarray, ctx: StatsContext) -> int:
         Effective sample size according to :meth:`~mcframework.stats_engine.StatsContext.eff_n`.
     """
     arr, finite = _clean(x, ctx)
-    return ctx.eff_n(observed_len=arr.size, finite_count=finite)
+    # finite is a boolean mask; pass the count of True values
+    finite_count = int(np.sum(finite))
+    return ctx.eff_n(observed_len=arr.size, finite_count=finite_count)
 
 
 def mean(x: np.ndarray, ctx: StatsContext) -> float | None:
@@ -795,7 +797,9 @@ def std(x: np.ndarray, ctx: StatsContext) -> float | None:
     """
     ctx = _ensure_ctx(ctx, x)
     arr, finite = _clean(x, ctx)
-    n_eff = ctx.eff_n(observed_len=arr.size, finite_count=finite)
+    # finite is a boolean mask; pass the count of True values
+    finite_count = int(np.sum(finite))
+    n_eff = ctx.eff_n(observed_len=arr.size, finite_count=finite_count)
     if n_eff <= 1:
         return None
     return float(np.std(arr, ddof=ctx.ddof))

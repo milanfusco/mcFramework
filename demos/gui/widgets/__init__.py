@@ -15,6 +15,13 @@ from .empty_state import (
     SurfacesEmptyState,
 )
 from .toast import ToastManager, ToastType, ToastWidget
+from .stats_panel import (
+    StatCard,
+    CICard,
+    PercentileBar,
+    StatsPanel,
+    CompactStatsRow,
+)
 
 __all__ = [
     "SidebarWidget",
@@ -32,5 +39,11 @@ __all__ = [
     "ToastManager",
     "ToastType",
     "ToastWidget",
+    # Stats display widgets
+    "StatCard",
+    "CICard",
+    "PercentileBar",
+    "StatsPanel",
+    "CompactStatsRow",
 ]
 

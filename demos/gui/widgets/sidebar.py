@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 if TYPE_CHECKING:
-    from ..models.state import SimulationConfig
+    from ..models.state import SimulationConfig, StatsConfig
 
 
 # =============================================================================
@@ -101,6 +101,29 @@ MIN_STRIKE_PCT = 50.0
 MAX_STRIKE_PCT = 150.0
 DEFAULT_STRIKE_PCT = 100.0  # ATM
 STRIKE_PCT_STEP = 1.0
+
+# Strike price constraints (absolute $)
+MIN_STRIKE_PRICE = 1.0
+MAX_STRIKE_PRICE = 10000.0
+DEFAULT_STRIKE_PRICE = 100.0
+STRIKE_PRICE_STEP = 1.0
+STRIKE_PRICE_DECIMALS = 2
+
+# Statistics configuration constraints
+MIN_CONFIDENCE = 0.80
+MAX_CONFIDENCE = 0.99
+DEFAULT_CONFIDENCE = 0.95
+CONFIDENCE_STEP = 0.01
+CONFIDENCE_DECIMALS = 2
+
+MIN_BOOTSTRAP = 100
+MAX_BOOTSTRAP = 100_000
+DEFAULT_BOOTSTRAP = 10_000
+BOOTSTRAP_STEP = 1000
+
+CI_METHODS = ["auto", "z", "t"]  # Parametric methods for ci_mean
+BOOTSTRAP_METHODS = ["percentile", "bca"]
+NAN_POLICIES = ["omit", "propagate"]
 
 # Animation constants
 PULSE_FADE_DURATION_MS = 400
@@ -439,6 +462,10 @@ class SidebarWidget(QWidget):
         self._option_pricing_group = self._create_option_pricing_group()
         layout.addWidget(self._option_pricing_group)
         
+        # Statistics Configuration Group
+        self._stats_group = self._create_stats_group()
+        layout.addWidget(self._stats_group)
+        
         # Advanced Options Group
         self._options_group = self._create_options_group()
         layout.addWidget(self._options_group)
@@ -585,6 +612,9 @@ class SidebarWidget(QWidget):
         """Create the option pricing parameters group."""
         group = ControlGroup("Option Contract")
         
+        # Initialize spot price early (before it's used in label updates)
+        self._current_spot_price: float = 100.0
+        
         # Option maturity
         self._maturity_spin = QDoubleSpinBox()
         self._maturity_spin.setRange(MIN_MATURITY, MAX_MATURITY)
@@ -603,17 +633,55 @@ class SidebarWidget(QWidget):
         self._update_maturity_days_label()
         group.add_widget(self._maturity_days_label)
         
-        # Strike percentage
-        self._strike_spin = QDoubleSpinBox()
-        self._strike_spin.setRange(MIN_STRIKE_PCT, MAX_STRIKE_PCT)
-        self._strike_spin.setValue(DEFAULT_STRIKE_PCT)
-        self._strike_spin.setSingleStep(STRIKE_PCT_STEP)
-        self._strike_spin.setSuffix("%")
-        self._strike_spin.setDecimals(0)
-        self._strike_spin.setToolTip(
-            "Strike as % of spot price (100% = ATM, <100% = ITM call, >100% = OTM call)"
+        # Strike mode toggle
+        self._strike_mode_combo = QComboBox()
+        self._strike_mode_combo.addItems(["% of Spot", "Manual $"])
+        self._strike_mode_combo.setToolTip("Choose strike input mode")
+        self._strike_mode_combo.currentIndexChanged.connect(self._on_strike_mode_changed)
+        group.add_row("Strike Mode:", self._strike_mode_combo)
+        
+        # Strike percentage spinner (visible when mode = 0)
+        self._strike_pct_spin = QDoubleSpinBox()
+        self._strike_pct_spin.setRange(MIN_STRIKE_PCT, MAX_STRIKE_PCT)
+        self._strike_pct_spin.setValue(DEFAULT_STRIKE_PCT)
+        self._strike_pct_spin.setSingleStep(STRIKE_PCT_STEP)
+        self._strike_pct_spin.setSuffix("%")
+        self._strike_pct_spin.setDecimals(0)
+        self._strike_pct_spin.setToolTip(
+            "Strike as % of spot (100% = ATM, <100% = ITM call, >100% = OTM call)"
         )
-        group.add_row("Strike:", self._strike_spin)
+        self._strike_pct_label = QLabel("Strike %:")
+        self._strike_pct_label.setMinimumWidth(LABEL_MIN_WIDTH)
+        pct_row = QHBoxLayout()
+        pct_row.setSpacing(8)
+        pct_row.addWidget(self._strike_pct_label)
+        pct_row.addWidget(self._strike_pct_spin, 1)
+        group._layout.addLayout(pct_row)
+        
+        # Strike price spinner (hidden initially, visible when mode = 1)
+        self._strike_price_spin = QDoubleSpinBox()
+        self._strike_price_spin.setRange(MIN_STRIKE_PRICE, MAX_STRIKE_PRICE)
+        self._strike_price_spin.setValue(DEFAULT_STRIKE_PRICE)
+        self._strike_price_spin.setSingleStep(STRIKE_PRICE_STEP)
+        self._strike_price_spin.setPrefix("$")
+        self._strike_price_spin.setDecimals(STRIKE_PRICE_DECIMALS)
+        self._strike_price_spin.setToolTip("Enter strike price in dollars")
+        self._strike_price_label = QLabel("Strike $:")
+        self._strike_price_label.setMinimumWidth(LABEL_MIN_WIDTH)
+        price_row = QHBoxLayout()
+        price_row.setSpacing(8)
+        price_row.addWidget(self._strike_price_label)
+        price_row.addWidget(self._strike_price_spin, 1)
+        group._layout.addLayout(price_row)
+        # Hide initially
+        self._strike_price_spin.setVisible(False)
+        self._strike_price_label.setVisible(False)
+        
+        # Calculated strike value label (shows $ value when in % mode)
+        self._strike_value_label = QLabel()
+        self._strike_value_label.setStyleSheet("color: #5a9fd5; font-size: 10px;")
+        self._update_strike_value_label()
+        group.add_widget(self._strike_value_label)
         
         # Moneyness hint label
         self._strike_hint_label = QLabel()
@@ -622,6 +690,31 @@ class SidebarWidget(QWidget):
         group.add_widget(self._strike_hint_label)
         
         return group
+    
+    def _on_strike_mode_changed(self, index: int) -> None:
+        """Handle strike mode toggle between % and manual $."""
+        is_pct_mode = index == 0
+        
+        # Toggle visibility of the spinners and their labels
+        self._strike_pct_spin.setVisible(is_pct_mode)
+        self._strike_pct_label.setVisible(is_pct_mode)
+        self._strike_price_spin.setVisible(not is_pct_mode)
+        self._strike_price_label.setVisible(not is_pct_mode)
+        
+        # Sync values between modes
+        if is_pct_mode:
+            # Switching to % mode - convert $ to %
+            if self._current_spot_price > 0:
+                pct = (self._strike_price_spin.value() / self._current_spot_price) * 100
+                self._strike_pct_spin.setValue(pct)
+        else:
+            # Switching to $ mode - convert % to $
+            strike_price = self._current_spot_price * (self._strike_pct_spin.value() / 100)
+            self._strike_price_spin.setValue(strike_price)
+        
+        self._update_strike_value_label()
+        self._update_strike_hint_label()
+        self._on_config_changed()
 
     def _update_maturity_days_label(self) -> None:
         """Update the maturity days equivalent label."""
@@ -630,9 +723,23 @@ class SidebarWidget(QWidget):
         calendar_days = int(years * 365)
         self._maturity_days_label.setText(f"≈ {days} trading days ({calendar_days} calendar)")
 
+    def _update_strike_value_label(self) -> None:
+        """Update the calculated strike value display."""
+        pct = self.get_strike_pct()
+        strike_price = self._current_spot_price * (pct / 100)
+        
+        if self._strike_mode_combo.currentIndex() == 0:
+            # In % mode - show calculated $ value
+            self._strike_value_label.setText(f"= ${strike_price:,.2f} strike")
+            self._strike_value_label.setVisible(True)
+        else:
+            # In $ mode - show equivalent %
+            self._strike_value_label.setText(f"= {pct:.1f}% of spot")
+            self._strike_value_label.setVisible(True)
+
     def _update_strike_hint_label(self) -> None:
         """Update the strike moneyness hint label."""
-        pct = self._strike_spin.value()
+        pct = self.get_strike_pct()
         if pct < 98:
             hint = "ITM Call / OTM Put"
             color = "#2adf7a"
@@ -644,6 +751,176 @@ class SidebarWidget(QWidget):
             color = "#f0b90b"
         self._strike_hint_label.setText(hint)
         self._strike_hint_label.setStyleSheet(f"color: {color}; font-size: 10px;")
+    
+    def get_strike_pct(self) -> float:
+        """Get the strike percentage regardless of input mode."""
+        if self._strike_mode_combo.currentIndex() == 0:
+            # % mode
+            return self._strike_pct_spin.value()
+        else:
+            # $ mode - convert to %
+            if self._current_spot_price > 0:
+                return (self._strike_price_spin.value() / self._current_spot_price) * 100
+            return 100.0
+    
+    def set_spot_price(self, spot: float) -> None:
+        """
+        Update the current spot price for strike calculations.
+        
+        Called when market data is fetched to enable accurate
+        $ to % conversions.
+        
+        Args:
+            spot: Current spot price
+        """
+        if spot <= 0:
+            return
+        
+        old_spot = self._current_spot_price
+        self._current_spot_price = spot
+        
+        # Update $ spinner range based on spot
+        self._strike_price_spin.setRange(
+            spot * (MIN_STRIKE_PCT / 100),
+            spot * (MAX_STRIKE_PCT / 100),
+        )
+        
+        # If in $ mode, adjust value proportionally
+        if self._strike_mode_combo.currentIndex() == 1 and old_spot > 0:
+            ratio = self._strike_price_spin.value() / old_spot
+            self._strike_price_spin.setValue(spot * ratio)
+        elif self._strike_mode_combo.currentIndex() == 0:
+            # Update the displayed $ value
+            self._update_strike_value_label()
+
+    def _create_stats_group(self) -> CollapsibleGroup:
+        """Create the statistics configuration group (collapsible)."""
+        group = CollapsibleGroup("Statistics (StatsEngine)", collapsed=True)
+        
+        # Compute extended stats checkbox
+        self._compute_stats_check = QCheckBox("Enable Extended Stats")
+        self._compute_stats_check.setChecked(True)
+        self._compute_stats_check.setToolTip(
+            "Compute comprehensive statistics using StatsEngine "
+            "(skewness, kurtosis, multiple CI methods, etc.)"
+        )
+        group.add_widget(self._compute_stats_check)
+        
+        # Confidence level
+        self._confidence_spin = QDoubleSpinBox()
+        self._confidence_spin.setRange(MIN_CONFIDENCE, MAX_CONFIDENCE)
+        self._confidence_spin.setValue(DEFAULT_CONFIDENCE)
+        self._confidence_spin.setSingleStep(CONFIDENCE_STEP)
+        self._confidence_spin.setDecimals(CONFIDENCE_DECIMALS)
+        self._confidence_spin.setToolTip(
+            "Confidence level for confidence intervals (e.g., 0.95 = 95%)"
+        )
+        group.add_row("Confidence:", self._confidence_spin)
+        
+        # --- Parametric CI Section ---
+        parametric_header = QLabel("─── Parametric CI ───")
+        parametric_header.setStyleSheet(
+            "color: #6a7a8a; font-size: 10px; margin-top: 8px;"
+        )
+        parametric_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        group.add_widget(parametric_header)
+        
+        # CI Method selection (parametric: auto, z, t)
+        self._ci_method_combo = QComboBox()
+        self._ci_method_combo.addItems(CI_METHODS)
+        self._ci_method_combo.setCurrentText("auto")
+        self._ci_method_combo.setToolTip(
+            "Parametric CI method for ci_mean:\n"
+            "• auto: Use t for n<30, z otherwise\n"
+            "• z: Normal distribution (large samples)\n"
+            "• t: Student's t (small samples)"
+        )
+        group.add_row("Method:", self._ci_method_combo)
+        
+        # --- Bootstrap CI Section ---
+        bootstrap_header = QLabel("─── Bootstrap CI ───")
+        bootstrap_header.setStyleSheet(
+            "color: #6a7a8a; font-size: 10px; margin-top: 8px;"
+        )
+        bootstrap_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        group.add_widget(bootstrap_header)
+        
+        # Enable Bootstrap CI checkbox
+        self._enable_bootstrap_check = QCheckBox("Enable Bootstrap CI")
+        self._enable_bootstrap_check.setChecked(True)
+        self._enable_bootstrap_check.setToolTip(
+            "Compute bootstrap confidence interval (ci_mean_bootstrap)\n"
+            "using resampling methods"
+        )
+        self._enable_bootstrap_check.stateChanged.connect(self._on_bootstrap_toggled)
+        group.add_widget(self._enable_bootstrap_check)
+        
+        # Bootstrap method dropdown
+        self._bootstrap_method_combo = QComboBox()
+        self._bootstrap_method_combo.addItems(BOOTSTRAP_METHODS)
+        self._bootstrap_method_combo.setCurrentText("percentile")
+        self._bootstrap_method_combo.setToolTip(
+            "Bootstrap flavor:\n"
+            "• percentile: Simple percentile method\n"
+            "• bca: Bias-corrected and accelerated"
+        )
+        group.add_row("  Flavor:", self._bootstrap_method_combo)
+        
+        # Number of bootstrap samples
+        self._n_bootstrap_spin = QSpinBox()
+        self._n_bootstrap_spin.setRange(MIN_BOOTSTRAP, MAX_BOOTSTRAP)
+        self._n_bootstrap_spin.setValue(DEFAULT_BOOTSTRAP)
+        self._n_bootstrap_spin.setSingleStep(BOOTSTRAP_STEP)
+        self._n_bootstrap_spin.setToolTip(
+            "Number of bootstrap resamples"
+        )
+        group.add_row("  Resamples:", self._n_bootstrap_spin)
+        
+        # --- Chebyshev CI Section ---
+        chebyshev_header = QLabel("─── Chebyshev CI ───")
+        chebyshev_header.setStyleSheet(
+            "color: #6a7a8a; font-size: 10px; margin-top: 8px;"
+        )
+        chebyshev_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        group.add_widget(chebyshev_header)
+        
+        # Enable Chebyshev CI checkbox
+        self._enable_chebyshev_check = QCheckBox("Enable Chebyshev CI")
+        self._enable_chebyshev_check.setChecked(True)
+        self._enable_chebyshev_check.setToolTip(
+            "Compute distribution-free CI (ci_mean_chebyshev)\n"
+            "using Chebyshev's inequality.\n"
+            "Wider but makes no distributional assumptions."
+        )
+        group.add_widget(self._enable_chebyshev_check)
+        
+        # --- General Options ---
+        general_header = QLabel("─── General ───")
+        general_header.setStyleSheet(
+            "color: #6a7a8a; font-size: 10px; margin-top: 8px;"
+        )
+        general_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        group.add_widget(general_header)
+        
+        # NaN policy
+        self._nan_policy_combo = QComboBox()
+        self._nan_policy_combo.addItems(NAN_POLICIES)
+        self._nan_policy_combo.setCurrentText("omit")
+        self._nan_policy_combo.setToolTip(
+            "How to handle NaN/infinite values:\n"
+            "• omit: Drop non-finite values\n"
+            "• propagate: Include in calculations"
+        )
+        group.add_row("NaN Policy:", self._nan_policy_combo)
+        
+        return group
+    
+    def _on_bootstrap_toggled(self, state: int) -> None:
+        """Handle Bootstrap CI enable/disable toggle."""
+        enabled = state == Qt.CheckState.Checked.value
+        self._bootstrap_method_combo.setEnabled(enabled)
+        self._n_bootstrap_spin.setEnabled(enabled)
+        self._on_config_changed()
 
     def _create_options_group(self) -> CollapsibleGroup:
         """Create the options toggles group (collapsible)."""
@@ -759,8 +1036,22 @@ class SidebarWidget(QWidget):
         # Option pricing signals
         self._maturity_spin.valueChanged.connect(self._on_config_changed)
         self._maturity_spin.valueChanged.connect(self._update_maturity_days_label)
-        self._strike_spin.valueChanged.connect(self._on_config_changed)
-        self._strike_spin.valueChanged.connect(self._update_strike_hint_label)
+        self._strike_pct_spin.valueChanged.connect(self._on_config_changed)
+        self._strike_pct_spin.valueChanged.connect(self._update_strike_value_label)
+        self._strike_pct_spin.valueChanged.connect(self._update_strike_hint_label)
+        self._strike_price_spin.valueChanged.connect(self._on_config_changed)
+        self._strike_price_spin.valueChanged.connect(self._update_strike_value_label)
+        self._strike_price_spin.valueChanged.connect(self._update_strike_hint_label)
+        
+        # Statistics configuration signals
+        self._compute_stats_check.stateChanged.connect(self._on_config_changed)
+        self._confidence_spin.valueChanged.connect(self._on_config_changed)
+        self._ci_method_combo.currentTextChanged.connect(self._on_config_changed)
+        self._enable_bootstrap_check.stateChanged.connect(self._on_config_changed)
+        self._bootstrap_method_combo.currentTextChanged.connect(self._on_config_changed)
+        self._n_bootstrap_spin.valueChanged.connect(self._on_config_changed)
+        self._enable_chebyshev_check.stateChanged.connect(self._on_config_changed)
+        self._nan_policy_combo.currentTextChanged.connect(self._on_config_changed)
         
         # Preset signals
         self._preset_combo.currentIndexChanged.connect(self._update_preset_hint)
@@ -872,7 +1163,18 @@ class SidebarWidget(QWidget):
         Returns:
             SimulationConfig with current values
         """
-        from ..models.state import SimulationConfig
+        from ..models.state import SimulationConfig, StatsConfig
+        
+        stats_config = StatsConfig(
+            confidence=self._confidence_spin.value(),
+            ci_method=self._ci_method_combo.currentText(),
+            enable_bootstrap_ci=self._enable_bootstrap_check.isChecked(),
+            bootstrap_method=self._bootstrap_method_combo.currentText(),
+            n_bootstrap=self._n_bootstrap_spin.value(),
+            enable_chebyshev_ci=self._enable_chebyshev_check.isChecked(),
+            nan_policy=self._nan_policy_combo.currentText(),
+            compute_stats=self._compute_stats_check.isChecked(),
+        )
         
         return SimulationConfig(
             ticker=self._ticker_input.text().strip().upper() or "AAPL",
@@ -885,7 +1187,8 @@ class SidebarWidget(QWidget):
             generate_3d_plots=self._3d_check.isChecked(),
             risk_free_rate=self._rate_spin.value(),
             option_maturity=self._maturity_spin.value(),
-            strike_pct=self._strike_spin.value(),
+            strike_pct=self.get_strike_pct(),
+            stats=stats_config,
         )
 
     def set_config(self, config: "SimulationConfig") -> None:
@@ -905,7 +1208,27 @@ class SidebarWidget(QWidget):
         self._3d_check.setChecked(config.generate_3d_plots)
         self._rate_spin.setValue(config.risk_free_rate)
         self._maturity_spin.setValue(config.option_maturity)
-        self._strike_spin.setValue(config.strike_pct)
+        self._strike_pct_spin.setValue(config.strike_pct)
+        # Also update $ value if we have spot price
+        if self._current_spot_price > 0:
+            self._strike_price_spin.setValue(
+                self._current_spot_price * (config.strike_pct / 100)
+            )
+        
+        # Set stats configuration
+        self._compute_stats_check.setChecked(config.stats.compute_stats)
+        self._confidence_spin.setValue(config.stats.confidence)
+        self._ci_method_combo.setCurrentText(config.stats.ci_method)
+        self._enable_bootstrap_check.setChecked(config.stats.enable_bootstrap_ci)
+        self._bootstrap_method_combo.setCurrentText(config.stats.bootstrap_method)
+        self._n_bootstrap_spin.setValue(config.stats.n_bootstrap)
+        self._enable_chebyshev_check.setChecked(config.stats.enable_chebyshev_ci)
+        self._nan_policy_combo.setCurrentText(config.stats.nan_policy)
+        # Update bootstrap controls enabled state
+        self._on_bootstrap_toggled(
+            Qt.CheckState.Checked.value if config.stats.enable_bootstrap_ci 
+            else Qt.CheckState.Unchecked.value
+        )
 
     def is_auto_fetch_enabled(self) -> bool:
         """Check if auto-fetch is enabled."""
@@ -991,4 +1314,28 @@ class SidebarWidget(QWidget):
     def get_historical_days(self) -> int:
         """Get the historical days value."""
         return self._days_spin.value()
+
+    def get_stats_config(self) -> "StatsConfig":
+        """
+        Get the current statistics configuration.
+        
+        Returns:
+            StatsConfig with current values
+        """
+        from ..models.state import StatsConfig
+        
+        return StatsConfig(
+            confidence=self._confidence_spin.value(),
+            ci_method=self._ci_method_combo.currentText(),
+            enable_bootstrap_ci=self._enable_bootstrap_check.isChecked(),
+            bootstrap_method=self._bootstrap_method_combo.currentText(),
+            n_bootstrap=self._n_bootstrap_spin.value(),
+            enable_chebyshev_ci=self._enable_chebyshev_check.isChecked(),
+            nan_policy=self._nan_policy_combo.currentText(),
+            compute_stats=self._compute_stats_check.isChecked(),
+        )
+
+    def is_stats_enabled(self) -> bool:
+        """Check if extended statistics computation is enabled."""
+        return self._compute_stats_check.isChecked()
 

@@ -17,6 +17,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from mcframework.core import SimulationResult
+    from mcframework.stats_engine import ComputeResult
 
 
 @dataclass
@@ -140,6 +141,66 @@ class GreeksResult:
 
 
 @dataclass
+class StatsConfig:
+    """
+    Configuration for statistical analysis (StatsEngine).
+    
+    These settings control how statistics are computed on simulation
+    results using the mcframework.stats_engine module.
+    
+    Attributes:
+        confidence: Confidence level for confidence intervals (0-1)
+        ci_method: Method for parametric CI ("auto", "z", "t")
+        enable_bootstrap_ci: Whether to compute bootstrap CI
+        bootstrap_method: Bootstrap flavor ("percentile", "bca")
+        n_bootstrap: Number of bootstrap resamples
+        enable_chebyshev_ci: Whether to compute Chebyshev (distribution-free) CI
+        nan_policy: How to handle NaN values ("propagate", "omit")
+        percentiles: Tuple of percentiles to compute
+        compute_stats: Whether to compute extended statistics
+    """
+    confidence: float = 0.95
+    ci_method: str = "auto"  # "auto", "z", "t"
+    enable_bootstrap_ci: bool = True
+    bootstrap_method: str = "percentile"  # "percentile", "bca"
+    n_bootstrap: int = 10_000
+    enable_chebyshev_ci: bool = True
+    nan_policy: str = "omit"  # "propagate", "omit"
+    percentiles: tuple[int, ...] = (5, 25, 50, 75, 95)
+    compute_stats: bool = True
+    
+    def to_stats_context_kwargs(self) -> dict[str, Any]:
+        """
+        Convert to kwargs for StatsContext construction.
+        
+        Returns:
+            Dictionary suitable for StatsContext(**kwargs)
+        """
+        return {
+            "confidence": self.confidence,
+            "ci_method": self.ci_method,
+            "bootstrap": self.bootstrap_method,
+            "n_bootstrap": self.n_bootstrap,
+            "nan_policy": self.nan_policy,
+            "percentiles": self.percentiles,
+        }
+    
+    def get_enabled_ci_types(self) -> list[str]:
+        """
+        Get list of enabled CI metric names for StatsEngine.select.
+        
+        Returns:
+            List of CI metric names to compute
+        """
+        ci_types = ["ci_mean"]  # Parametric is always included
+        if self.enable_bootstrap_ci:
+            ci_types.append("ci_mean_bootstrap")
+        if self.enable_chebyshev_ci:
+            ci_types.append("ci_mean_chebyshev")
+        return ci_types
+
+
+@dataclass
 class SimulationConfig:
     """
     Configuration for running a simulation.
@@ -156,6 +217,7 @@ class SimulationConfig:
         risk_free_rate: Risk-free interest rate
         option_maturity: Option time to expiration in years
         strike_pct: Strike price as percentage of spot (100 = ATM)
+        stats: Statistical analysis configuration
     """
     ticker: str = "AAPL"
     historical_days: int = 252
@@ -168,6 +230,7 @@ class SimulationConfig:
     risk_free_rate: float = 0.05
     option_maturity: float = 0.25  # 3 months default
     strike_pct: float = 100.0  # ATM by default
+    stats: StatsConfig = field(default_factory=StatsConfig)
 
 
 @dataclass
@@ -224,6 +287,10 @@ class TickerAnalysisState:
     call_greeks: GreeksResult | None = None
     put_greeks: GreeksResult | None = None
     
+    # Statistics results (from StatsEngine)
+    forecast_stats: "ComputeResult | None" = None
+    returns_stats: "ComputeResult | None" = None
+    
     # Output paths
     chart_paths: dict[str, Path] = field(default_factory=dict)
     output_directory: Path | None = None
@@ -255,6 +322,8 @@ class TickerAnalysisState:
         self.put_result = None
         self.call_greeks = None
         self.put_greeks = None
+        self.forecast_stats = None
+        self.returns_stats = None
         self.chart_paths.clear()
         self.last_error = None
         self.last_updated = None

@@ -212,7 +212,6 @@ class MarketDataTab(QWidget):
         """Initialize the Market Data tab."""
         super().__init__(parent)
         self._has_data = False
-        self._sparkline_points = 60
         self._content_widget: QWidget | None = None
         self._current_content_width: int | None = None
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -305,7 +304,8 @@ class MarketDataTab(QWidget):
         """Create the candlestick chart section."""
         chart_group = QGroupBox("Candlestick & Volume")
         chart_layout = QVBoxLayout(chart_group)
-        self._candlestick = CandlestickChart(max_points=120)
+        # Use high limit to show all fetched history (up to 2520 days)
+        self._candlestick = CandlestickChart(max_points=2520)
         self._candlestick.setMinimumHeight(380)
         chart_layout.addWidget(self._candlestick)
         parent_layout.addWidget(chart_group)
@@ -316,8 +316,9 @@ class MarketDataTab(QWidget):
 
         sparkline_group = QGroupBox("Price History")
         sparkline_layout = QVBoxLayout(sparkline_group)
-        self._sparkline = SparklineChart(n_points=self._sparkline_points)
-        self._sparkline.setMinimumHeight(240)
+        # Use high limit to show all fetched history (up to 2520 days)
+        self._sparkline = SparklineChart(n_points=2520)
+        self._sparkline.setMinimumHeight(300)
         sparkline_layout.addWidget(self._sparkline)
         splitter.addWidget(sparkline_group)
 
@@ -452,9 +453,11 @@ class MarketDataTab(QWidget):
         """Convert dividend/split events into sparkline annotations."""
         if state.price_dates is None:
             return []
-        window = min(self._sparkline_points, len(state.price_dates))
-        recent_dates = state.price_dates[-window:]
-        date_to_index = {recent_dates[idx].date(): idx for idx in range(len(recent_dates))}
+        # Use all available dates (matches fetched historical_days)
+        date_to_index = {
+            state.price_dates[idx].date(): idx 
+            for idx in range(len(state.price_dates))
+        }
         markers: list[tuple[int, str]] = []
         for event in state.dividends or []:
             event_date = event.get("date")
