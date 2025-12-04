@@ -57,8 +57,8 @@ def z_crit(confidence: float) -> float:
 
     Examples
     --------
-    >>> round(z_crit(0.95), 3)
-    1.960
+    >>> round(z_crit(0.95), 2)
+    1.96
     """
     _validate_confidence(confidence)
     return float(norm.ppf(1.0 - (1.0 - confidence) / 2.0))
@@ -149,13 +149,13 @@ def autocrit(confidence: float, n: int, method: str = "auto") -> tuple[float, st
     >>> c, kind = autocrit(0.95, n=20, method="auto")
     >>> kind
     't'
-    >>> round(c, 3)
-    2.093
+    >>> round(c, 2)
+    2.09
     >>> c, kind = autocrit(0.95, n=50, method="auto")
     >>> kind
     'z'
-    >>> round(c, 3)
-    1.960
+    >>> round(c, 2)
+    1.96
     """
     _validate_confidence(confidence)
     if method not in ("auto", "z", "t"):

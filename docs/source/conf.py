@@ -243,3 +243,58 @@ intersphinx_mapping = {
 # -- Copybutton (skip prompts in code blocks) -----------------------------------
 copybutton_prompt_text = r">>> |\.\.\. |\$ "
 copybutton_prompt_is_regexp = True
+
+# -- Doctest configuration -----------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/extensions/doctest.html
+
+import doctest
+
+doctest_global_setup = """
+import numpy as np
+from numpy import ndarray
+
+# Core module
+from mcframework.core import (
+    MonteCarloSimulation,
+    SimulationResult,
+    MonteCarloFramework,
+    make_blocks,
+)
+
+# Stats engine
+from mcframework.stats_engine import (
+    StatsContext,
+    StatsEngine,
+    FnMetric,
+    CIMethod,
+    NanPolicy,
+    BootstrapMethod,
+    ComputeResult,
+    DEFAULT_ENGINE,
+    mean, std, percentiles, skew, kurtosis,
+    ci_mean, ci_mean_bootstrap, ci_mean_chebyshev,
+    chebyshev_required_n, markov_error_prob,
+    bias_to_target, mse_to_target,
+    build_default_engine,
+)
+
+# Utils
+from mcframework.utils import z_crit, t_crit, autocrit
+
+# Simulations
+from mcframework.sims import (
+    PiEstimationSimulation,
+    PortfolioSimulation,
+)
+from mcframework.sims.black_scholes import (
+    BlackScholesSimulation,
+    BlackScholesPathSimulation,
+)
+"""
+
+# Default doctest flags
+doctest_default_flags = (
+    doctest.ELLIPSIS |
+    doctest.IGNORE_EXCEPTION_DETAIL |
+    doctest.NORMALIZE_WHITESPACE
+)

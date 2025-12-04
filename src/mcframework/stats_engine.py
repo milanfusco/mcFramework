@@ -425,10 +425,14 @@ class ComputeResult:
 
     Examples
     --------
+    >>> engine = StatsEngine([FnMetric("mean", mean)])
+    >>> data = np.array([1.0, 2.0, 3.0])
+    >>> ctx = StatsContext(n=3)
     >>> result = engine.compute(data, ctx)
-    >>> result.metrics  # dict of computed values
-    >>> result.skipped  # list of skipped metrics with reasons
-    >>> result.successful_metrics()  # set of successful metric names
+    >>> result.metrics['mean']
+    2.0
+    >>> result.skipped
+    []
     """
 
     metrics: dict[str, Any]
@@ -558,8 +562,11 @@ class StatsEngine:
     --------
     >>> eng = StatsEngine([FnMetric("mean", mean), FnMetric("std", std)])
     >>> x = np.array([1., 2., 3.])
-    >>> eng.compute(x, StatsContext(n=len(x)))
-    {'mean': 2.0, 'std': 1.0}
+    >>> result = eng.compute(x, StatsContext(n=len(x)))
+    >>> result.metrics['mean']
+    2.0
+    >>> result.metrics['std']
+    1.0
     """
 
     def __init__(self, metrics: MetricSet):
@@ -779,7 +786,7 @@ def mean(x: np.ndarray, ctx: StatsContext) -> float | None:
 
     Examples
     --------
-    >>> mean(np.array([1, 2, 3]))
+    >>> mean(np.array([1, 2, 3]), StatsContext(n=3))
     2.0
     """
     ctx = _ensure_ctx(ctx, x)
@@ -920,8 +927,8 @@ def kurtosis(x: np.ndarray, ctx: StatsContext) -> float:
 
     Examples
     --------
-    >>> round(kurtosis(np.array([1, 2, 3, 4.0]), {}), 6)
-    -1.200000
+    >>> round(kurtosis(np.array([1, 2, 3, 4.0]), {}), 1)
+    -1.2
     """
     ctx = _ensure_ctx(ctx, x)
     arr, _ = _clean(x, ctx)
@@ -1358,7 +1365,7 @@ def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:
     Examples
     --------
     >>> chebyshev_required_n(np.array([1., 2., 3.]), {"eps": 0.5, "confidence": 0.9})
-    8
+    41
     """
     ctx = _ensure_ctx(ctx, x)
     arr, _ = _clean(x, ctx)
