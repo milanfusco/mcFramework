@@ -27,6 +27,7 @@ docs = [
     "sphinx-autodoc-typehints>=2.0",
     "sphinx-copybutton>=0.5",
     "sphinx-design>=0.6",
+    "sphinxcontrib-mermaid>=0.9", # Mermaid diagram support
     "numpydoc>=1.6", # NumPy/SciPy-style docstrings
     "sphinx-gallery>=0.16", # optional: gallery of examples (plots!)
     "matplotlib>=3.7", # if we use sphinx-gallery with plots

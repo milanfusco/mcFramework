@@ -8,29 +8,29 @@ from mcframework.stats_engine import StatsContext
 
 
 class TestMakeBlocks:
-    """Test block creation for parallel processing"""
+    """[FR-3] Test block creation for parallel processing."""
 
     def test_make_blocks_exact_division(self):
-        """Test blocks with exact division"""
+        """[FR-3] Test blocks with exact division."""
         blocks = make_blocks(10000, block_size=1000)
         assert len(blocks) == 10
         assert blocks[0] == (0, 1000)
         assert blocks[-1] == (9000, 10000)
 
     def test_make_blocks_with_remainder(self):
-        """Test blocks with remainder"""
+        """[FR-3] Test blocks with remainder."""
         blocks = make_blocks(10500, block_size=1000)
         assert len(blocks) == 11
         assert blocks[-1] == (10000, 10500)
 
     def test_make_blocks_small_n(self):
-        """Test blocks smaller than block_size"""
+        """[FR-3] Test blocks smaller than block_size."""
         blocks = make_blocks(500, block_size=1000)
         assert len(blocks) == 1
         assert blocks[0] == (0, 500)
 
     def test_make_blocks_coverage(self):
-        """Test all elements are covered exactly once"""
+        """[FR-3] Test all elements are covered exactly once."""
         n = 12345
         blocks = make_blocks(n, block_size=1000)
         total = sum(j - i for i, j in blocks)
@@ -38,10 +38,10 @@ class TestMakeBlocks:
 
 
 class TestSimulationResult:
-    """Test SimulationResult dataclass"""
+    """[FR-5] Test SimulationResult dataclass."""
 
     def test_simulation_result_creation(self):
-        """Test creating a simulation result"""
+        """[FR-5] Test creating a simulation result with mean, std, percentiles."""
         results = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
         result = SimulationResult(
             results=results,
@@ -55,7 +55,7 @@ class TestSimulationResult:
         assert result.mean == 3.0
 
     def test_result_to_string_basic(self):
-        """Test string representation of results"""
+        """[FR-5, USA-3] Test readable string representation of results."""
         results = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
         result = SimulationResult(
             results=results,
@@ -71,7 +71,7 @@ class TestSimulationResult:
         assert "50th: 3.00000" in output
 
     def test_result_to_string_with_metadata(self):
-        """Test string output includes metadata"""
+        """[FR-5, USA-3] Test string output includes metadata."""
         results = np.array([1.0, 2.0, 3.0])
         result = SimulationResult(
             results=results,
@@ -86,7 +86,7 @@ class TestSimulationResult:
         assert "Test" in output
 
     def test_result_to_string_with_stats_and_metadata(self):
-        """Ensure result string includes engine stats and metadata entries."""
+        """[FR-5, USA-3] Ensure result string includes engine stats and metadata entries."""
         results = np.array([2.0, 4.0, 6.0, 8.0])
         stats = {"ci_mean": (1.0, 2.0), "custom_metric": 42}
         metadata = {"simulation_name": "EdgeSim", "requested_percentiles": [5, 95], "note": "coverage"}
@@ -110,15 +110,15 @@ class TestSimulationResult:
 
 
 class TestMonteCarloSimulation:
-    """Test MonteCarloSimulation base class"""
+    """[FR-1] Test MonteCarloSimulation abstract base class."""
 
     def test_simulation_initialization(self, simple_simulation):
-        """Test simulation initializes correctly"""
+        """[FR-1] Test simulation initializes correctly with name and RNG."""
         assert simple_simulation.name == "TestSim"
         assert simple_simulation.rng is not None
 
     def test_set_seed(self, simple_simulation):
-        """Test seed setting"""
+        """[FR-4, NFR-3] Test reproducible seeding with SeedSequence."""
         simple_simulation.set_seed(42)
         assert simple_simulation.seed_seq is not None
 
@@ -133,7 +133,7 @@ class TestMonteCarloSimulation:
         assert val1 == val2
 
     def test_run_sequential_basic(self, simple_simulation):
-        """Test basic sequential run"""
+        """[FR-2, USA-2] Test basic sequential run with sensible defaults."""
         simple_simulation.set_seed(42)
         result = simple_simulation.run(
             100,
@@ -145,7 +145,7 @@ class TestMonteCarloSimulation:
         assert result.execution_time >= 0.0
 
     def test_run_with_progress_callback(self, simple_simulation):
-        """Test progress callback is called"""
+        """[FR-2] Test progress callback is called during sequential run."""
         callback_data = []
 
         def callback(completed, total):
@@ -162,7 +162,7 @@ class TestMonteCarloSimulation:
         assert callback_data[-1] == (50, 50)
 
     def test_run_with_custom_percentiles(self, simple_simulation):
-        """Test custom percentiles"""
+        """[FR-5, FR-10] Test custom percentiles are computed."""
         result = simple_simulation.run(
             100,
             parallel=False,
@@ -173,7 +173,7 @@ class TestMonteCarloSimulation:
         assert 90 in result.percentiles
 
     def test_run_with_stats_engine(self, simple_simulation):
-        """Test running with stats engine"""
+        """[FR-8, FR-9] Test running with stats engine computes mean and std."""
         result = simple_simulation.run(
             100,
             parallel=False,
@@ -188,7 +188,7 @@ class TestMonteCarloSimulation:
         assert std is not None
 
     def test_run_parallel_basic(self, simple_simulation):
-        """Test basic parallel run"""
+        """[FR-3] Test basic parallel run via _run_parallel()."""
         simple_simulation.set_seed(42)
         result = simple_simulation.run(
             100,
@@ -200,7 +200,7 @@ class TestMonteCarloSimulation:
         assert len(result.results) == 100
 
     def test_run_sequential_vs_parallel_reproducibility(self, simple_simulation):
-        """Test sequential and parallel give same results with same seed"""
+        """[FR-4, NFR-3] Test sequential and parallel give same results with same seed."""
         simple_simulation.set_seed(42)
         seq_result = simple_simulation.run(100, parallel=False, compute_stats=False)
 
@@ -211,12 +211,12 @@ class TestMonteCarloSimulation:
         assert pytest.approx(seq_result.mean, abs=0.5) == par_result.mean
 
     def test_run_invalid_n_simulations(self, simple_simulation):
-        """Test error on invalid n_simulations"""
+        """[USA-4] Test clear error on invalid n_simulations."""
         with pytest.raises(ValueError, match="n_simulations must be positive"):
             simple_simulation.run(0)
 
     def test_serialization(self, simple_simulation):
-        """Test pickle serialization"""
+        """[FR-3] Test pickle serialization for parallel processing."""
         simple_simulation.set_seed(42)
         state = simple_simulation.__getstate__()
 
@@ -231,35 +231,35 @@ class TestMonteCarloSimulation:
         assert isinstance(val, float)
 
     def test_deterministic_results(self, deterministic_simulation):
-        """Test deterministic simulation produces expected sequence"""
+        """[NFR-3] Test deterministic simulation produces expected sequence."""
         result = deterministic_simulation.run(5, parallel=False, compute_stats=False)
         expected = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
         np.testing.assert_array_equal(result.results, expected)
 
     def test_serialization_without_seed(self, simple_simulation):
-        """__setstate__ should recreate RNG when seed_seq is missing."""
+        """[FR-3] __setstate__ should recreate RNG when seed_seq is missing."""
         state = simple_simulation.__getstate__()
         assert state["rng"] is None
         simple_simulation.__setstate__(state)
         assert simple_simulation.rng is not None
 
     def test_run_rejects_invalid_n_workers(self, simple_simulation):
-        """n_workers must be positive."""
+        """[USA-4] n_workers must be positive."""
         with pytest.raises(ValueError, match="n_workers must be positive"):
             simple_simulation.run(5, n_workers=0)
 
     def test_run_rejects_invalid_confidence(self, simple_simulation):
-        """confidence must lie in (0, 1)."""
+        """[USA-4] confidence must lie in (0, 1)."""
         with pytest.raises(ValueError, match="confidence must be in the interval"):
             simple_simulation.run(5, confidence=1.5)
 
     def test_run_rejects_invalid_ci_method(self, simple_simulation):
-        """Invalid ci_method should raise."""
+        """[USA-4] Invalid ci_method should raise."""
         with pytest.raises(ValueError, match="ci_method must be one of"):
             simple_simulation.run(5, ci_method="invalid")
 
     def test_run_handles_invalid_extra_context(self, simple_simulation):
-        """Extra context with invalid keys should fall back to defaults."""
+        """[NFR-4] Extra context with invalid keys should fall back to defaults."""
         result = simple_simulation.run(
             10,
             parallel=False,
@@ -269,13 +269,13 @@ class TestMonteCarloSimulation:
         assert result.stats
 
     def test_resolve_parallel_backend_unknown_value_defaults(self, simple_simulation):
-        """Unknown backend values should coerce to auto/thread."""
+        """[NFR-7] Unknown backend values should coerce to auto/thread."""
         simple_simulation.parallel_backend = "unknown"
         backend = simple_simulation._resolve_parallel_backend()
         assert backend in {"thread", "process"}
 
     def test_compute_stats_block_handles_empty_array(self):
-        """_compute_stats_block should return NaNs for empty input."""
+        """[NFR-4] _compute_stats_block should return NaNs for empty input."""
         ctx = StatsContext(n=0)
         stats = MonteCarloSimulation._compute_stats_block(np.array([]), ctx)
         assert np.isnan(stats["mean"])
@@ -284,7 +284,7 @@ class TestMonteCarloSimulation:
         assert np.isnan(low) and np.isnan(high)
 
     def test_create_result_merges_engine_percentiles(self, simple_simulation):
-        """Engine-supplied percentiles should be merged once."""
+        """[FR-5, FR-10] Engine-supplied percentiles should be merged once."""
         results = np.array([1.0, 2.0, 3.0, 4.0])
         stats = {"mean": 2.5, "percentiles": {25: 1.5, 75: 3.5}}
         percentiles = {5: 1.0}
@@ -303,10 +303,10 @@ class TestMonteCarloSimulation:
 
 
 class TestComputePercentilesBlock:
-    """Tests for MonteCarloSimulation._compute_percentiles_block"""
+    """[FR-10] Tests for MonteCarloSimulation._compute_percentiles_block."""
 
     def test_percentiles_block_returns_empty_without_requests(self):
-        """No requested percentiles should yield an empty dict."""
+        """[FR-10] No requested percentiles should yield an empty dict."""
         results = np.array([1.0, 2.0, 3.0], dtype=float)
         ctx = StatsContext(n=results.size, percentiles=())
 
@@ -314,7 +314,7 @@ class TestComputePercentilesBlock:
         assert block == {}
 
     def test_percentiles_block_uses_ctx_percentiles(self):
-        """Percentiles should be computed for ctx.percentiles."""
+        """[FR-10] Percentiles should be computed for ctx.percentiles."""
         results = np.array([0.0, 1.0, 2.0, 3.0, 4.0], dtype=float)
         ctx = StatsContext(n=results.size, percentiles=(10, 90))
 
@@ -325,7 +325,7 @@ class TestComputePercentilesBlock:
         assert block[90.0] == pytest.approx(np.percentile(results, 90))
 
     def test_percentiles_block_falls_back_to_requested(self, monkeypatch):
-        """requested_percentiles should be used when ctx.percentiles is empty."""
+        """[FR-10] requested_percentiles should be used when ctx.percentiles is empty."""
 
         class RequestedStatsContext(StatsContext):
             __slots__ = ("requested_percentiles",)
@@ -353,7 +353,7 @@ class TestComputePercentilesBlock:
         assert block[95.0] == pytest.approx(np.percentile(results, 95))
 
     def test_percentiles_block_raises_on_engine_mismatch(self, monkeypatch):
-        """pct() returning the wrong number of values should raise ValueError."""
+        """[NFR-5, USA-4] pct() returning the wrong number of values should raise ValueError."""
         results = np.array([0.0, 1.0, 2.0], dtype=float)
         ctx = StatsContext(n=results.size, percentiles=(10, 90))
 
@@ -367,37 +367,37 @@ class TestComputePercentilesBlock:
 
 
 class TestMonteCarloFramework:
-    """Test MonteCarloFramework class"""
+    """[FR-6] Test MonteCarloFramework registry class."""
 
     def test_framework_initialization(self, framework):
-        """Test framework initializes empty"""
+        """[FR-6] Test framework initializes empty."""
         assert len(framework.simulations) == 0
         assert len(framework.results) == 0
 
     def test_register_simulation(self, framework, simple_simulation):
-        """Test registering a simulation"""
+        """[FR-6] Test registering a simulation."""
         framework.register_simulation(simple_simulation)
         assert "TestSim" in framework.simulations
 
     def test_register_simulation_custom_name(self, framework, simple_simulation):
-        """Test registering with a custom name"""
+        """[FR-6] Test registering with a custom name."""
         framework.register_simulation(simple_simulation, name="CustomName")
         assert "CustomName" in framework.simulations
 
     def test_run_simulation(self, framework, simple_simulation):
-        """Test running registered simulation"""
+        """[FR-6] Test running registered simulation."""
         framework.register_simulation(simple_simulation)
         result = framework.run_simulation("TestSim", 50, parallel=False)
         assert result.n_simulations == 50
         assert "TestSim" in framework.results
 
     def test_run_simulation_not_found(self, framework):
-        """Test error when simulation not found"""
+        """[FR-6, USA-4] Test error when simulation not found."""
         with pytest.raises(ValueError, match="not found"):
             framework.run_simulation("NonExistent", 50)
 
     def test_compare_results_mean(self, framework, simple_simulation):
-        """Test comparing results by mean"""
+        """[FR-7] Test comparing results by mean."""
         sim1 = simple_simulation
         sim2 = simple_simulation
 
@@ -413,7 +413,7 @@ class TestMonteCarloFramework:
         assert comparison["Sim2"] > comparison["Sim1"]
 
     def test_compare_results_std(self, framework, simple_simulation):
-        """Test comparing results by std"""
+        """[FR-7] Test comparing results by std."""
         framework.register_simulation(simple_simulation)
         framework.run_simulation("TestSim", 100, parallel=False)
 
@@ -422,7 +422,7 @@ class TestMonteCarloFramework:
         assert comparison["TestSim"] > 0
 
     def test_compare_results_percentile(self, framework, simple_simulation):
-        """Test comparing results by percentile"""
+        """[FR-7] Test comparing results by percentile."""
         framework.register_simulation(simple_simulation)
         framework.run_simulation("TestSim", 100, parallel=False, percentiles=[50])
 
@@ -430,12 +430,12 @@ class TestMonteCarloFramework:
         assert "TestSim" in comparison
 
     def test_compare_results_no_results(self, framework):
-        """Test error when comparing non-existent results"""
+        """[FR-7, USA-4] Test error when comparing non-existent results."""
         with pytest.raises(ValueError, match="No results found"):
             framework.compare_results(["NonExistent"])
 
     def test_compare_results_invalid_metric(self, framework, simple_simulation):
-        """Test error on invalid metric"""
+        """[FR-7, USA-4] Test error on invalid metric."""
         framework.register_simulation(simple_simulation)
         framework.run_simulation("TestSim", 50, parallel=False)
 
@@ -443,7 +443,7 @@ class TestMonteCarloFramework:
             framework.compare_results(["TestSim"], metric="invalid")
 
     def test_compare_results_percentile_not_in_percentiles_dict(self):
-        """Test line 431: percentile not in result.percentiles dict"""
+        """[FR-7, USA-4] Test percentile not in result.percentiles dict."""
         fw = MonteCarloFramework()
         sim = PiEstimationSimulation()
         sim.set_seed(42)
@@ -474,10 +474,10 @@ class TestMonteCarloFramework:
             fw.compare_results(["TestSim"], metric="p50")
 
     class TestPercentileMerging:
-        """Test merging percentiles from stats engine"""
+        """[FR-10] Test merging percentiles from stats engine."""
 
         def test_stats_engine_percentiles_merge(self):
-            """Test that stats engine percentiles are properly merged (lines 348-351)"""
+            """[FR-10] Test that stats engine percentiles are properly merged."""
             sim = PiEstimationSimulation()
             sim.set_seed(42)
 
@@ -496,10 +496,10 @@ class TestMonteCarloFramework:
 
 
 class TestMetadataFields:
-    """Test optional metadata fields"""
+    """[FR-5] Test optional metadata fields."""
 
     def test_metadata_includes_requested_percentiles(self):
-        """Test line 362-363: requested_percentiles in metadata"""
+        """[FR-5] Test requested_percentiles in metadata."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
@@ -516,7 +516,7 @@ class TestMetadataFields:
         assert result.metadata["requested_percentiles"] == [10, 20, 30]
 
     def test_metadata_includes_engine_defaults_used(self):
-        """Test line 364-365: engine_defaults_used in metadata"""
+        """[FR-5] Test engine_defaults_used in metadata."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
@@ -533,7 +533,7 @@ class TestMetadataFields:
         assert result.metadata["engine_defaults_used"] is True
 
     def test_metadata_without_requested_percentiles(self):
-        """Test that metadata works when no percentiles requested"""
+        """[FR-5] Test that metadata works when no percentiles requested."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
@@ -551,10 +551,10 @@ class TestMetadataFields:
 
 
 class TestParallelBackend:
-    """Test backend selection for parallel execution"""
+    """[FR-3, NFR-7] Test backend selection for parallel execution."""
 
     def test_parallel_backend_thread_explicit(self):
-        """Test explicit thread backend selection"""
+        """[FR-3, NFR-7] Test explicit thread backend selection."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
         sim.parallel_backend = "thread"  # Explicitly set to thread
@@ -570,7 +570,7 @@ class TestParallelBackend:
         assert result.n_simulations == 25000
 
     def test_parallel_backend_process_explicit(self):
-        """Test explicit process backend selection"""
+        """[FR-3, NFR-7] Test explicit process backend selection."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
         sim.parallel_backend = "process"  # Force process backend
@@ -586,7 +586,7 @@ class TestParallelBackend:
         assert result.n_simulations == 25000
 
     def test_parallel_backend_auto_uses_threads(self):
-        """Test auto backend defaults to threads"""
+        """[FR-3, NFR-7] Test auto backend defaults to threads."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
         sim.parallel_backend = "auto"  # Should use threads
@@ -603,10 +603,10 @@ class TestParallelBackend:
 
 
 class TestParallelFallback:
-    """Test parallel fallback to sequential for small jobs"""
+    """[NFR-2] Test parallel fallback to sequential for small jobs."""
 
     def test_parallel_fallback_small_n_simulations(self):
-        """Test that parallel mode falls back to sequential for n < 20,000"""
+        """[NFR-2] Test that parallel mode falls back to sequential for n < 20,000."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
@@ -623,7 +623,7 @@ class TestParallelFallback:
         assert len(result.results) == 5000
 
     def test_parallel_fallback_single_worker(self):
-        """Test that parallel mode falls back to sequential with n_workers=1"""
+        """[NFR-2] Test that parallel mode falls back to sequential with n_workers=1."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
@@ -639,10 +639,10 @@ class TestParallelFallback:
 
 
 class TestThreadBackendExecution:
-    """Ensure thread backend is actually used in some tests"""
+    """[FR-3, NFR-7] Ensure thread backend is actually used in some tests."""
 
     def test_default_backend_is_auto(self):
-        """Test that default parallel_backend is 'auto'"""
+        """[USA-2, NFR-7] Test that default parallel_backend is 'auto'."""
         sim = PiEstimationSimulation()
 
         # Check default value
@@ -650,7 +650,7 @@ class TestThreadBackendExecution:
         assert sim.parallel_backend == "auto"
 
     def test_thread_backend_with_large_job(self):
-        """Test thread backend with job large enough to avoid fallback"""
+        """[FR-3] Test thread backend with job large enough to avoid fallback."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
         sim.parallel_backend = "thread"
@@ -667,10 +667,10 @@ class TestThreadBackendExecution:
 
 
 class TestSeedSequenceGeneration:
-    """Test generating random seed sequences without an initial seed"""
+    """[FR-4] Test generating random seed sequences without an initial seed."""
 
     def test_parallel_without_seed_generates_random_sequences(self):
-        """Test that parallel execution generates random seeds when no seed set"""
+        """[FR-4] Test that parallel execution generates random seeds when no seed set."""
         sim = PiEstimationSimulation()
         # Don't set seed - line 292 should execute
 
@@ -688,10 +688,10 @@ class TestSeedSequenceGeneration:
 
 
 class TestKeyboardInterruptHandling:
-    """Test KeyboardInterrupt during parallel execution"""
+    """[NFR-4] Test KeyboardInterrupt during parallel execution."""
 
     def test_keyboard_interrupt_cleanup(self):
-        """Test KeyboardInterrupt is propagated and futures are cancelled"""
+        """[NFR-4] Test KeyboardInterrupt is propagated and futures are cancelled."""
 
         class InterruptingSimulation(MonteCarloSimulation):
             def __init__(self):
@@ -720,10 +720,10 @@ class TestKeyboardInterruptHandling:
 
 
 class TestAdditionalEdgeCases:
-    """Additional tests for remaining edge cases"""
+    """[NFR-4] Additional tests for remaining edge cases."""
 
     def test_run_without_percentiles_and_without_stats(self):
-        """Test lines 221-226: no percentiles, no stats"""
+        """[NFR-4] Test running without percentiles and without stats."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
@@ -740,7 +740,7 @@ class TestAdditionalEdgeCases:
         assert len(result.stats) == 0
 
     def test_run_with_empty_percentiles_list(self):
-        """Test with explicitly empty percentiles list"""
+        """[NFR-4] Test with explicitly empty percentiles list."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
@@ -756,7 +756,7 @@ class TestAdditionalEdgeCases:
         assert len(result.percentiles) == 0
 
     def test_parallel_with_custom_block_size(self):
-        """Test parallel execution with custom block sizing (line 288)"""
+        """[FR-3] Test parallel execution with custom block sizing."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
@@ -771,7 +771,7 @@ class TestAdditionalEdgeCases:
         assert result.n_simulations == 100000
 
     def test_compare_results_with_all_metrics(self):
-        """Test all metric types in compare_results"""
+        """[FR-7] Test all metric types in compare_results."""
         fw = MonteCarloFramework()
         sim = PiEstimationSimulation()
         sim.set_seed(42)
@@ -791,7 +791,7 @@ class TestAdditionalEdgeCases:
 
 
 def test_pi_simulation_antithetic_handles_odd_points():
-    """Antithetic sampling should pad when n_points is odd."""
+    """[FR-20] Antithetic sampling should pad when n_points is odd."""
     sim = PiEstimationSimulation()
     sim.set_seed(123)
     value = sim.single_simulation(antithetic=True, n_points=5)
@@ -799,7 +799,7 @@ def test_pi_simulation_antithetic_handles_odd_points():
 
 
 def test_compute_stats_with_none_engine():
-    """Test that _compute_stats_with_engine returns empty dicts when engine is None"""
+    """[NFR-4] Test that _compute_stats_with_engine returns empty dicts when engine is None."""
     from unittest.mock import patch
 
     from mcframework.core import MonteCarloSimulation

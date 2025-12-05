@@ -1,0 +1,41 @@
+---
+name: sequence_bootstrap
+config:
+    layout: elk
+    look: neo
+---
+sequenceDiagram
+    participant Engine as StatsEngine
+    participant Bootstrap as ci_mean_bootstrap
+    participant Means as _bootstrap_means
+    participant BCa as _compute_bca_interval
+
+    Engine->>Bootstrap: ci_mean_bootstrap(x, ctx)
+    activate Bootstrap
+
+    Bootstrap->>Bootstrap: _clean(x, ctx)
+    
+    Bootstrap->>Means: _bootstrap_means(arr, n_resamples, rng)
+    activate Means
+    
+    loop n_bootstrap times
+        Means->>Means: resample with replacement
+        Means->>Means: compute mean
+    end
+    
+    Means-->>Bootstrap: bootstrap_means[]
+    deactivate Means
+
+    alt method == "percentile"
+        Bootstrap->>Bootstrap: np.percentile(means, [α/2, 1-α/2])
+    else method == "bca"
+        Bootstrap->>BCa: _compute_bca_interval(arr, means, confidence)
+        activate BCa
+        BCa->>BCa: bias_correction + acceleration
+        BCa-->>Bootstrap: (low, high)
+        deactivate BCa
+    end
+
+    Bootstrap-->>Engine: _CIResult.as_dict()
+    deactivate Bootstrap
+

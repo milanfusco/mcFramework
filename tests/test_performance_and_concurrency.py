@@ -5,7 +5,7 @@ from mcframework.core import _worker_run_chunk
 
 
 class TestPerformance:
-    """Test performance characteristics"""
+    """[NFR-1, NFR-7] Test performance characteristics."""
 
     #import time
     # def test_parallel_faster_than_sequential(self, simple_simulation):
@@ -29,7 +29,7 @@ class TestPerformance:
     #     # assert par_time < seq_time * 1.5  # Some speedup expected"""
 
     def test_auto_backend_resolves_per_platform(self, simple_simulation, monkeypatch):
-        """Auto backend should prefer processes on Windows, threads elsewhere."""
+        """[NFR-7] Auto backend should prefer processes on Windows, threads elsewhere."""
         simple_simulation.parallel_backend = "auto"
 
         monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: True)
@@ -40,7 +40,7 @@ class TestPerformance:
 
 
     def test_memory_efficiency_streaming(self, simple_simulation):
-        """Test large simulations don't crash due to memory"""
+        """[NFR-1] Test large simulations don't crash due to memory."""
         # This should work without OOM
         result = simple_simulation.run(
             50000,
@@ -51,7 +51,7 @@ class TestPerformance:
         assert result.n_simulations == 50000
 
     def test_worker_run_chunk(self, simple_simulation):
-        """Test worker function directly"""
+        """[FR-3] Test worker function directly."""
         seed_seq = np.random.SeedSequence(42)
         results = _worker_run_chunk(simple_simulation, 100, seed_seq, {})
         assert len(results) == 100

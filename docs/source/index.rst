@@ -185,6 +185,13 @@ The ``parallel_backend`` setting controls execution strategy:
 
 .. toctree::
    :maxdepth: 2
+   :caption: Project Documentation
+
+   ../PROJECT_PLAN
+   ../SYSTEM_DESIGN
+
+.. toctree::
+   :maxdepth: 2
    :caption: API Reference
 
    api/_modules/core

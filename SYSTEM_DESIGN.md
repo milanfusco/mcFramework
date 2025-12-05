@@ -1,15 +1,10 @@
-# System and Program Design
+# System Design
+
+## System and Program Design
+
+### McFramework — Monte Carlo Simulation Framework
 
 ---
-
-<div align="center">
-
-# McFramework
-## Monte Carlo Simulation Framework
-
----
-
-**Course:** Software Engineering
 
 **Team Members:**
 
@@ -18,38 +13,24 @@
 | Milan Fusco | 11:00 AM | mdfusco@student.ysu.edu |
 | James Gabbert | 11:00 AM | jdgabbert@student.ysu.edu |
 
-</div>
+> *For requirements, stakeholders, and project plan, see [PROJECT_PLAN.md](PROJECT_PLAN.md)*
 
+---
 
 ## Table of Contents
 
 1. [System Overview](#1-system-overview)
 2. [Architectural Design](#2-architectural-design)
-3. [Architectural Views](#3-architectural-views)
-4. [Design Patterns](#4-design-patterns)
-5. [UML Diagrams](#5-uml-diagrams)
-6. [Module Descriptions](#6-module-descriptions)
-7. [Data Flow](#7-data-flow)
-8. [Interface Design](#8-interface-design)
+3. [Design Patterns](#3-design-patterns)
+4. [UML Diagrams](#4-uml-diagrams)
+5. [Data Flow](#5-data-flow)
+6. [Interface Design](#6-interface-design)
 
 ---
 
 ## 1. System Overview
 
-### 1.1 Purpose
-
-McFramework is a Python library providing a robust, extensible foundation for building and running Monte Carlo simulations with rigorous statistical analysis. The framework enables researchers, students, and quantitative analysts to conduct reproducible computational experiments.
-
-### 1.2 Scope
-
-The system provides:
-
-- Abstract base class for custom simulation development
-- Deterministic parallel execution with reproducible RNG streams
-- Comprehensive statistics engine with multiple confidence interval methods
-- Built-in simulations for common use cases
-
-### 1.3 System Context Diagram
+### 1.1 System Context Diagram
 
 ```mermaid
 flowchart TB
@@ -85,13 +66,26 @@ flowchart TB
     McFramework --> Users
 ```
 
+### 1.2 Package Structure
+
+```
+mcframework/
+├── __init__.py          # Public API exports
+├── core.py              # MonteCarloSimulation, SimulationResult, MonteCarloFramework
+├── stats_engine.py      # StatsEngine, StatsContext, ComputeResult, metrics
+├── utils.py             # z_crit, t_crit, autocrit
+└── sims/
+    ├── __init__.py      # Simulation catalog
+    ├── pi.py            # PiEstimationSimulation
+    ├── portfolio.py     # PortfolioSimulation
+    └── black_scholes.py # BlackScholesSimulation, BlackScholesPathSimulation
+```
+
 ---
 
 ## 2. Architectural Design
 
-### 2.1 Architectural Style
-
-McFramework follows a **Layered Architecture** combined with **Plugin Architecture** principles:
+### 2.1 Layered Architecture
 
 ```mermaid
 flowchart TB
@@ -127,31 +121,30 @@ flowchart TB
 ```mermaid
 flowchart TB
     subgraph mcframework["mcframework package"]
-        subgraph core_comp["<<component>><br/>core"]
+        subgraph core_comp["<<component>> core"]
             MCS["MonteCarloSimulation<br/><<abstract>>"]
             SR["SimulationResult<br/><<dataclass>>"]
             MCF["MonteCarloFramework"]
         end
 
-        subgraph stats_comp["<<component>><br/>stats_engine"]
+        subgraph stats_comp["<<component>> stats_engine"]
             SE["StatsEngine"]
             SC["StatsContext<br/><<dataclass>>"]
             CR["ComputeResult<br/><<dataclass>>"]
-            FM["FnMetric<br/><<generic>>"]
-            MP["Metric<br/><<protocol>>"]
+            FM["FnMetric<<generic>>"]
+            MP["Metric<<protocol>>"]
         end
 
-        subgraph utils_comp["<<component>><br/>utils"]
+        subgraph utils_comp["<<component>> utils"]
             zcrit["z_crit()"]
             tcrit["t_crit()"]
             auto["autocrit()"]
         end
 
-        subgraph sims_comp["<<component>><br/>sims"]
+        subgraph sims_comp["<<component>> sims"]
             pi["PiEstimationSimulation"]
             port["PortfolioSimulation"]
             bs["BlackScholesSimulation"]
-            bsp["BlackScholesPathSimulation"]
         end
     end
 
@@ -161,23 +154,7 @@ flowchart TB
     sims_comp -->|extends| core_comp
 ```
 
----
-
-## 3. Architectural Views
-
-### 3.1 Logical View
-
-The logical view shows the key abstractions and their relationships:
-
-| Abstraction | Responsibility | Collaborators |
-|-------------|----------------|---------------|
-| `MonteCarloSimulation` | Define simulation behavior, manage RNG, execute runs | `StatsEngine`, `SimulationResult` |
-| `SimulationResult` | Store outputs, provide formatted summaries | None (data container) |
-| `MonteCarloFramework` | Registry, orchestration, comparison | `MonteCarloSimulation`, `SimulationResult` |
-| `StatsEngine` | Evaluate metrics, handle errors | `Metric`, `StatsContext`, `ComputeResult` |
-| `StatsContext` | Configure statistical computations | None (configuration) |
-
-### 3.2 Process View
+### 2.3 Process View (Parallel Execution)
 
 ```mermaid
 flowchart TB
@@ -192,9 +169,9 @@ flowchart TB
         end
         
         subgraph Workers["Worker Pool (parallel=True)"]
-            w1["Worker 1<br/>SeedSeq[0]<br/>Philox RNG<br/>chunk sims"]
-            w2["Worker 2<br/>SeedSeq[1]<br/>Philox RNG<br/>chunk sims"]
-            w3["Worker 3<br/>SeedSeq[2]<br/>Philox RNG<br/>chunk sims"]
+            w1["Worker 1<br/>SeedSeq[0]<br/>Philox RNG"]
+            w2["Worker 2<br/>SeedSeq[1]<br/>Philox RNG"]
+            w3["Worker 3<br/>SeedSeq[2]<br/>Philox RNG"]
         end
         
         collect["Collect Results"]
@@ -202,81 +179,20 @@ flowchart TB
         result["SimulationResult"]
     end
 
-    run --> validate
-    validate --> seed
+    run --> validate --> seed
     seed --> seq
     seed --> par
     par --> w1 & w2 & w3
     w1 & w2 & w3 --> collect
     seq --> collect
-    collect --> stats
-    stats --> result
-```
-
-### 3.3 Development View
-
-```mermaid
-flowchart TB
-    subgraph Package["mcframework/"]
-        init["__init__.py<br/>(Public API - 14 exports)"]
-        
-        core["core.py<br/>imports: stats_engine, utils"]
-        
-        stats["stats_engine.py<br/>imports: utils"]
-        
-        utils["utils.py<br/>imports: scipy.stats"]
-        
-        subgraph sims["sims/"]
-            sims_init["__init__.py"]
-            pi["pi.py"]
-            portfolio["portfolio.py"]
-            black_scholes["black_scholes.py"]
-        end
-    end
-
-    init --> core
-    init --> stats
-    init --> utils
-    init --> sims_init
-
-    core --> stats
-    core --> utils
-    stats --> utils
-
-    sims_init --> pi & portfolio & black_scholes
-    pi & portfolio & black_scholes --> core
-```
-
-### 3.4 Physical View (Deployment)
-
-```mermaid
-flowchart TB
-    subgraph PyPI["PyPI Repository"]
-        pkg["mcframework package"]
-    end
-
-    subgraph UserMachine["User's Machine"]
-        subgraph PythonEnv["Python Environment"]
-            numpy["NumPy ≥1.24"]
-            scipy["SciPy ≥1.10"]
-            mcf["mcframework<br/>(installed)"]
-        end
-
-        subgraph UserCode["User Script"]
-            script["from mcframework import ...<br/>class MySim(MonteCarloSimulation): ..."]
-        end
-    end
-
-    pkg -->|pip install| mcf
-    numpy & scipy --> mcf
-    mcf --> script
+    collect --> stats --> result
 ```
 
 ---
 
-## 4. Design Patterns
+## 3. Design Patterns
 
-### 4.1 Template Method Pattern
+### 3.1 Template Method Pattern
 
 **Location:** `MonteCarloSimulation.run()`
 
@@ -315,7 +231,7 @@ classDiagram
     note for MonteCarloSimulation "Template Method:\nrun() defines algorithm skeleton\nsingle_simulation() is the hook"
 ```
 
-### 4.2 Strategy Pattern
+### 3.2 Strategy Pattern
 
 **Location:** `StatsEngine` with `Metric` protocol
 
@@ -337,25 +253,17 @@ classDiagram
     class FnMetric~T~ {
         +name: str
         +fn: Callable
-        +doc: str
         +__call__(x, ctx) T
     }
 
-    class mean_metric["FnMetric('mean', mean)"]
-    class std_metric["FnMetric('std', std)"]
-    class ci_metric["FnMetric('ci_mean', ci_mean)"]
-
     StatsEngine o-- Metric : contains
     Metric <|.. FnMetric : implements
-    FnMetric <|-- mean_metric
-    FnMetric <|-- std_metric
-    FnMetric <|-- ci_metric
 
     note for StatsEngine "Context: holds strategy list"
     note for Metric "Strategy Interface"
 ```
 
-### 4.3 Registry Pattern
+### 3.3 Registry Pattern
 
 **Location:** `MonteCarloFramework`
 
@@ -388,7 +296,7 @@ classDiagram
     note for MonteCarloFramework "Registry Pattern:\nNamed lookup & comparison"
 ```
 
-### 4.4 Adapter Pattern
+### 3.4 Adapter Pattern
 
 **Location:** `FnMetric`
 
@@ -408,11 +316,10 @@ flowchart LR
         metric["Metric protocol<br/>.name: str<br/>.__call__(x, ctx)"]
     end
 
-    fn --> wrap
-    wrap --> metric
+    fn --> wrap --> metric
 ```
 
-### 4.5 Summary of Patterns
+### 3.5 Pattern Summary
 
 | Pattern | Location | Benefit |
 |---------|----------|---------|
@@ -421,13 +328,12 @@ flowchart LR
 | **Registry** | `MonteCarloFramework` | Named lookup and comparison |
 | **Builder** | `StatsContext.with_overrides()` | Fluent configuration |
 | **Adapter** | `FnMetric` | Convert functions to protocol objects |
-| **Dataclass** | `SimulationResult`, `StatsContext`, `ComputeResult` | Immutable data containers |
 
 ---
 
-## 5. UML Diagrams
+## 4. UML Diagrams
 
-### 5.1 Class Diagram (Core Module)
+### 4.1 Class Diagram (Core Module)
 
 ```mermaid
 classDiagram
@@ -439,15 +345,12 @@ classDiagram
         +parallel_backend: str
         -_PCTS: tuple
         -_PARALLEL_THRESHOLD: int
-        -_CHUNKS_PER_WORKER: int
         +__init__(name: str)
         +single_simulation(**kwargs)* float
         +set_seed(seed: int)
         +run(n_simulations, ...) SimulationResult
         -_run_sequential(...)
         -_run_parallel(...)
-        -_validate_run_params(...)
-        -_compute_stats_with_engine(...)
         -_create_result(...)
     }
 
@@ -461,7 +364,7 @@ classDiagram
         +percentiles: dict
         +stats: dict
         +metadata: dict
-        +result_to_string(confidence, method) str
+        +result_to_string() str
     }
 
     class MonteCarloFramework {
@@ -477,30 +380,24 @@ classDiagram
     }
 
     class PortfolioSimulation {
-        +single_simulation(initial_value, annual_return, volatility, years, use_gbm, _rng) float
+        +single_simulation(initial_value, annual_return, volatility, years, _rng) float
     }
 
     class BlackScholesSimulation {
-        +single_simulation(S0, K, T, r, sigma, option_type, exercise_type, n_steps, _rng) float
+        +single_simulation(S0, K, T, r, sigma, option_type, exercise_type, _rng) float
         +calculate_greeks(n_simulations, ...) dict
-    }
-
-    class BlackScholesPathSimulation {
-        +single_simulation(S0, r, sigma, T, n_steps, _rng) float
-        +simulate_paths(n_paths, ...) ndarray
     }
 
     MonteCarloSimulation <|-- PiEstimationSimulation
     MonteCarloSimulation <|-- PortfolioSimulation
     MonteCarloSimulation <|-- BlackScholesSimulation
-    MonteCarloSimulation <|-- BlackScholesPathSimulation
 
     MonteCarloSimulation --> SimulationResult : creates
     MonteCarloFramework o-- MonteCarloSimulation : manages
     MonteCarloFramework o-- SimulationResult : stores
 ```
 
-### 5.2 Class Diagram (Stats Engine Module)
+### 4.2 Class Diagram (Stats Engine Module)
 
 ```mermaid
 classDiagram
@@ -515,13 +412,10 @@ classDiagram
         +eps: float
         +ddof: int
         +ess: int
-        +rng: Generator
         +n_bootstrap: int
         +bootstrap: BootstrapMethod
         +alpha() float
-        +q_bound() tuple
-        +eff_n(observed_len, finite_count) int
-        +get_generators() Generator
+        +eff_n() int
         +with_overrides(**changes) StatsContext
     }
 
@@ -547,8 +441,7 @@ classDiagram
 
     class StatsEngine {
         -_metrics: list~Metric~
-        +__init__(metrics: MetricSet)
-        +compute(x, ctx, select, **kwargs) ComputeResult
+        +compute(x, ctx, select) ComputeResult
     }
 
     class ComputeResult {
@@ -562,14 +455,13 @@ classDiagram
     class Metric {
         <<protocol>>
         +name: str
-        +__call__(x: ndarray, ctx: StatsContext) Any
+        +__call__(x, ctx) Any
     }
 
     class FnMetric~T~ {
         <<dataclass>>
         +name: str
         +fn: Callable
-        +doc: str
         +__call__(x, ctx) T
     }
 
@@ -579,12 +471,10 @@ classDiagram
 
     StatsEngine o-- Metric : contains
     StatsEngine --> ComputeResult : returns
-    StatsEngine ..> StatsContext : uses
-
     Metric <|.. FnMetric : implements
 ```
 
-### 5.3 Sequence Diagram: Running a Simulation
+### 4.3 Sequence Diagram: Running a Simulation
 
 ```mermaid
 sequenceDiagram
@@ -604,17 +494,16 @@ sequenceDiagram
     Sim->>Pool: submit chunks to workers
     activate Pool
 
-        par Worker 1
-            Pool->>Pool: single_simulation() × chunk_size
-        and Worker 2
-            Pool->>Pool: single_simulation() × chunk_size
-        and Worker 3
-            Pool->>Pool: single_simulation() × chunk_size
-        end
+    par Worker 1
+        Pool->>Pool: single_simulation() × chunk_size
+    and Worker 2
+        Pool->>Pool: single_simulation() × chunk_size
+    and Worker 3
+        Pool->>Pool: single_simulation() × chunk_size
+    end
 
-        Pool-->>Sim: collected results[]
-        deactivate Pool
-    
+    Pool-->>Sim: collected results[]
+    deactivate Pool
 
     Sim->>Engine: compute(results, StatsContext)
     activate Engine
@@ -623,15 +512,12 @@ sequenceDiagram
     deactivate Engine
 
     Sim->>Result: _create_result()
-    activate Result
     Result-->>Sim: SimulationResult
-    deactivate Result
-
     Sim-->>User: SimulationResult
     deactivate Sim
 ```
 
-### 5.4 Sequence Diagram: Bootstrap Confidence Interval
+### 4.4 Sequence Diagram: Bootstrap Confidence Interval
 
 ```mermaid
 sequenceDiagram
@@ -661,9 +547,7 @@ sequenceDiagram
     else method == "bca"
         Bootstrap->>BCa: _compute_bca_interval(arr, means, confidence)
         activate BCa
-        BCa->>BCa: _bca_bias_correction()
-        BCa->>BCa: _bca_acceleration()
-        BCa->>BCa: adjusted_percentile()
+        BCa->>BCa: bias_correction + acceleration
         BCa-->>Bootstrap: (low, high)
         deactivate BCa
     end
@@ -672,7 +556,7 @@ sequenceDiagram
     deactivate Bootstrap
 ```
 
-### 5.5 State Diagram: Simulation Lifecycle
+### 4.5 State Diagram: Simulation Lifecycle
 
 ```mermaid
 stateDiagram-v2
@@ -687,117 +571,18 @@ stateDiagram-v2
     Running --> Error: exception raised
     
     Computing --> Completed: stats computed
-    Computing --> Error: stats failed
     
     Error --> Initialized: create new instance
     
     Completed --> Running: run() again
     Completed --> [*]: return SimulationResult
-
-    note right of Running
-        Parallel or Sequential
-        execution of single_simulation()
-    end note
-
-    note right of Computing
-        StatsEngine.compute()
-        evaluates all metrics
-    end note
-```
-
-### 5.6 Activity Diagram: Statistics Computation
-
-```mermaid
-flowchart TB
-    Start([Start]) --> Input["Input: ndarray x, StatsContext ctx"]
-    Input --> Clean["_clean(x, ctx)<br/>Handle NaN/Inf based on nan_policy"]
-    
-    Clean --> Fork{{"Parallel Metric Evaluation"}}
-    
-    Fork --> Mean["mean(x, ctx)<br/>np.mean()"]
-    Fork --> Std["std(x, ctx)<br/>np.std(ddof=1)"]
-    Fork --> Pct["percentiles(x, ctx)<br/>np.percentile()"]
-    Fork --> Skew["skew(x, ctx)<br/>scipy.stats.skew()"]
-    Fork --> Kurt["kurtosis(x, ctx)<br/>scipy.stats.kurtosis()"]
-    Fork --> CI["ci_mean(x, ctx)<br/>autocrit() + SE"]
-    Fork --> Boot["ci_mean_bootstrap(x, ctx)<br/>resampling"]
-    
-    Mean --> Join{{"Collect Results"}}
-    Std --> Join
-    Pct --> Join
-    Skew --> Join
-    Kurt --> Join
-    CI --> Join
-    Boot --> Join
-    
-    Join --> Check{"Errors?"}
-    Check -->|Yes| Track["Track in ComputeResult.errors"]
-    Check -->|No| Success["Add to ComputeResult.metrics"]
-    Track --> Result
-    Success --> Result
-    
-    Result["ComputeResult<br/>{metrics, skipped, errors}"]
-    Result --> End([End])
 ```
 
 ---
 
-## 6. Module Descriptions
+## 5. Data Flow
 
-### 6.1 core.py
-
-**Purpose:** Provides the fundamental abstractions for simulation execution.
-
-| Class/Function | Responsibility |
-|----------------|----------------|
-| `MonteCarloSimulation` | Abstract base class defining the simulation contract |
-| `SimulationResult` | Immutable container for outputs and metadata |
-| `MonteCarloFramework` | Registry for managing multiple named simulations |
-| `make_blocks()` | Utility for partitioning work into chunks |
-| `_worker_run_chunk()` | Top-level worker function for process-based parallelism |
-
-### 6.2 stats_engine.py
-
-**Purpose:** Provides statistical analysis capabilities.
-
-| Class/Function | Responsibility |
-|----------------|----------------|
-| `StatsContext` | Configuration for all statistical computations |
-| `StatsEngine` | Orchestrates metric evaluation |
-| `ComputeResult` | Holds metrics, skipped, and errors |
-| `FnMetric` | Adapter for plain functions to `Metric` protocol |
-| `mean`, `std`, `percentiles` | Descriptive statistics |
-| `skew`, `kurtosis` | Higher moments |
-| `ci_mean`, `ci_mean_bootstrap`, `ci_mean_chebyshev` | Confidence intervals |
-| `chebyshev_required_n`, `markov_error_prob` | Distribution-free bounds |
-| `bias_to_target`, `mse_to_target` | Target-based metrics |
-
-### 6.3 utils.py
-
-**Purpose:** Provides critical value functions for confidence intervals.
-
-| Function | Responsibility |
-|----------|----------------|
-| `z_crit(confidence)` | Normal distribution critical value |
-| `t_crit(confidence, df)` | Student's t critical value |
-| `autocrit(confidence, n, method)` | Auto-select z or t based on sample size |
-
-### 6.4 sims/
-
-**Purpose:** Provides ready-to-use simulation implementations.
-
-| Class | Responsibility |
-|-------|----------------|
-| `PiEstimationSimulation` | Estimate π via geometric probability |
-| `PortfolioSimulation` | Simulate wealth under GBM dynamics |
-| `BlackScholesSimulation` | Price European/American options |
-| `BlackScholesPathSimulation` | Generate GBM price paths |
-
----
-
-## 7. Data Flow
-
-### 7.1 Simulation Execution Flow
+### 5.1 Simulation Execution Flow
 
 ```mermaid
 flowchart LR
@@ -819,32 +604,21 @@ flowchart LR
 
     subgraph Output
         sr["SimulationResult"]
-        mean["mean"]
-        std["std"]
-        pct["percentiles"]
-        ci["ci_mean"]
-        meta["metadata"]
     end
 
     n & seed & kwargs --> exec
-    exec --> single
-    single --> results
-    results --> engine
-    engine --> sr
-    sr --> mean & std & pct & ci & meta
+    exec --> single --> results --> engine --> sr
 ```
 
-### 7.2 Statistics Computation Flow
+### 5.2 Statistics Computation Flow
 
 ```mermaid
 flowchart TB
     Input["Input: ndarray x"] --> Clean["_clean(x, ctx)<br/>Handle NaN/Inf"]
     
-    Clean --> Descriptive["Descriptive Stats"]
-    Clean --> CI["Confidence Intervals"]
-    Clean --> Bounds["Distribution-Free Bounds"]
+    Clean --> Descriptive & CI & Bounds
     
-    subgraph Descriptive
+    subgraph Descriptive["Descriptive Stats"]
         mean_f["mean()"]
         std_f["std()"]
         pct_f["percentiles()"]
@@ -852,29 +626,25 @@ flowchart TB
         kurt_f["kurtosis()"]
     end
     
-    subgraph CI
-        ci_mean_f["ci_mean()<br/>(z/t)"]
-        ci_boot_f["ci_mean_bootstrap()<br/>(percentile/BCa)"]
+    subgraph CI["Confidence Intervals"]
+        ci_mean_f["ci_mean()"]
+        ci_boot_f["ci_mean_bootstrap()"]
         ci_cheb_f["ci_mean_chebyshev()"]
     end
     
-    subgraph Bounds
+    subgraph Bounds["Distribution-Free"]
         cheb_n["chebyshev_required_n()"]
         markov["markov_error_prob()"]
     end
     
-    Descriptive --> Result
-    CI --> Result
-    Bounds --> Result
-    
-    Result["ComputeResult<br/>{metrics, skipped, errors}"]
+    Descriptive & CI & Bounds --> Result["ComputeResult"]
 ```
 
 ---
 
-## 8. Interface Design
+## 6. Interface Design
 
-### 8.1 Public API
+### 6.1 Public API
 
 ```python
 # Core classes
@@ -904,9 +674,10 @@ from mcframework import (
 )
 ```
 
-### 8.2 Usage Examples
+### 6.2 Usage Examples
 
 **Minimal Custom Simulation:**
+
 ```python
 from mcframework import MonteCarloSimulation
 
@@ -922,6 +693,7 @@ print(result.mean)  # ~7.0
 ```
 
 **Using the Framework:**
+
 ```python
 from mcframework import MonteCarloFramework, PiEstimationSimulation
 
@@ -931,34 +703,15 @@ result = fw.run_simulation("Pi Estimation", 100_000, n_points=10_000)
 print(result.result_to_string())
 ```
 
-**Custom Statistics Configuration:**
-```python
-from mcframework import StatsContext
-
-ctx = StatsContext(
-    n=10000,
-    confidence=0.99,
-    ci_method="bootstrap",
-    n_bootstrap=5000,
-    nan_policy="omit"
-)
-```
-
 ---
 
-## Appendix: Metrics Reference
+## Appendix: Module Reference
 
-| Metric Function | Output Type | Category |
-|-----------------|-------------|----------|
-| `mean(x, ctx)` | `float` | Descriptive |
-| `std(x, ctx)` | `float` | Descriptive |
-| `percentiles(x, ctx)` | `dict[int, float]` | Descriptive |
-| `skew(x, ctx)` | `float` | Descriptive |
-| `kurtosis(x, ctx)` | `float` | Descriptive |
-| `ci_mean(x, ctx)` | `dict` | Confidence Interval |
-| `ci_mean_bootstrap(x, ctx)` | `dict` | Confidence Interval |
-| `ci_mean_chebyshev(x, ctx)` | `dict` | Distribution-Free |
-| `chebyshev_required_n(x, ctx)` | `int` | Sample Sizing |
-| `markov_error_prob(x, ctx)` | `float` | Error Bound |
-| `bias_to_target(x, ctx)` | `float` | Target-Based |
-| `mse_to_target(x, ctx)` | `float` | Target-Based |
+| Module | Classes/Functions | Purpose |
+|--------|-------------------|---------|
+| `core.py` | `MonteCarloSimulation`, `SimulationResult`, `MonteCarloFramework` | Simulation execution |
+| `stats_engine.py` | `StatsEngine`, `StatsContext`, `ComputeResult`, `FnMetric`, 12+ metric functions | Statistical analysis |
+| `utils.py` | `z_crit`, `t_crit`, `autocrit` | Critical values |
+| `sims/pi.py` | `PiEstimationSimulation` | π estimation |
+| `sims/portfolio.py` | `PortfolioSimulation` | GBM wealth |
+| `sims/black_scholes.py` | `BlackScholesSimulation`, `BlackScholesPathSimulation` | Option pricing |

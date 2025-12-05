@@ -1,0 +1,33 @@
+---
+name: layered_architecture
+config:
+    layout: elk
+    look: neo
+---
+flowchart TB
+    subgraph Layer5["Application Layer"]
+        user["User-defined simulations<br/>Custom scripts"]
+    end
+
+    subgraph Layer4["Framework Layer"]
+        framework["MonteCarloFramework<br/>(registry, comparison, orchestration)"]
+    end
+
+    subgraph Layer3["Core Services Layer"]
+        sim["MonteCarloSimulation<br/>(execution engine)"]
+        engine["StatsEngine<br/>(statistical analysis)"]
+    end
+
+    subgraph Layer2["Utilities Layer"]
+        utils2["utils.py<br/>(critical values, helpers)"]
+    end
+
+    subgraph Layer1["Infrastructure Layer"]
+        infra["NumPy | SciPy | concurrent.futures | dataclasses"]
+    end
+
+    Layer5 --> Layer4
+    Layer4 --> Layer3
+    Layer3 --> Layer2
+    Layer2 --> Layer1
+

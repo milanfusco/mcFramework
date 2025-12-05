@@ -1,68 +1,66 @@
-# Project Selection and Project Plan
+# Project Plan
+
+## Project Selection and Project Plan
+
+### McFramework — Monte Carlo Simulation Framework
 
 ---
 
 ## 1) Team Members
 
 | Name | Section | Email |
-|------|---------|-------|
+|:----:|:-------:|:-----:|
 | Milan Fusco | 11:00 AM | mdfusco@student.ysu.edu |
 | James Gabbert | 11:00 AM | jdgabbert@student.ysu.edu |
 
 ---
 
-## 2) Project Name
+## 2) Project Description
 
-**McFramework** — Monte Carlo Simulation Framework
-
----
-
-## 3) Project Description
-
-McFramework is a Python library that provides a robust, extensible foundation for building and running Monte Carlo simulations with rigorous statistical analysis. The core framework consists of four modules:
-
-| Module | Purpose |
-|--------|---------|
-| `core.py` | Abstract simulation base class, parallel execution, result handling |
-| `stats_engine.py` | Statistical metrics, confidence intervals, bootstrap methods |
-| `utils.py` | Critical value functions (z, t, auto-selection) |
-| `sims/` | Built-in simulation implementations |
+McFramework is a Python library providing a robust, extensible foundation for building and running Monte Carlo simulations with rigorous statistical analysis.
 
 **Key Capabilities:**
+
 - Abstract base class pattern for defining custom simulations
 - Deterministic parallel execution with reproducible RNG streams
 - Comprehensive statistics engine with 12+ metric functions
 - Multiple confidence interval methods (parametric, bootstrap, distribution-free)
 - Built-in simulations: Pi estimation, Portfolio wealth, Black-Scholes options
 
+> *For detailed architecture and UML diagrams, see [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md)*
+
 ---
 
-## 4) Software System Type
+## 3) Software System Type
 
 **☑ System for Modeling and Simulation**
 
 The framework is designed for computational experiments involving:
+
 - Stochastic process simulation (random sampling, GBM)
 - Statistical estimation (Monte Carlo integration)
 - Financial modeling (option pricing, portfolio analysis)
 - Uncertainty quantification (confidence intervals, error bounds)
 
 **Architecture Classification:**
+
 - **Library/Framework** — Provides reusable abstractions for simulation development
 - **Batch Processing** — Executes thousands of independent simulation runs
 - **Parallel System** — Distributes work across threads or processes
 
 ---
 
-## 5) Project Plan
+## 4) Project Plan
 
 ### Phase 1: Core Abstractions (Weeks 1-2)
+
 - [x] Design `MonteCarloSimulation` abstract base class
 - [x] Implement `SimulationResult` dataclass for outputs
 - [x] Create `MonteCarloFramework` registry for managing multiple simulations
 - [x] Define public API in `__init__.py`
 
 ### Phase 2: RNG & Parallel Execution (Weeks 3-4)
+
 - [x] Implement reproducible seeding with `numpy.random.SeedSequence`
 - [x] Build parallel execution with `ThreadPoolExecutor` (POSIX)
 - [x] Build parallel execution with `ProcessPoolExecutor` (Windows)
@@ -70,37 +68,37 @@ The framework is designed for computational experiments involving:
 - [x] Chunk-based work distribution for load balancing
 
 ### Phase 3: Statistics Engine (Weeks 5-7)
+
 - [x] Design `StatsContext` configuration dataclass
 - [x] Implement descriptive statistics: `mean`, `std`, `percentiles`, `skew`, `kurtosis`
 - [x] Implement parametric CI: `ci_mean` with z/t critical values
 - [x] Implement bootstrap CI: `ci_mean_bootstrap` with percentile and BCa methods
 - [x] Implement distribution-free bounds: `ci_mean_chebyshev`, `markov_error_prob`
 - [x] Build `StatsEngine` orchestrator with `ComputeResult` tracking
-- [x] Create `FnMetric` adapter and `Metric` protocol
 
 ### Phase 4: Built-in Simulations (Weeks 8-9)
+
 - [x] `PiEstimationSimulation` — geometric probability on unit disk
 - [x] `PortfolioSimulation` — GBM wealth dynamics
 - [x] `BlackScholesSimulation` — European/American option pricing
 - [x] `BlackScholesPathSimulation` — path generation for visualization
-- [x] Helper functions: `_european_payoff`, `_simulate_gbm_path`, `_american_exercise_lsm`
 
 ### Phase 5: Testing & Quality (Weeks 10-11)
+
 - [x] Unit tests for all modules (16 test files)
 - [x] Edge case and error handling tests
 - [x] Integration tests for full simulation runs
-- [x] Performance tests for parallel execution
 - [x] CI pipeline: lint, test, coverage, docs
 
 ### Phase 6: Documentation (Week 12)
+
 - [x] NumPy-style docstrings with LaTeX math
 - [x] Sphinx API documentation
-- [x] Getting Started guide
 - [x] UML class diagrams
 
 ---
 
-## 6) Requirements
+## 5) Requirements
 
 ### User Requirements
 
@@ -130,7 +128,7 @@ The framework is designed for computational experiments involving:
 
 ---
 
-## 7) Stakeholders
+## 6) Stakeholders
 
 | Stakeholder Type | Role | Primary Concerns |
 |------------------|------|------------------|
@@ -142,27 +140,23 @@ The framework is designed for computational experiments involving:
 
 ---
 
-## 8) Development Methodology
+## 7) Development Methodology
 
 **☑ Agile with XP (Extreme Programming) Practices**
 
-| XP Practice | Evidence in Project |
+| Practice | Evidence in Project |
 |-------------|---------------------|
 | **Test-Driven Development** | 16 test files covering unit, integration, edge cases, regression |
-| **Continuous Integration** | GitHub Actions: lint (ruff, pylint) → test (pytest) → build → docs |
-| **Refactoring** | Stats engine refactored from inline functions to `ComputeResult` class |
+| **Git Workflow** | GitFlow with feature branches and pull requests |
+| **Continuous Integration** | GitHub Actions: lint (ruff, pylint) → test (pytest) → build → docs → deploy |
+| **Refactoring** | Numerical robustness improvements (NaN handling, edge cases) |
 | **Small Releases** | Semantic versioning: v0.1.0 → v0.2.0 → v0.3.x → v0.4.0 → v0.5.0 |
 | **Coding Standards** | PEP 8, PEP 585 type hints, NumPy docstring convention |
-| **Collective Code Ownership** | Modular architecture (core, stats_engine, sims, utils) |
-
-**Not Waterfall because:**
-- Testing happened continuously, not after implementation
-- Features evolved through iterative PRs
-- No upfront comprehensive design document
+| **Collective Code Ownership** | Modular architecture (core, stats_engine, sims, utils) with clear separation of concerns |
 
 ---
 
-## 9) Functional Requirements
+## 8) Functional Requirements
 
 | ID | Requirement | Module |
 |----|-------------|--------|
@@ -193,7 +187,7 @@ The framework is designed for computational experiments involving:
 
 ---
 
-## 10) Non-Functional Requirements
+## 9) Non-Functional Requirements
 
 | ID | Category | Requirement |
 |----|----------|-------------|
@@ -213,7 +207,7 @@ The framework is designed for computational experiments involving:
 
 ---
 
-## 11) Usability Requirements
+## 10) Usability Requirements
 
 | ID | Requirement |
 |----|-------------|
@@ -225,53 +219,3 @@ The framework is designed for computational experiments involving:
 | USA-6 | The `Metric` protocol shall be simple: `name: str` + `__call__(x, ctx)` |
 | USA-7 | Built-in simulations shall demonstrate framework capabilities with realistic parameters |
 | USA-8 | Docstrings shall include Examples sections with executable code |
-
----
-
-## Architecture Overview
-
-```
-mcframework/
-├── __init__.py          # Public API exports
-├── core.py              # MonteCarloSimulation, SimulationResult, MonteCarloFramework
-├── stats_engine.py      # StatsEngine, StatsContext, ComputeResult, metrics
-├── utils.py             # z_crit, t_crit, autocrit
-└── sims/
-    ├── __init__.py      # Simulation catalog
-    ├── pi.py            # PiEstimationSimulation
-    ├── portfolio.py     # PortfolioSimulation
-    └── black_scholes.py # BlackScholesSimulation, BlackScholesPathSimulation
-```
-
----
-
-## Key Classes Summary
-
-| Class | Responsibility |
-|-------|----------------|
-| `MonteCarloSimulation` | Abstract base class; handles seeding, parallel execution, stats computation |
-| `SimulationResult` | Dataclass containing results, stats, percentiles, metadata |
-| `MonteCarloFramework` | Registry for named simulations; comparison utilities |
-| `StatsContext` | Configuration for statistical computations (confidence, NaN policy, etc.) |
-| `StatsEngine` | Orchestrates metric evaluation; returns `ComputeResult` |
-| `ComputeResult` | Holds metrics dict, skipped list, errors list |
-| `FnMetric` | Adapter binding a name to a metric function |
-
----
-
-## Metrics Summary
-
-| Metric Function | Output | Category |
-|-----------------|--------|----------|
-| `mean(x, ctx)` | `float` | Descriptive |
-| `std(x, ctx)` | `float` | Descriptive |
-| `percentiles(x, ctx)` | `dict[int, float]` | Descriptive |
-| `skew(x, ctx)` | `float` | Descriptive |
-| `kurtosis(x, ctx)` | `float` | Descriptive |
-| `ci_mean(x, ctx)` | `dict` (low, high, method, se, crit) | Confidence Interval |
-| `ci_mean_bootstrap(x, ctx)` | `dict` (low, high, method) | Confidence Interval |
-| `ci_mean_chebyshev(x, ctx)` | `dict` (low, high, method) | Distribution-Free |
-| `chebyshev_required_n(x, ctx)` | `int` | Sample Sizing |
-| `markov_error_prob(x, ctx)` | `float` | Error Bound |
-| `bias_to_target(x, ctx)` | `float` | Target-Based |
-| `mse_to_target(x, ctx)` | `float` | Target-Based |

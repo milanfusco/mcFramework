@@ -1,0 +1,41 @@
+---
+name: stats_flow
+config:
+    layout: elk
+    look: neo
+---
+flowchart TB
+    Input["Input: ndarray x"] --> Clean["_clean(x, ctx)<br/>Handle NaN/Inf"]
+    subgraph Descriptive [Descriptive Stats]
+        mean_f["mean()"]
+        std_f["std()"]
+        pct_f["percentiles()"]
+        skew_f["skew()"]
+        kurt_f["kurtosis()"]
+    end
+
+    subgraph CI [Confidence Intervals]
+        ci_mean_f["ci_mean()"]
+        ci_boot_f["ci_mean_bootstrap()"]
+        ci_cheb_f["ci_mean_chebyshev()"]
+    end
+
+    subgraph Bounds [Distribution-Free]
+        cheb_n["chebyshev_required_n()"]
+        markov["markov_error_prob()"]
+    end
+    
+    Clean --> mean_f & std_f & pct_f & skew_f & kurt_f
+    Clean --> ci_mean_f & ci_boot_f & ci_cheb_f
+    Clean --> cheb_n & markov
+
+    mean_f & std_f & pct_f & skew_f & kurt_f --> Result
+    ci_mean_f & ci_boot_f & ci_cheb_f --> Result
+    cheb_n & markov --> Result
+
+    Result["ComputeResult"]
+    metrics["metrics: dict"]
+    skipped["skipped: list"]
+    errors["errors: list"]
+
+    Result --> metrics & skipped & errors

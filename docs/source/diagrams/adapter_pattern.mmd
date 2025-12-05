@@ -1,0 +1,21 @@
+---
+name: adapter_pattern
+config:
+    layout: elk
+    look: neo
+---
+flowchart LR
+    subgraph Before["Plain Function"]
+        fn["def mean(x, ctx) → float"]
+    end
+
+    subgraph Adapter["FnMetric (Adapter)"]
+        wrap["FnMetric('mean', mean)"]
+    end
+
+    subgraph After["Protocol Object"]
+        metric["Metric protocol<br/>.name: str<br/>.__call__(x, ctx)"]
+    end
+
+    fn --> wrap --> metric
+

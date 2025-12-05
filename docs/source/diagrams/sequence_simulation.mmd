@@ -1,0 +1,45 @@
+---
+name: sequence_simulation
+config:
+    layout: elk
+    look: neo
+---
+sequenceDiagram
+    participant User
+    participant Sim as MonteCarloSimulation
+    participant Pool as ThreadPool/ProcessPool
+    participant Engine as StatsEngine
+    participant Result as SimulationResult
+
+    User->>Sim: run(n=10000, parallel=True)
+    activate Sim
+
+    Sim->>Sim: _validate_run_params()
+    Sim->>Sim: spawn SeedSequences
+
+    Note over Sim,Pool: Parallel Execution
+    Sim->>Pool: submit chunks to workers
+    activate Pool
+
+    par Worker 1
+        Pool->>Pool: single_simulation() × chunk_size
+    and Worker 2
+        Pool->>Pool: single_simulation() × chunk_size
+    and Worker 3
+        Pool->>Pool: single_simulation() × chunk_size
+    end
+
+    Pool-->>Sim: collected results[]
+    deactivate Pool
+
+    Sim->>Engine: compute(results, StatsContext)
+    activate Engine
+    Engine->>Engine: mean(), std(), ci_mean(), ...
+    Engine-->>Sim: ComputeResult
+    deactivate Engine
+
+    Sim->>Result: _create_result()
+    Result-->>Sim: SimulationResult
+    Sim-->>User: SimulationResult
+    deactivate Sim
+

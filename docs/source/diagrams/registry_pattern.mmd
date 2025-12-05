@@ -1,0 +1,31 @@
+---
+name: registry_pattern
+config:
+    layout: elk
+    look: neo   
+---
+classDiagram
+    class MonteCarloFramework {
+        -simulations: dict~str, MonteCarloSimulation~
+        -results: dict~str, SimulationResult~
+        +register_simulation(sim, name)
+        +run_simulation(name, n_simulations, ...)
+        +compare_results(names, metric)
+    }
+
+    class MonteCarloSimulation {
+        <<abstract>>
+        +name: str
+    }
+
+    class SimulationResult {
+        <<dataclass>>
+        +mean: float
+        +std: float
+    }
+
+    MonteCarloFramework o-- "0..*" MonteCarloSimulation : manages
+    MonteCarloFramework o-- "0..*" SimulationResult : stores
+
+    note for MonteCarloFramework "Registry Pattern:<br/>Named lookup & comparison"
+
