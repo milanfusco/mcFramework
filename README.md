@@ -1,18 +1,28 @@
 # mcframework
 
 [![CI](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml/badge.svg)](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml)
-[![Docs Deploy](https://github.com/milanfusco/mcFramework/actions/workflows/docs-deploy.yml/badge.svg)](https://github.com/milanfusco/mcFramework/actions/workflows/docs-deploy.yml)
+[![Docs](https://github.com/milanfusco/mcFramework/actions/workflows/docs-deploy.yml/badge.svg)](https://milanfusco.github.io/mcframework/)
 [![codecov](https://codecov.io/gh/milanfusco/mcframework/branch/main/graph/badge.svg)](https://codecov.io/gh/milanfusco/mcframework)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Lightweight, reproducible, and deterministic Monte Carlo simulation framework with statistically robust analytics and parallel execution.
 
+## 📚 Documentation
+
+**[View Full Documentation →](https://milanfusco.github.io/mcframework/)**
+
+The documentation includes:
+
+- **Getting Started** — Installation and quick examples
+- **API Reference** — Complete module documentation with type hints
+- **System Design** — Architecture diagrams, UML, and design patterns
+- **Project Plan** — Requirements, stakeholders, and methodology
+---
+
 ## Installation
 
 ### From Source (Development)
-
-Clone the repository and install in editable mode:
 
 ```bash
 git clone https://github.com/milanfusco/mcframework.git
@@ -22,49 +32,48 @@ pip install -e .
 
 ### Dependencies
 
-The package requires:
-- Python >= 3.10
-- numpy >= 1.24
-- scipy >= 1.10
-- matplotlib >= 3.7
+| Package | Version | Purpose |
+|---------|---------|---------|
+| Python | ≥ 3.10 | Runtime |
+| NumPy | ≥ 1.24 | Arrays, RNG |
+| SciPy | ≥ 1.10 | Statistics |
+| Matplotlib | ≥ 3.7 | Visualization |
 
 ### Optional Dependencies
 
-For all dependencies:
 ```bash
+# All extras
 pip install -e ".[dev,test,docs,gui]"
+
+# Individual extras
+pip install -e ".[dev]"   # Linting (ruff, pylint)
+pip install -e ".[test]"  # Testing (pytest, coverage)
+pip install -e ".[docs]"  # Documentation (Sphinx, themes)
+pip install -e ".[gui]"   # GUI application (PySide6)
 ```
 
-For development:
-```bash
-pip install -e ".[dev]"
-```
-
-For testing:
-```bash
-pip install -e ".[test]"
-```
-
-For documentation:
-```bash
-pip install -e ".[docs]"
-```
-
-
-For the GUI application:
-```bash
-pip install -e ".[gui]"
-```
+---
 
 ## Features
 
-- Simple base class (`MonteCarloSimulation`) for defining simulations by implementing `single_simulation`.
-- Deterministic & reproducible parallel execution using `numpy` `SeedSequence` spawning.
-- Flexible process-based parallelism with stable results independent of worker scheduling.
-- Extensible statistics engine (`StatsEngine`) with built-in metrics: mean, std, percentiles, skew, kurtosis, confidence interval for mean.
-- Custom percentile selection and confidence interval control (`auto` / `z` / `t`).
-- Structured `SimulationResult` with metadata and pretty formatting helper.
-- Registry / runner (`MonteCarloFramework`) for managing multiple simulations and comparing metrics.
+### Core Framework
+- **Abstract base class** (`MonteCarloSimulation`) — Define simulations by implementing `single_simulation()`
+- **Deterministic parallelism** — Reproducible results via NumPy `SeedSequence` spawning
+- **Cross-platform execution** — Threads on POSIX, processes on Windows
+- **Structured results** — `SimulationResult` dataclass with metadata and formatting
+
+### Statistics Engine
+- **Descriptive statistics** — Mean, std, percentiles, skew, kurtosis
+- **Parametric CI** — z/t critical values with auto-selection
+- **Bootstrap CI** — Percentile and BCa methods
+- **Distribution-free bounds** — Chebyshev intervals, Markov probability
+
+### Built-in Simulations
+- **Pi Estimation** — Geometric probability on unit disk
+- **Portfolio Simulation** — GBM wealth dynamics
+- **Black-Scholes** — European/American option pricing with Greeks
+
+---
 
 ## Quick Start
 
@@ -73,140 +82,145 @@ from mcframework import MonteCarloFramework, PiEstimationSimulation
 
 sim = PiEstimationSimulation()
 sim.set_seed(123)
+
 fw = MonteCarloFramework()
 fw.register_simulation(sim)
-res = fw.run_simulation("Pi Estimation", 10000, n_points=5000, parallel=True)
-print(res.result_to_string())
+
+result = fw.run_simulation("Pi Estimation", 10_000, n_points=5000, parallel=True)
+print(result.result_to_string())
 ```
 
-For a comprehensive example with visualizations, see [`demo.py`](demo.py) which demonstrates Pi estimation and portfolio simulations with detailed plots.
+### Defining a Custom Simulation
+
+```python
+from mcframework import MonteCarloSimulation
+
+class DiceSumSimulation(MonteCarloSimulation):
+    def __init__(self):
+        super().__init__("Dice Sum")
+
+    def single_simulation(self, _rng=None, n_dice: int = 5) -> float:
+        rng = self._rng(_rng, self.rng)
+        return float(rng.integers(1, 7, size=n_dice).sum())
+
+sim = DiceSumSimulation()
+sim.set_seed(42)
+result = sim.run(10_000, parallel=True)
+print(f"Mean: {result.mean:.2f}")  # ~17.5
+```
+
+### Extended Statistics
+
+```python
+result = sim.run(
+    50_000,
+    percentiles=(1, 5, 50, 95, 99),
+    confidence=0.99,
+    ci_method="auto",
+)
+print(result.stats["ci_mean"])  # 99% confidence interval
+```
+
+---
+
+## Package Structure
+
+```
+mcframework/
+├── __init__.py          # Public API exports
+├── core.py              # MonteCarloSimulation, SimulationResult, MonteCarloFramework
+├── stats_engine.py      # StatsEngine, StatsContext, ComputeResult, metrics
+├── utils.py             # z_crit, t_crit, autocrit
+└── sims/
+    ├── __init__.py      # Simulation catalog
+    ├── pi.py            # PiEstimationSimulation
+    ├── portfolio.py     # PortfolioSimulation
+    └── black_scholes.py # BlackScholesSimulation, BlackScholesPathSimulation
+```
+
+---
 
 ## GUI Application
 
 The framework includes a PySide6 GUI for Black-Scholes Monte Carlo simulations:
 
 ```bash
-# Install GUI dependencies
 pip install -e ".[gui]"
-
-# Run the application
 python demos/gui/quant_black_scholes.py
 ```
 
-### Features
+**Features:**
+- Live stock data from Yahoo Finance
+- Monte Carlo path simulations
+- Option pricing with Greeks (Δ, Γ, ν, Θ, ρ)
+- Interactive what-if analysis
+- 3D option price surfaces
+- HTML report export
+- 
+**Scenario Presets:** High volatility (TSLA), Index ETFs (SPY), Crypto-adjacent (COIN), Dividend stocks (JNJ)
 
-- **Live Data**: Fetch real-time stock data from Yahoo Finance
-- **Monte Carlo Simulation**: Run path simulations with configurable parameters
-- **Option Pricing**: Price European call/put options with Greeks (Delta, Gamma, Vega, Theta, Rho)
-- **Interactive Analysis**: What-if sliders for sensitivity analysis
-- **3D Surfaces**: Option price surfaces as functions of stock price and time
-- **Export Reports**: Generate HTML reports with embedded charts
-- **Dark Theme**: Bloomberg terminal-inspired UI
+---
 
-### Scenario Presets
+## Cross-Platform Parallel Execution
 
-Built-in presets for different market conditions:
-- High volatility tech stocks (TSLA)
-- Index ETFs (SPY)
-- Crypto-adjacent (COIN)
-- Stable dividend stocks (JNJ)
+`MonteCarloSimulation.run(..., parallel=True)` automatically selects the optimal backend:
 
+| Platform | Default Backend | Reason |
+|----------|-----------------|--------|
+| POSIX (Linux, macOS) | `ThreadPoolExecutor` | NumPy releases GIL |
+| Windows | `ProcessPoolExecutor` | Avoids GIL serialization |
 
-## Cross-platform parallel execution
+Override explicitly with `parallel_backend="thread"` or `parallel_backend="process"`.
 
-`MonteCarloSimulation.run(..., parallel=True)` automatically decides between threads and
-processes. On POSIX platforms NumPy releases the GIL, so the framework keeps using threads
-for `parallel_backend="auto"`. The same `auto` setting resolves to **processes on Windows**, 
-which restores the expected speed-ups when Python threads serialize under the GIL. 
-
-You can still override the backend explicitly by setting `parallel_backend` to `"thread"` or `"process"`.
-
-
-
-
-## Defining a Custom Simulation
-
-```python
-from mcframework import MonteCarloSimulation
-import numpy as np
-
-class DiceSumSimulation(MonteCarloSimulation):
-    def __init__(self):
-        super().__init__("Dice Sum")
-
-    def single_simulation(self, rng=None, n_dice: int = 5) -> float:
-        r = self._rng(rng, self.rng)
-        return float(r.integers(1, 7, size=n_dice).sum())
-```
-
-## Extended Statistics
-
-You can override percentiles and control CI computation:
-
-```python
-res = sim.run(
-    50_000,
-    percentiles=(1, 5, 50, 95, 99),
-    confidence=0.99,
-    ci_method="auto",
-)
-print(res.stats["ci_mean"])  # Engine-computed CI
-```
-
-Disable stats engine:
-
-```python
-res = sim.run(10_000, compute_stats=False)
-```
-
-## Best Practices Followed
-
-- Deterministic RNG management (seed sequence spawning) for parallel reproducibility.
-- Separation of concerns: core simulation orchestration vs statistical utilities (`utils`, `stats_engine`).
-- Defensive logging and structured metadata capture.
-- Extensible metrics via protocol + injectable engine.
-- Avoid hidden state: all configurable aspects exposed as parameters.
-
-## Roadmap / Ideas
-
-- Bootstrap confidence intervals (more robust for non-normal data).
-- Streaming / incremental statistics for huge simulation counts.
-- Variance reduction techniques (control variates, importance sampling).
-- Progress bar integration (e.g., `tqdm`).
+---
 
 ## Development
 
-Dev dependencies:
+### Testing
 
-```
-pip install -e .[dev]
-```
+```bash
+# Run tests with coverage
+pytest --cov=mcframework -v
 
-
-Run tests with coverage:
-
-```
-pytest --cov=mcframework -v 
+# Generate coverage reports
+pytest --cov=mcframework --cov-report=xml:coverage.xml   # XML
+pytest --cov=mcframework --cov-report=html               # HTML
 ```
 
-Generate coverage report (XML):
+### Linting
 
-```
-pytest --cov=mcframework --cov-report=xml:coverage.xml
-```
-
-Generate coverage report (HTML):
-
-```
-pytest --cov=mcframework --cov-report=html
+```bash
+ruff check src/
+pylint src/mcframework/
 ```
 
-Build HTML docs:
+### Documentation
 
-```
+```bash
+# Install docs dependencies
+pip install -e ".[docs]"
+
+# Build HTML documentation
 sphinx-build -b html docs/source docs/_build/html
+
+# Serve locally
+python -m http.server 8000 -d docs/_build/html
 ```
+
+The documentation uses:
+- **Sphinx** with pydata-sphinx-theme
+- **Mermaid** for interactive diagrams
+- **NumPy-style docstrings** with LaTeX math
+- **Light/dark theme toggle** with diagram re-rendering
+
 
 ## License
 
-MIT License. See `LICENSE` file.
+MIT License. See [LICENSE](LICENSE) file.
+
+---
+
+## Authors
+
+- **Milan Fusco** — [mdfusco@student.ysu.edu](mailto:mdfusco@student.ysu.edu)
+- **James Gabbert** — [jdgabbert@student.ysu.edu](mailto:jdgabbert@student.ysu.edu)
