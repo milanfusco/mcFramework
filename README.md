@@ -10,7 +10,7 @@ Lightweight, reproducible, and deterministic Monte Carlo simulation framework wi
 
 ## 📚 Documentation
 
-**[View Full Documentation →](https://milanfusco.github.io/mcframework/)**
+**[View Full Documentation →](https://milanfusco.github.io/mcFramework/)**
 
 The documentation includes:
 
