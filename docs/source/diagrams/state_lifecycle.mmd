@@ -1,0 +1,23 @@
+---
+name: state_lifecycle
+config:
+    look: neo
+---
+stateDiagram-v2
+    [*] --> Initialized: __init__()
+
+    Initialized --> Seeded: set_seed(seed)
+    
+    Seeded --> Running: run(n_simulations)
+    Initialized --> Running: run(n_simulations)
+    
+    Running --> Computing: execution complete
+    Running --> Error: exception raised
+    
+    Computing --> Completed: stats computed
+    
+    Error --> Initialized: create new instance
+    
+    Completed --> Running: run() again
+    Completed --> [*]: return SimulationResult
+

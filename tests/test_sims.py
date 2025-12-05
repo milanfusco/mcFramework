@@ -5,22 +5,22 @@ from mcframework.sims import PiEstimationSimulation, PortfolioSimulation
 
 
 class TestPiEstimationSimulation:
-    """Test Pi estimation simulation"""
+    """[FR-20] Test Pi estimation simulation."""
 
     def test_pi_estimation_initialization(self):
-        """Test Pi simulation initializes correctly"""
+        """[FR-20] Test Pi simulation initializes correctly."""
         sim = PiEstimationSimulation()
         assert sim.name == "Pi Estimation"
 
     def test_pi_estimation_single_run(self):
-        """Test single Pi estimation"""
+        """[FR-20] Test single Pi estimation."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
         result = sim.single_simulation(n_points=10000)
         assert 2.5 < result < 3.5  # Rough range check
 
     def test_pi_estimation_convergence(self):
-        """Test Pi estimation converges with more points"""
+        """[FR-20] Test Pi estimation converges with more points."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
@@ -34,14 +34,14 @@ class TestPiEstimationSimulation:
         assert error_large < error_small
 
     def test_pi_estimation_antithetic(self):
-        """Test antithetic sampling"""
+        """[FR-20] Test antithetic sampling variance reduction."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
         result = sim.single_simulation(n_points=10000, antithetic=True)
         assert 2.5 < result < 3.5
 
     def test_pi_estimation_full_run(self):
-        """Test full Pi estimation run"""
+        """[FR-20] Test full Pi estimation run."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
         result = sim.run(100, parallel=False, n_points=5000, compute_stats=False)
@@ -51,15 +51,15 @@ class TestPiEstimationSimulation:
 
 
 class TestPortfolioSimulation:
-    """Test Portfolio simulation"""
+    """[FR-21] Test Portfolio simulation."""
 
     def test_portfolio_initialization(self):
-        """Test Portfolio simulation initializes correctly"""
+        """[FR-21] Test Portfolio simulation initializes correctly."""
         sim = PortfolioSimulation()
         assert sim.name == "Portfolio Simulation"
 
     def test_portfolio_single_run_basic(self):
-        """Test single portfolio simulation"""
+        """[FR-21] Test single portfolio simulation."""
         sim = PortfolioSimulation()
         sim.set_seed(42)
         result = sim.single_simulation(
@@ -71,7 +71,7 @@ class TestPortfolioSimulation:
         assert result > 0  # Value should be positive
 
     def test_portfolio_positive_return_on_average(self):
-        """Test portfolio grows on average with positive return"""
+        """[FR-21] Test portfolio grows on average with positive return."""
         sim = PortfolioSimulation()
         sim.set_seed(42)
         result = sim.run(
@@ -87,7 +87,7 @@ class TestPortfolioSimulation:
         assert result.mean > 10000
 
     def test_portfolio_non_gbm(self):
-        """Test portfolio with non-GBM mode"""
+        """[FR-21] Test portfolio with non-GBM mode."""
         sim = PortfolioSimulation()
         sim.set_seed(42)
         result = sim.single_simulation(
@@ -100,7 +100,7 @@ class TestPortfolioSimulation:
         assert result > 0
 
     def test_portfolio_zero_volatility(self):
-        """Test portfolio with zero volatility"""
+        """[FR-21] Test portfolio with zero volatility."""
         sim = PortfolioSimulation()
         sim.set_seed(42)
         result = sim.run(

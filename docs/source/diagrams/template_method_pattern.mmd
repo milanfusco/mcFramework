@@ -1,0 +1,37 @@
+---
+name: template_method_pattern
+config:
+    layout: elk
+    look: neo
+---
+classDiagram
+    class MonteCarloSimulation {
+        <<abstract>>
+        +run(n_simulations, ...) SimulationResult
+        -_validate_run_params()
+        -_run_sequential()
+        -_run_parallel()
+        -_compute_stats_with_engine()
+        -_create_result()
+        +single_simulation()* float
+    }
+
+    class PiEstimationSimulation {
+        +single_simulation(n_points, antithetic)
+    }
+
+    class PortfolioSimulation {
+        +single_simulation(initial_value, annual_return, ...)
+    }
+
+    class BlackScholesSimulation {
+        +single_simulation(S0, K, T, r, sigma, ...)
+        +calculate_greeks()
+    }
+
+    MonteCarloSimulation <|-- PiEstimationSimulation
+    MonteCarloSimulation <|-- PortfolioSimulation
+    MonteCarloSimulation <|-- BlackScholesSimulation
+
+    note for MonteCarloSimulation "Template Method:<br/>run() defines algorithm skeleton<br/>single_simulation() is the hook"
+

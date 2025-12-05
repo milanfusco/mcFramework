@@ -1,0 +1,30 @@
+---
+name: execution_flow
+config:
+    layout: elk
+    look: neo
+---
+flowchart LR
+    subgraph Input
+        n["n_simulations"]
+        seed["seed"]
+        kwargs["**kwargs"]
+    end
+
+    subgraph Processing["MonteCarloSimulation.run()"]
+        exec["Parallel/Sequential<br/>Execution"]
+        single["single_simulation()<br/>n times"]
+    end
+
+    subgraph Stats["Statistics"]
+        results["results: ndarray"]
+        engine["StatsEngine.compute()"]
+    end
+
+    subgraph Output
+        sr["SimulationResult"]
+    end
+
+    n & seed & kwargs --> exec
+    exec --> single --> results --> engine --> sr
+

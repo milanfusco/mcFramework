@@ -1,0 +1,41 @@
+---
+name: component_diagram
+config:
+    layout: elk
+    look: neo
+---
+
+flowchart TB
+    subgraph mcframework["mcframework package"]
+        subgraph core_comp["<<component>> core"]
+            MCS["MonteCarloSimulation<br/><<abstract>>"]
+            SR["SimulationResult<br/><<dataclass>>"]
+            MCF["MonteCarloFramework"]
+        end
+
+        subgraph stats_comp["<<component>> stats_engine"]
+            SE["StatsEngine"]
+            SC["StatsContext<br/><<dataclass>>"]
+            CR["ComputeResult<br/><<dataclass>>"]
+            FM["FnMetric<<generic>>"]
+            MP["Metric<<protocol>>"]
+        end
+
+        subgraph utils_comp["<<component>> utils"]
+            zcrit["z_crit()"]
+            tcrit["t_crit()"]
+            auto["autocrit()"]
+        end
+
+        subgraph sims_comp["<<component>> sims"]
+            pi["PiEstimationSimulation"]
+            port["PortfolioSimulation"]
+            bs["BlackScholesSimulation"]
+        end
+    end
+
+    core_comp -->|uses| stats_comp
+    core_comp -->|uses| utils_comp
+    stats_comp -->|uses| utils_comp
+    sims_comp -->|extends| core_comp
+

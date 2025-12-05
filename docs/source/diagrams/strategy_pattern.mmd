@@ -1,0 +1,31 @@
+---
+name: strategy_pattern
+config:
+    layout: elk
+    look: neo
+---
+
+classDiagram
+    class StatsEngine {
+        -_metrics: list~Metric~
+        +compute(x, ctx) ComputeResult
+    }
+
+    class Metric {
+        <<protocol>>
+        +name: str
+        +__call__(x, ctx) Any
+    }
+
+    class FnMetric~T~ {
+        +name: str
+        +fn: Callable
+        +__call__(x, ctx) T
+    }
+
+    StatsEngine o-- Metric : contains
+    Metric <|.. FnMetric : implements
+
+    note for StatsEngine "Context: holds strategy list"
+    note for Metric "Strategy Interface"
+

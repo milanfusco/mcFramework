@@ -1,0 +1,66 @@
+---
+name: class_diagram_core
+config:
+    look: neo
+---
+classDiagram
+    direction TB
+    class MonteCarloSimulation {
+        <<abstract>>
+        +name: str
+        +seed_seq: SeedSequence
+        +rng: Generator
+        +parallel_backend: str
+        -_PCTS: tuple
+        -_PARALLEL_THRESHOLD: int
+        +__init__(name: str)
+        +single_simulation(**kwargs)* float
+        +set_seed(seed: int)
+        +run(n_simulations, ...) SimulationResult
+        -_run_sequential(...)
+        -_run_parallel(...)
+        -_create_result(...)
+    }
+
+    class SimulationResult {
+        <<dataclass>>
+        +results: ndarray
+        +n_simulations: int
+        +execution_time: float
+        +mean: float
+        +std: float
+        +percentiles: dict
+        +stats: dict
+        +metadata: dict
+        +result_to_string() str
+    }
+
+    class MonteCarloFramework {
+        +simulations: dict
+        +results: dict
+        +register_simulation(simulation, name)
+        +run_simulation(name, n_simulations, ...) SimulationResult
+        +compare_results(names, metric) dict
+    }
+
+    class PiEstimationSimulation {
+        +single_simulation(n_points, antithetic, _rng) float
+    }
+
+    class PortfolioSimulation {
+        +single_simulation(initial_value, annual_return, volatility, years, _rng) float
+    }
+
+    class BlackScholesSimulation {
+        +single_simulation(S0, K, T, r, sigma, option_type, exercise_type, _rng) float
+        +calculate_greeks(n_simulations, ...) dict
+    }
+
+    MonteCarloSimulation <|-- PiEstimationSimulation
+    MonteCarloSimulation <|-- PortfolioSimulation
+    MonteCarloSimulation <|-- BlackScholesSimulation
+    MonteCarloSimulation --> SimulationResult : creates
+
+    MonteCarloFramework o-- MonteCarloSimulation : manages
+    MonteCarloFramework o-- SimulationResult : stores
+

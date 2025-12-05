@@ -1,0 +1,38 @@
+---
+name: system_context
+config:
+    layout: elk
+    look: neo
+---
+flowchart LR
+    subgraph External["External Dependencies"]
+        numpy["NumPy<br/>(RNG, Arrays)"]
+        scipy["SciPy<br/>(Statistics)"]
+        python["Python 3.10+<br/>(Runtime)"]
+        concurrent["concurrent.futures<br/>(Parallelism)"]
+    end
+
+    subgraph McFramework["McFramework Package"]
+        core["core.py<br/>MonteCarloSimulation<br/>SimulationResult<br/>MonteCarloFramework"]
+        stats["stats_engine.py<br/>StatsEngine<br/>StatsContext<br/>Metrics"]
+        utils["utils.py<br/>z_crit, t_crit<br/>autocrit"]
+        sims["sims/<br/>Pi, Portfolio<br/>Black-Scholes"]
+    end
+
+    subgraph Users["End Users"]
+        researchers["Researchers"]
+        students["Students"]
+        quants["Quantitative<br/>Analysts"]
+    end
+
+    numpy --> core
+    scipy --> stats
+    python --> McFramework
+    concurrent --> core
+
+    core --> stats
+    stats --> utils
+    sims --> core
+
+    McFramework --> Users
+

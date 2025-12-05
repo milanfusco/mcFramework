@@ -1,0 +1,262 @@
+@startuml mcframework
+
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam packageStyle rectangle
+skinparam linetype ortho
+
+title McFramework - Monte Carlo Simulation Framework\nClass Diagram
+
+' ============================================================
+' CORE MODULE
+' ============================================================
+package "mcframework.core" as core_pkg {
+    
+    abstract class MonteCarloSimulation <<ABC>> {
+        + name : str
+        + seed_seq : SeedSequence
+        + rng : Generator
+        + parallel_backend : str
+        --
+        - _PCTS : tuple = (5, 25, 50, 75, 95)
+        - _PARALLEL_THRESHOLD : int = 20_000
+        - _CHUNKS_PER_WORKER : int = 8
+        ==
+        + {abstract} single_simulation(**kwargs) : float
+        + set_seed(seed: int) : void
+        + run(n_simulations, ...) : SimulationResult
+        --
+        - _run_sequential(...) : ndarray
+        - _run_parallel(...) : ndarray
+        - _run_with_threads(...) : ndarray
+        - _run_with_processes(...) : ndarray
+        - _validate_run_params(...) : void
+        - _compute_stats_with_engine(...) : tuple
+        - _handle_percentiles(...) : tuple
+        - _create_result(...) : SimulationResult
+        - {static} _rng(rng, default) : Generator
+        - {static} _percentiles(arr, ps) : dict
+        - {static} _compute_stats_block(results, ctx) : dict
+        - {static} _compute_percentiles_block(results, ctx) : dict
+    }
+
+    class SimulationResult <<dataclass>> {
+        + results : ndarray
+        + n_simulations : int
+        + execution_time : float
+        + mean : float
+        + std : float
+        + percentiles : dict[int, float]
+        + stats : dict[str, Any]
+        + metadata : dict[str, Any]
+        ==
+        + result_to_string(confidence, method) : str
+    }
+
+    class MonteCarloFramework {
+        + simulations : dict[str, MonteCarloSimulation]
+        + results : dict[str, SimulationResult]
+        ==
+        + register_simulation(simulation, name) : void
+        + run_simulation(name, n_simulations, ...) : SimulationResult
+        + compare_results(names, metric) : dict[str, float]
+    }
+
+    MonteCarloSimulation --> SimulationResult : creates
+    MonteCarloFramework o-- "*" MonteCarloSimulation : manages
+    MonteCarloFramework o-- "*" SimulationResult : stores
+}
+
+' ============================================================
+' STATS ENGINE MODULE
+' ============================================================
+package "mcframework.stats_engine" as stats_pkg {
+
+    enum CIMethod {
+        auto
+        z
+        t
+        bootstrap
+    }
+
+    enum NanPolicy {
+        propagate
+        omit
+    }
+
+    enum BootstrapMethod {
+        percentile
+        bca
+    }
+
+    class StatsContext <<dataclass, slots>> {
+        + n : int
+        + confidence : float = 0.95
+        + ci_method : CIMethod = "auto"
+        + percentiles : tuple = (5,25,50,75,95)
+        + nan_policy : NanPolicy = "propagate"
+        + target : float | None
+        + eps : float | None
+        + ddof : int = 1
+        + ess : int | None
+        + rng : Generator | int | None
+        + n_bootstrap : int = 10_000
+        + bootstrap : BootstrapMethod = "percentile"
+        ==
+        + alpha : float <<property>>
+        + q_bound() : tuple[float, float]
+        + eff_n(observed_len, finite_count) : int
+        + get_generators() : Generator
+        + with_overrides(**changes) : StatsContext
+    }
+
+    class ComputeResult <<dataclass, frozen>> {
+        + metrics : dict[str, Any]
+        + skipped : list[tuple[str, str]]
+        + errors : list[tuple[str, str]]
+        ==
+        + successful_metrics() : set[str]
+    }
+
+    interface Metric <<protocol>> {
+        + name : str
+        + __call__(x: ndarray, ctx: StatsContext) : Any
+    }
+
+    class FnMetric<T> <<dataclass, frozen>> {
+        + name : str
+        + fn : Callable
+        + doc : str = ""
+        ==
+        + __call__(x, ctx) : T
+    }
+
+    class _CIResult <<dataclass, frozen>> {
+        + confidence : float
+        + method : str
+        + low : float
+        + high : float
+        + extras : Mapping
+        ==
+        + as_dict() : dict
+    }
+
+    class StatsEngine {
+        - _metrics : list[Metric]
+        ==
+        + compute(x, ctx, select, **kwargs) : ComputeResult
+    }
+
+    class "<<module functions>>" as stats_functions {
+        + mean(x, ctx) : float
+        + std(x, ctx) : float
+        + percentiles(x, ctx) : dict
+        + skew(x, ctx) : float
+        + kurtosis(x, ctx) : float
+        + ci_mean(x, ctx) : dict
+        + ci_mean_bootstrap(x, ctx) : dict
+        + ci_mean_chebyshev(x, ctx) : dict
+        + chebyshev_required_n(x, ctx) : int
+        + markov_error_prob(x, ctx) : float
+        + bias_to_target(x, ctx) : float
+        + mse_to_target(x, ctx) : float
+        + build_default_engine(...) : StatsEngine
+    }
+
+    StatsContext --> CIMethod
+    StatsContext --> NanPolicy
+    StatsContext --> BootstrapMethod
+    
+    FnMetric ..|> Metric
+    StatsEngine o-- "*" Metric
+    StatsEngine --> ComputeResult : returns
+    StatsEngine ..> StatsContext : uses
+    stats_functions --> _CIResult : uses
+}
+
+' ============================================================
+' SIMULATIONS MODULE
+' ============================================================
+package "mcframework.sims" as sims_pkg {
+
+    class PiEstimationSimulation {
+        ==
+        + single_simulation(n_points, antithetic, _rng) : float
+    }
+
+    class PortfolioSimulation {
+        ==
+        + single_simulation(initial_value, annual_return, 
+            volatility, years, use_gbm, _rng) : float
+    }
+
+    class BlackScholesSimulation {
+        ==
+        + single_simulation(S0, K, T, r, sigma, 
+            option_type, exercise_type, n_steps, _rng) : float
+        + calculate_greeks(n_simulations, ...) : dict
+    }
+
+    class BlackScholesPathSimulation {
+        ==
+        + single_simulation(S0, r, sigma, T, n_steps, _rng) : float
+        + simulate_paths(n_paths, ...) : ndarray
+    }
+
+    class "<<helper functions>>" as bs_helpers {
+        + _european_payoff(S_T, K, option_type) : float
+        + _simulate_gbm_path(S0, r, sigma, T, n_steps, rng) : ndarray
+        + _american_exercise_lsm(paths, K, r, dt, option_type) : float
+    }
+}
+
+' ============================================================
+' UTILS MODULE
+' ============================================================
+package "mcframework.utils" as utils_pkg {
+    class "<<module>>" as utils {
+        + z_crit(confidence) : float
+        + t_crit(confidence, df) : float
+        + autocrit(confidence, n, method) : tuple[float, str]
+    }
+}
+
+' ============================================================
+' INHERITANCE RELATIONSHIPS
+' ============================================================
+PiEstimationSimulation --|> MonteCarloSimulation
+PortfolioSimulation --|> MonteCarloSimulation
+BlackScholesSimulation --|> MonteCarloSimulation
+BlackScholesPathSimulation --|> MonteCarloSimulation
+
+' ============================================================
+' DEPENDENCY RELATIONSHIPS
+' ============================================================
+MonteCarloSimulation ..> StatsEngine : uses
+MonteCarloSimulation ..> StatsContext : uses
+MonteCarloSimulation ..> utils : imports autocrit
+stats_functions ..> utils : imports autocrit
+
+note right of MonteCarloSimulation
+  Abstract base class for all
+  Monte Carlo simulations.
+  Handles parallel execution,
+  RNG management, and statistics.
+end note
+
+note right of StatsEngine
+  Orchestrator for computing
+  multiple statistical metrics
+  over simulation results.
+end note
+
+note bottom of sims_pkg
+  Built-in simulation implementations:
+  • Pi estimation via geometric probability
+  • Portfolio wealth under GBM dynamics
+  • Black-Scholes option pricing (European/American)
+end note
+
+@enduml
+

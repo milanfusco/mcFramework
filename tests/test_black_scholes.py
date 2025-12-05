@@ -28,35 +28,35 @@ from mcframework.sims import (
 
 
 class TestEuropeanPayoff:
-    """Test _european_payoff helper function."""
+    """[FR-22] Test _european_payoff helper function."""
 
     def test_call_option_itm(self):
-        """Test call option in-the-money."""
+        """[FR-22] Test call option in-the-money."""
         payoff = _european_payoff(S_T=110.0, K=100.0, option_type="call")
         assert payoff == 10.0
 
     def test_call_option_otm(self):
-        """Test call option out-of-the-money."""
+        """[FR-22] Test call option out-of-the-money."""
         payoff = _european_payoff(S_T=90.0, K=100.0, option_type="call")
         assert payoff == 0.0
 
     def test_call_option_atm(self):
-        """Test call option at-the-money."""
+        """[FR-22] Test call option at-the-money."""
         payoff = _european_payoff(S_T=100.0, K=100.0, option_type="call")
         assert payoff == 0.0
 
     def test_put_option_itm(self):
-        """Test put option in-the-money."""
+        """[FR-22] Test put option in-the-money."""
         payoff = _european_payoff(S_T=90.0, K=100.0, option_type="put")
         assert payoff == 10.0
 
     def test_put_option_otm(self):
-        """Test put option out-of-the-money."""
+        """[FR-22] Test put option out-of-the-money."""
         payoff = _european_payoff(S_T=110.0, K=100.0, option_type="put")
         assert payoff == 0.0
 
     def test_put_option_atm(self):
-        """Test put option at-the-money."""
+        """[FR-22] Test put option at-the-money."""
         payoff = _european_payoff(S_T=100.0, K=100.0, option_type="put")
         assert payoff == 0.0
 
@@ -67,29 +67,29 @@ class TestEuropeanPayoff:
 
 
 class TestSimulateGBMPath:
-    """Test _simulate_gbm_path helper function."""
+    """[FR-22] Test _simulate_gbm_path helper function."""
 
     def test_path_starts_at_S0(self):
-        """Test that path starts at initial price."""
+        """[FR-22] Test that path starts at initial price."""
         rng = np.random.default_rng(42)
         path = _simulate_gbm_path(S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252, rng=rng)
         np.testing.assert_allclose(path[0], 100.0, rtol=1e-10)
 
     def test_path_length(self):
-        """Test that path has correct length."""
+        """[FR-22] Test that path has correct length."""
         rng = np.random.default_rng(42)
         n_steps = 100
         path = _simulate_gbm_path(S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=n_steps, rng=rng)
         assert len(path) == n_steps + 1
 
     def test_path_is_positive(self):
-        """Test that all prices in path are positive."""
+        """[FR-22] Test that all prices in path are positive."""
         rng = np.random.default_rng(42)
         path = _simulate_gbm_path(S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252, rng=rng)
         assert np.all(path > 0)
 
     def test_path_reproducibility(self):
-        """Test that same seed produces same path."""
+        """[FR-22, NFR-3] Test that same seed produces same path."""
         rng1 = np.random.default_rng(42)
         rng2 = np.random.default_rng(42)
         path1 = _simulate_gbm_path(S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252, rng=rng1)
@@ -97,7 +97,7 @@ class TestSimulateGBMPath:
         np.testing.assert_array_equal(path1, path2)
 
     def test_path_different_seeds(self):
-        """Test that different seeds produce different paths."""
+        """[FR-22] Test that different seeds produce different paths."""
         rng1 = np.random.default_rng(42)
         rng2 = np.random.default_rng(43)
         path1 = _simulate_gbm_path(S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252, rng=rng1)
@@ -106,10 +106,10 @@ class TestSimulateGBMPath:
 
 
 class TestAmericanExerciseLSM:
-    """Test _american_exercise_lsm helper function."""
+    """[FR-23] Test _american_exercise_lsm helper function."""
 
     def test_american_put_pricing(self):
-        """Test American put option pricing with LSM."""
+        """[FR-23] Test American put option pricing with LSM."""
         # Generate paths for testing
         rng = np.random.default_rng(42)
         n_paths = 100
@@ -126,7 +126,7 @@ class TestAmericanExerciseLSM:
         assert 0 < price < 100.0
 
     def test_american_call_pricing(self):
-        """Test American call option pricing with LSM."""
+        """[FR-23] Test American call option pricing with LSM."""
         rng = np.random.default_rng(42)
         n_paths = 100
         n_steps = 50
@@ -140,7 +140,7 @@ class TestAmericanExerciseLSM:
         assert price >= 0
 
     def test_invalid_option_type_lsm(self):
-        """Test that invalid option type raises ValueError in LSM."""
+        """[FR-23, USA-4] Test that invalid option type raises ValueError in LSM."""
         rng = np.random.default_rng(42)
         paths = np.zeros((10, 11))
         for i in range(10):
@@ -150,7 +150,7 @@ class TestAmericanExerciseLSM:
             _american_exercise_lsm(paths, K=100.0, r=0.05, dt=0.1, option_type="invalid")
 
     def test_deep_otm_options(self):
-        """Test LSM with deep out-of-the-money options."""
+        """[FR-23] Test LSM with deep out-of-the-money options."""
         # Create paths that stay well above strike for puts
         n_paths = 50
         n_steps = 20
@@ -162,7 +162,7 @@ class TestAmericanExerciseLSM:
         assert price == 0.0
 
     def test_regression_failure_defaults_to_maturity_cashflows(self, monkeypatch):
-        """Regression failure should skip early exercise and use maturity payoff."""
+        """[FR-23, NFR-4] Regression failure should skip early exercise and use maturity payoff."""
         paths = np.array(
             [
                 [100.0, 90.0, 80.0],   # In the money at maturity
@@ -193,10 +193,10 @@ class TestAmericanExerciseLSM:
 
 
 class TestBlackScholesSimulation:
-    """Test BlackScholesSimulation class."""
+    """[FR-22, FR-23] Test BlackScholesSimulation class."""
 
     def test_initialization(self):
-        """Test simulation initialization."""
+        """[FR-22] Test simulation initialization."""
         sim = BlackScholesSimulation()
         assert sim.name == "Black-Scholes Option Pricing"
 
@@ -204,7 +204,7 @@ class TestBlackScholesSimulation:
         assert sim_custom.name == "Custom BS"
 
     def test_european_call_single_simulation(self):
-        """Test single European call option simulation."""
+        """[FR-22] Test single European call option simulation."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
 
@@ -216,7 +216,7 @@ class TestBlackScholesSimulation:
         assert price >= 0
 
     def test_european_put_single_simulation(self):
-        """Test single European put option simulation."""
+        """[FR-22] Test single European put option simulation."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
 
@@ -228,7 +228,7 @@ class TestBlackScholesSimulation:
         assert price >= 0
 
     def test_american_call_single_simulation(self):
-        """Test single American call option simulation."""
+        """[FR-23] Test single American call option simulation."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
 
@@ -240,7 +240,7 @@ class TestBlackScholesSimulation:
         assert price >= 0
 
     def test_american_put_single_simulation(self):
-        """Test single American put option simulation."""
+        """[FR-23] Test single American put option simulation."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
 
@@ -316,10 +316,10 @@ class TestBlackScholesSimulation:
 
 
 class TestCalculateGreeks:
-    """Test Greeks calculation."""
+    """[FR-24] Test Greeks calculation."""
 
     def test_calculate_greeks_basic(self):
-        """Test basic Greeks calculation."""
+        """[FR-24] Test basic Greeks calculation (delta, gamma, vega, theta, rho)."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
 
@@ -351,7 +351,7 @@ class TestCalculateGreeks:
         assert greeks["rho"] > 0  # Rho should be positive for calls
 
     def test_calculate_greeks_put(self):
-        """Test Greeks calculation for put options."""
+        """[FR-24] Test Greeks calculation for put options."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
 
@@ -372,7 +372,7 @@ class TestCalculateGreeks:
         assert greeks["vega"] > 0
 
     def test_calculate_greeks_custom_bumps(self):
-        """Test Greeks with custom bump percentages."""
+        """[FR-24] Test Greeks with custom bump percentages."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
 
@@ -392,7 +392,7 @@ class TestCalculateGreeks:
         assert all(k in greeks for k in ["price", "delta", "gamma", "vega", "theta", "rho"])
 
     def test_calculate_greeks_parallel(self):
-        """Test Greeks calculation with parallel execution."""
+        """[FR-3, FR-24] Test Greeks calculation with parallel execution."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
 
@@ -411,7 +411,7 @@ class TestCalculateGreeks:
         assert all(isinstance(greeks[k], float) for k in greeks.keys())
 
     def test_calculate_greeks_near_expiry(self):
-        """Test Greeks calculation near expiry."""
+        """[FR-24] Test Greeks calculation near expiry."""
         sim = BlackScholesSimulation()
         sim.set_seed(42)
 
@@ -465,10 +465,10 @@ class TestCalculateGreeks:
 
 
 class TestBlackScholesPathSimulation:
-    """Test BlackScholesPathSimulation class."""
+    """[FR-22] Test BlackScholesPathSimulation class."""
 
     def test_initialization(self):
-        """Test path simulation initialization."""
+        """[FR-22] Test path simulation initialization."""
         sim = BlackScholesPathSimulation()
         assert sim.name == "Black-Scholes Path Simulation"
 
@@ -476,7 +476,7 @@ class TestBlackScholesPathSimulation:
         assert sim_custom.name == "Custom Path"
 
     def test_single_simulation(self):
-        """Test single path simulation returns final price."""
+        """[FR-22] Test single path simulation returns final price."""
         sim = BlackScholesPathSimulation()
         sim.set_seed(42)
 
@@ -486,7 +486,7 @@ class TestBlackScholesPathSimulation:
         assert final_price > 0
 
     def test_run_multiple_paths(self):
-        """Test running multiple path simulations."""
+        """[FR-22] Test running multiple path simulations."""
         sim = BlackScholesPathSimulation()
         sim.set_seed(42)
 
@@ -498,7 +498,7 @@ class TestBlackScholesPathSimulation:
         assert np.all(result.results > 0)
 
     def test_simulate_paths(self):
-        """Test simulate_paths method."""
+        """[FR-22] Test simulate_paths method."""
         sim = BlackScholesPathSimulation()
         sim.set_seed(42)
 
@@ -509,7 +509,7 @@ class TestBlackScholesPathSimulation:
         assert np.all(paths > 0)  # All prices positive
 
     def test_simulate_paths_reproducibility(self):
-        """Test that simulate_paths is reproducible with same seed."""
+        """[FR-22, NFR-3] Test that simulate_paths is reproducible with same seed."""
         sim1 = BlackScholesPathSimulation()
         sim1.set_seed(42)
         paths1 = sim1.simulate_paths(n_paths=20, S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=50)

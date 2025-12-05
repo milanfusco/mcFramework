@@ -1,0 +1,36 @@
+---
+name: process_view
+config:
+    layout: elk
+    look: neo
+---
+flowchart TB
+    subgraph Main["Main Process"]
+        run["simulation.run()"]
+        validate["_validate_run_params()"]
+        seed["spawn SeedSequences"]
+        
+        subgraph Execution["Execution Path"]
+            seq["_run_sequential()"]
+            par["_run_parallel()"]
+        end
+        
+        subgraph Workers["Worker Pool (parallel=True)"]
+            w1["Worker 1<br/>SeedSeq[0]<br/>Philox RNG"]
+            w2["Worker 2<br/>SeedSeq[1]<br/>Philox RNG"]
+            w3["Worker 3<br/>SeedSeq[2]<br/>Philox RNG"]
+        end
+        
+        collect["Collect Results"]
+        stats["StatsEngine.compute()"]
+        result["SimulationResult"]
+    end
+
+    run --> validate --> seed
+    seed --> seq
+    seed --> par
+    par --> w1 & w2 & w3
+    w1 & w2 & w3 --> collect
+    seq --> collect
+    collect --> stats --> result
+

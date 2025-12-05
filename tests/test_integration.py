@@ -5,10 +5,10 @@ from mcframework import MonteCarloFramework, MonteCarloSimulation, PiEstimationS
 
 
 class TestIntegration:
-    """Integration tests for complete workflows"""
+    """[FR-6, FR-20, FR-21] Integration tests for complete workflows."""
 
     def test_end_to_end_pi_estimation(self):
-        """Test complete Pi estimation workflow"""
+        """[FR-6, FR-20, FR-12] Test complete Pi estimation workflow."""
         fw = MonteCarloFramework()
         sim = PiEstimationSimulation()
         sim.set_seed(42)
@@ -34,7 +34,7 @@ class TestIntegration:
         assert ci["low"] < np.pi < ci["high"]  # True value in CI
 
     def test_end_to_end_portfolio(self):
-        """Test complete Portfolio workflow"""
+        """[FR-6, FR-21, FR-10] Test complete Portfolio workflow."""
         fw = MonteCarloFramework()
         sim = PortfolioSimulation()
         sim.set_seed(123)
@@ -59,7 +59,7 @@ class TestIntegration:
         assert 95 in result.percentiles
 
     def test_multiple_simulations_comparison(self):
-        """Test running and comparing multiple simulations"""
+        """[FR-6, FR-7] Test running and comparing multiple simulations."""
         fw = MonteCarloFramework()
 
         pi_sim = PiEstimationSimulation()
@@ -87,7 +87,7 @@ class TestIntegration:
         assert comparison["Portfolio Simulation"] > 1000
 
     def test_parallel_execution_consistency(self):
-        """Test parallel execution produces consistent results"""
+        """[FR-3, FR-4, NFR-3] Test parallel execution produces consistent results."""
         sim = PiEstimationSimulation()
 
         results = []
@@ -101,7 +101,7 @@ class TestIntegration:
         assert all(pytest.approx(r, abs=0.01) == results[0] for r in results)
 
     def test_large_scale_simulation(self):
-        """Test framework handles large simulations"""
+        """[FR-3, NFR-1] Test framework handles large simulations."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
@@ -124,7 +124,7 @@ class TestIntegration:
         assert len(result.results) == 10000
 
     def test_custom_simulation_integration(self):
-        """Test custom simulation integration"""
+        """[FR-1, FR-6, USA-1] Test custom simulation integration."""
 
         class ExponentialSim(MonteCarloSimulation):
             def single_simulation(self, rate=1.0, **kwargs):
@@ -141,7 +141,7 @@ class TestIntegration:
         assert pytest.approx(result.mean, abs=0.1) == 0.5
 
     def test_simulation_kwargs_passthrough(self):
-        """Test simulation kwargs are passed correctly"""
+        """[FR-1, FR-20] Test simulation kwargs are passed correctly."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 

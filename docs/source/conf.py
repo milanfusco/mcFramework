@@ -84,6 +84,7 @@ extensions = [
     # UX polish
     "sphinx_copybutton",
     "sphinx_design",
+    "sphinxcontrib.mermaid",  # Mermaid diagram support
     # "sphinx_gallery.gen_gallery",  # if/when we add a gallery
 ]
 
@@ -138,8 +139,14 @@ html_theme_options = {
         },
     ],
 }
-# Where to keep local assets (badges, images)
-# html_static_path = ["_static"]
+# Where to keep local assets (badges, images, JS)
+html_static_path = ["_static"]
+
+# Include custom JS for Mermaid theme toggling
+html_js_files = [
+    "https://cdn.jsdelivr.net/npm/mermaid@11.12/dist/mermaid.min.js",
+    "mermaid-theme-toggle.js",
+]
 
 # -- Autodoc / Autosummary ------------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#configuration
@@ -206,8 +213,24 @@ numpydoc_xref_aliases = {
 }
 
 # -- MyST (Markdown) ------------------------------------------------------------
-myst_enable_extensions = ["dollarmath", "amsmath"]  # $...$ and $$...$$
+myst_enable_extensions = [
+    "dollarmath",    # $...$ and $$...$$ math
+    "amsmath",       # AMS math environments
+    "colon_fence",   # ::: fenced directives
+    "deflist",       # Definition lists
+    "tasklist",      # - [x] checkboxes
+]
 myst_heading_anchors = 3
+myst_fence_as_directive = ["mermaid"]  # Render ```mermaid blocks as Mermaid diagrams
+
+# -- Mermaid configuration ------------------------------------------------------
+mermaid_version = "11.12"  # Use a recent stable version
+mermaid_params = ["-p", "puppeteer-config.json"]
+mermaid_d3_zoom = "true"  # sphinxcontrib-mermaid expects string, not bool
+mermaid_include_elk = "0.1.4"  # ELK layout version (separate package from Mermaid)
+mermaid_fullscreen = True
+mermaid_include_mindmap = True
+# Note: Theme toggling is handled by custom JS that re-renders on theme change
 
 
 # -- MathJax / LaTeX macros -----------------------------------------------------

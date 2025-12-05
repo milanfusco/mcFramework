@@ -20,6 +20,7 @@ Requires-Dist: myst-parser>=2.0; extra == "docs"
 Requires-Dist: sphinx-autodoc-typehints>=2.0; extra == "docs"
 Requires-Dist: sphinx-copybutton>=0.5; extra == "docs"
 Requires-Dist: sphinx-design>=0.6; extra == "docs"
+Requires-Dist: sphinxcontrib-mermaid>=0.9; extra == "docs"
 Requires-Dist: numpydoc>=1.6; extra == "docs"
 Requires-Dist: sphinx-gallery>=0.16; extra == "docs"
 Requires-Dist: matplotlib>=3.7; extra == "docs"
@@ -57,7 +58,6 @@ pip install -e .
 ### Dependencies
 
 The package requires:
-
 - Python >= 3.10
 - numpy >= 1.24
 - scipy >= 1.10
@@ -66,31 +66,27 @@ The package requires:
 ### Optional Dependencies
 
 For all dependencies:
-
 ```bash
 pip install -e ".[dev,test,docs,gui]"
 ```
 
 For development:
-
 ```bash
 pip install -e ".[dev]"
 ```
 
 For testing:
-
 ```bash
 pip install -e ".[test]"
 ```
 
 For documentation:
-
 ```bash
 pip install -e ".[docs]"
 ```
 
-For the GUI application:
 
+For the GUI application:
 ```bash
 pip install -e ".[gui]"
 ```
@@ -132,7 +128,7 @@ pip install -e ".[gui]"
 python demos/gui/quant_black_scholes.py
 ```
 
-### GUI Features
+### Features
 
 - **Live Data**: Fetch real-time stock data from Yahoo Finance
 - **Monte Carlo Simulation**: Run path simulations with configurable parameters
@@ -145,20 +141,23 @@ python demos/gui/quant_black_scholes.py
 ### Scenario Presets
 
 Built-in presets for different market conditions:
-
 - High volatility tech stocks (TSLA)
 - Index ETFs (SPY)
 - Crypto-adjacent (COIN)
 - Stable dividend stocks (JNJ)
 
+
 ## Cross-platform parallel execution
 
 `MonteCarloSimulation.run(..., parallel=True)` automatically decides between threads and
 processes. On POSIX platforms NumPy releases the GIL, so the framework keeps using threads
-for `parallel_backend="auto"`. The same `auto` setting resolves to **processes on Windows**,
-which restores the expected speed-ups when Python threads serialize under the GIL.
+for `parallel_backend="auto"`. The same `auto` setting resolves to **processes on Windows**, 
+which restores the expected speed-ups when Python threads serialize under the GIL. 
 
 You can still override the backend explicitly by setting `parallel_backend` to `"thread"` or `"process"`.
+
+
+
 
 ## Defining a Custom Simulation
 
@@ -214,31 +213,32 @@ res = sim.run(10_000, compute_stats=False)
 
 Dev dependencies:
 
-```bash
+```
 pip install -e .[dev]
 ```
 
+
 Run tests with coverage:
 
-```bash
+```
 pytest --cov=mcframework -v 
 ```
 
 Generate coverage report (XML):
 
-```bash
+```
 pytest --cov=mcframework --cov-report=xml:coverage.xml
 ```
 
 Generate coverage report (HTML):
 
-```bash
+```
 pytest --cov=mcframework --cov-report=html
 ```
 
 Build HTML docs:
 
-```bash
+```
 sphinx-build -b html docs/source docs/_build/html
 ```
 

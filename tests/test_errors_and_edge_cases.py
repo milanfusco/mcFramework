@@ -8,17 +8,17 @@ from mcframework.stats_engine import StatsEngine, ci_mean, mean
 
 
 class TestEdgeCases:
-    """Test edge cases and boundary conditions"""
+    """[NFR-4] Test edge cases and boundary conditions."""
 
     def test_single_simulation_run(self, simple_simulation):
-        """Test running exactly one simulation"""
+        """[NFR-4] Test running exactly one simulation."""
         result = simple_simulation.run(1, parallel=False, compute_stats=False)
         assert result.n_simulations == 1
         assert len(result.results) == 1
         assert result.std == 0.0  # Only one value
 
     def test_very_small_confidence_interval(self):
-        """Test extreme confidence levels"""
+        """[FR-12, NFR-4] Test extreme confidence levels."""
         data = np.random.normal(0, 1, 1000)
         ctx = {"n": 1000, "confidence": 0.5, "ci_method": "z"}
         result = ci_mean(data, ctx)
@@ -26,7 +26,7 @@ class TestEdgeCases:
         assert result["confidence"] == 0.5
 
     def test_very_high_confidence_interval(self):
-        """Test extreme confidence levels"""
+        """[FR-12, NFR-4] Test very high confidence levels."""
         data = np.random.normal(0, 1, 1000)
         ctx = {"n": 1000, "confidence": 0.9999, "ci_method": "z"}
         result = ci_mean(data, ctx)
@@ -34,7 +34,7 @@ class TestEdgeCases:
         assert (result["high"] - result["low"]) > 0.2
 
     def test_negative_portfolio_values_possible(self):
-        """Test portfolio can theoretically go negative with extreme volatility"""
+        """[FR-21, NFR-4] Test portfolio with extreme volatility."""
         sim = PortfolioSimulation()
         sim.set_seed(42)
         # Extreme volatility with negative return
@@ -51,7 +51,7 @@ class TestEdgeCases:
         assert result.mean < 10000
 
     def test_zero_year_portfolio(self):
-        """Test portfolio with zero years"""
+        """[FR-21, NFR-4] Test portfolio with zero years."""
         sim = PortfolioSimulation()
         # With 0 years, should return approximately initial value
         result = sim.single_simulation(
@@ -64,7 +64,7 @@ class TestEdgeCases:
         assert pytest.approx(result, abs=1) == 10000
 
     def test_nan_handling_in_stats(self):
-        """Test stats engine handles NaN values"""
+        """[FR-8, NFR-4] Test stats engine handles NaN values."""
         data = np.array([1.0, 2.0, np.nan, 4.0, 5.0])
         ctx = {"n": 5, "nan_policy": "omit", "confidence": 0.95, "ci_method": "auto"}
 
@@ -73,7 +73,7 @@ class TestEdgeCases:
         assert pytest.approx(mean_result) == 3.0
 
     def test_empty_percentiles_list(self, simple_simulation):
-        """Test running with no percentiles"""
+        """[FR-10, NFR-4] Test running with no percentiles."""
         result = simple_simulation.run(
             100,
             parallel=False,
@@ -84,7 +84,7 @@ class TestEdgeCases:
         assert len(result.percentiles) == 0
 
     def test_duplicate_percentiles(self, simple_simulation):
-        """Test duplicate percentiles are handled"""
+        """[FR-10, NFR-4] Test duplicate percentiles are handled."""
         result = simple_simulation.run(
             100,
             parallel=False,
@@ -96,25 +96,25 @@ class TestEdgeCases:
 
 
 class TestErrorHandling:
-    """Test error handling and validation"""
+    """[USA-4] Test error handling and validation."""
 
     def test_invalid_simulation_name_in_framework(self, framework):
-        """Test accessing non-existent simulation"""
+        """[FR-6, USA-4] Test accessing non-existent simulation."""
         with pytest.raises(ValueError, match="not found"):
             framework.run_simulation("DoesNotExist", 100)
 
     def test_negative_n_simulations(self, simple_simulation):
-        """Test negative n_simulations raises error"""
+        """[USA-4] Test negative n_simulations raises error."""
         with pytest.raises(ValueError):
             simple_simulation.run(-10)
 
     def test_zero_n_simulations(self, simple_simulation):
-        """Test zero n_simulations raises error"""
+        """[USA-4] Test zero n_simulations raises error."""
         with pytest.raises(ValueError):
             simple_simulation.run(0)
 
     def test_invalid_percentile_metric_comparison(self, framework, simple_simulation):
-        """Test requesting non-computed percentile"""
+        """[FR-7, USA-4] Test requesting non-computed percentile."""
         framework.register_simulation(simple_simulation)
         framework.run_simulation("TestSim", 100, percentiles=[25, 75], parallel=False)
 
@@ -122,13 +122,13 @@ class TestErrorHandling:
             framework.compare_results(["TestSim"], metric="p50")
 
     def test_stats_engine_with_empty_metrics(self):
-        """Test stats engine with no metrics"""
+        """[FR-17, NFR-4] Test stats engine with no metrics."""
         engine = StatsEngine([])
         result = engine.compute(np.array([1, 2, 3]), n=3)
         assert len(result.metrics) == 0
 
     def test_simulation_with_failed_stats(self, simple_simulation, monkeypatch):
-        """Test simulation continues if stats engine fails"""
+        """[NFR-4, NFR-5] Test simulation continues if stats engine fails."""
 
         def failing_compute(*args, **kwargs):
             raise RuntimeError("Stats computation failed")

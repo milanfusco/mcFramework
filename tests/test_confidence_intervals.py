@@ -6,10 +6,10 @@ from mcframework.stats_engine import ci_mean, ci_mean_chebyshev
 
 
 class TestConfidenceIntervals:
-    """Test confidence interval calculations"""
+    """[FR-12, FR-14] Test confidence interval calculations."""
 
     def test_ci_mean_basic(self, sample_data, ctx_basic):
-        """Test basic CI calculation for mean"""
+        """[FR-12] Test basic CI calculation for mean."""
         result = ci_mean(sample_data, ctx_basic)
         assert result is not None
         assert "low" in result
@@ -20,13 +20,13 @@ class TestConfidenceIntervals:
         assert result["confidence"] == 0.95
 
     def test_ci_mean_contains_true_mean(self, sample_data, ctx_basic):
-        """Test CI contains sample mean"""
+        """[FR-12] Test CI contains sample mean."""
         result = ci_mean(sample_data, ctx_basic)
         sample_mean = np.mean(sample_data)
         assert result["low"] < sample_mean < result["high"]
 
     def test_ci_mean_small_sample(self):
-        """Test CI returns None for n < 2"""
+        """[FR-12, NFR-4] Test CI returns NaN for n < 2."""
         data = np.array([5.0])
         ctx = {"n": 1, "confidence": 0.95, "ci_method": "auto"}
         result = ci_mean(data, ctx)
@@ -34,7 +34,7 @@ class TestConfidenceIntervals:
         assert math.isnan(result["high"])
 
     def test_ci_mean_chebyshev(self, sample_data):
-        """Test Chebyshev CI calculation"""
+        """[FR-14] Test Chebyshev CI calculation."""
         ctx = {"n": len(sample_data), "confidence": 0.95, "nan_policy": "propagate"}
         result = ci_mean_chebyshev(sample_data, ctx)
         assert result is not None
@@ -42,7 +42,7 @@ class TestConfidenceIntervals:
         assert result["low"] < result["high"]
 
     def test_ci_mean_chebyshev_wider_than_normal(self, sample_data, ctx_basic):
-        """Test Chebyshev CI is wider (distribution-free penalty)"""
+        """[FR-14] Test Chebyshev CI is wider (distribution-free penalty)."""
         normal_ci = ci_mean(sample_data, ctx_basic)
         cheby_ci = ci_mean_chebyshev(sample_data, ctx_basic)
 

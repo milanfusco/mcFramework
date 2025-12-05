@@ -1,0 +1,79 @@
+---
+name: class_diagram_stats
+config:
+    look: neo
+---
+classDiagram
+    direction
+    class StatsContext {
+        <<dataclass>>
+        +n: int
+        +confidence: float
+        +ci_method: CIMethod
+        +percentiles: tuple
+        +nan_policy: NanPolicy
+        +target: float
+        +eps: float
+        +ddof: int
+        +ess: int
+        +n_bootstrap: int
+        +bootstrap: BootstrapMethod
+        +alpha() float
+        +eff_n() int
+        +with_overrides(**changes) StatsContext
+    }
+
+    class CIMethod {
+        <<enumeration>>
+        auto
+        z
+        t
+        bootstrap
+    }
+
+    class NanPolicy {
+        <<enumeration>>
+        propagate
+        omit
+    }
+
+    class BootstrapMethod {
+        <<enumeration>>
+        percentile
+        bca
+    }
+
+    class StatsEngine {
+        -_metrics: list~Metric~
+        +compute(x, ctx, select) ComputeResult
+    }
+
+    class ComputeResult {
+        <<dataclass>>
+        +metrics: dict
+        +skipped: list
+        +errors: list
+        +successful_metrics() set
+    }
+
+    class Metric {
+        <<protocol>>
+        +name: str
+        +__call__(x, ctx) Any
+    }
+
+    class FnMetric~T~ {
+        <<dataclass>>
+        +name: str
+        +fn: Callable
+        +__call__(x, ctx) T
+    }
+
+    StatsContext --> CIMethod
+    StatsContext --> NanPolicy
+    StatsContext --> BootstrapMethod
+
+    StatsEngine o-- Metric : contains
+    StatsEngine --> ComputeResult : returns
+    Metric <|.. FnMetric : implements
+
