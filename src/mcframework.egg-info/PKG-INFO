@@ -27,16 +27,20 @@ Provides-Extra: test
 Requires-Dist: pytest>=7.2; extra == "test"
 Requires-Dist: pytest-cov>=4.0; extra == "test"
 Requires-Dist: coverage>=7.2; extra == "test"
+Provides-Extra: gui
+Requires-Dist: PySide6>=6.5; extra == "gui"
+Requires-Dist: yfinance>=0.2; extra == "gui"
 Dynamic: license-file
 
 # mcframework
 
 [![CI](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml/badge.svg)](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml)
+[![Docs Deploy](https://github.com/milanfusco/mcFramework/actions/workflows/docs-deploy.yml/badge.svg)](https://github.com/milanfusco/mcFramework/actions/workflows/docs-deploy.yml)
 [![codecov](https://codecov.io/gh/milanfusco/mcframework/branch/main/graph/badge.svg)](https://codecov.io/gh/milanfusco/mcframework)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Lightweight, reproducible Monte Carlo simulation framework.
+Lightweight, reproducible, and deterministic Monte Carlo simulation framework with statistically robust analytics and parallel execution.
 
 ## Installation
 
@@ -45,14 +49,15 @@ Lightweight, reproducible Monte Carlo simulation framework.
 Clone the repository and install in editable mode:
 
 ```bash
-git clone https://github.com/yourusername/mcframework.git
+git clone https://github.com/milanfusco/mcframework.git
 cd mcframework
 pip install -e .
 ```
 
 ### Dependencies
 
-The framework requires:
+The package requires:
+
 - Python >= 3.10
 - numpy >= 1.24
 - scipy >= 1.10
@@ -60,9 +65,34 @@ The framework requires:
 
 ### Optional Dependencies
 
-For development:
+For all dependencies:
+
 ```bash
-pip install -e ".[dev,test,docs]"
+pip install -e ".[dev,test,docs,gui]"
+```
+
+For development:
+
+```bash
+pip install -e ".[dev]"
+```
+
+For testing:
+
+```bash
+pip install -e ".[test]"
+```
+
+For documentation:
+
+```bash
+pip install -e ".[docs]"
+```
+
+For the GUI application:
+
+```bash
+pip install -e ".[gui]"
 ```
 
 ## Features
@@ -90,18 +120,45 @@ print(res.result_to_string())
 
 For a comprehensive example with visualizations, see [`demo.py`](demo.py) which demonstrates Pi estimation and portfolio simulations with detailed plots.
 
+## GUI Application
 
-## Parallel execution becomes multiplatform (Version )
+The framework includes a PySide6 GUI for Black-Scholes Monte Carlo simulations:
+
+```bash
+# Install GUI dependencies
+pip install -e ".[gui]"
+
+# Run the application
+python demos/gui/quant_black_scholes.py
+```
+
+### GUI Features
+
+- **Live Data**: Fetch real-time stock data from Yahoo Finance
+- **Monte Carlo Simulation**: Run path simulations with configurable parameters
+- **Option Pricing**: Price European call/put options with Greeks (Delta, Gamma, Vega, Theta, Rho)
+- **Interactive Analysis**: What-if sliders for sensitivity analysis
+- **3D Surfaces**: Option price surfaces as functions of stock price and time
+- **Export Reports**: Generate HTML reports with embedded charts
+- **Dark Theme**: Bloomberg terminal-inspired UI
+
+### Scenario Presets
+
+Built-in presets for different market conditions:
+
+- High volatility tech stocks (TSLA)
+- Index ETFs (SPY)
+- Crypto-adjacent (COIN)
+- Stable dividend stocks (JNJ)
+
+## Cross-platform parallel execution
 
 `MonteCarloSimulation.run(..., parallel=True)` automatically decides between threads and
 processes. On POSIX platforms NumPy releases the GIL, so the framework keeps using threads
-for `parallel_backend="auto"`. Starting with this release the same `auto` setting resolves
-to **processes on Windows**, which restores the expected speed-ups when Python threads
-serialize under the GIL. You can still override the backend explicitly by setting
-`parallel_backend` to `"thread"` or `"process"`.
+for `parallel_backend="auto"`. The same `auto` setting resolves to **processes on Windows**,
+which restores the expected speed-ups when Python threads serialize under the GIL.
 
-
-
+You can still override the backend explicitly by setting `parallel_backend` to `"thread"` or `"process"`.
 
 ## Defining a Custom Simulation
 
@@ -157,34 +214,31 @@ res = sim.run(10_000, compute_stats=False)
 
 Dev dependencies:
 
+```bash
+pip install -e .[dev]
 ```
-pip install numpy scipy matplotlib \
-            pytest pylint mypy ruff sphinx \
-            sphinx-rtd-theme pytest-cov
-```
-
 
 Run tests with coverage:
 
-```
+```bash
 pytest --cov=mcframework -v 
 ```
 
 Generate coverage report (XML):
 
-```
+```bash
 pytest --cov=mcframework --cov-report=xml:coverage.xml
 ```
 
 Generate coverage report (HTML):
 
-```
+```bash
 pytest --cov=mcframework --cov-report=html
 ```
 
 Build HTML docs:
 
-```
+```bash
 sphinx-build -b html docs/source docs/_build/html
 ```
 

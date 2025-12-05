@@ -1,26 +1,45 @@
 r"""
-mcframework.stats_engine
-========================
-Statistical metrics and the orchestration engine used by the Monte Carlo
-framework.
+Statistical metrics and orchestration engine for Monte Carlo simulations.
 
-- :class:`~mcframework.stats_engine.StatsContext`: an explicit configuration object shared by all metrics.
-- :class:`FnMetric`: a lightweight adapter that binds a metric name to a
-  callable.
-- :class:`StatsEngine`: an evaluator that feeds arrays and contexts into one or
-  more metrics while tracking skips/errors.
+This module provides:
 
-Core metrics cover canonical descriptive statistics (mean, variance, skew,
-kurtosis), quantiles, and several flavors` of confidence intervals such as the
-parametric :func:`ci_mean`, the bootstrap :func:`ci_mean_bootstrap`, and the
-distribution-free :func:`ci_mean_chebyshev`. Helper utilities add probability
-inequalities (Markov, Chebyshev) and target-aware diagnostics (bias, MSE).
+Configuration
+    :class:`StatsContext` — Shared configuration for all metric computations
+    (confidence level, NaN policy, bootstrap settings, etc.)
+
+Descriptive Metrics
+    :func:`mean`, :func:`std`, :func:`percentiles`, :func:`skew`, :func:`kurtosis`
+
+Confidence Intervals
+    - :func:`ci_mean` — Parametric CI using z/t critical values
+    - :func:`ci_mean_bootstrap` — Bootstrap CI (percentile or BCa)
+    - :func:`ci_mean_chebyshev` — Distribution-free Chebyshev bound
+
+Target-Based Metrics
+    :func:`bias_to_target`, :func:`mse_to_target`, :func:`markov_error_prob`,
+    :func:`chebyshev_required_n`
+
+Engine
+    :class:`StatsEngine` — Orchestrator that evaluates multiple metrics
+    :class:`FnMetric` — Adapter to bind a name to a metric function
+    :obj:`DEFAULT_ENGINE` — Pre-configured engine with all standard metrics
+
+Example
+-------
+>>> from mcframework.stats_engine import DEFAULT_ENGINE, StatsContext
+>>> import numpy as np
+>>> data = np.random.normal(0, 1, 10000)
+>>> ctx = StatsContext(n=len(data), confidence=0.95)
+>>> result = DEFAULT_ENGINE.compute(data, ctx)
+>>> result.metrics['mean']  # doctest: +SKIP
+0.0012
 
 See Also
 --------
 mcframework.utils.autocrit
-    Selects a :math:`z` or :math:`t` critical value for a target confidence
-    level and effective sample size.
+    Selects z or t critical value based on sample size.
+mcframework.core.MonteCarloSimulation
+    Simulation base class that uses this engine.
 """
 
 
@@ -30,6 +49,9 @@ mcframework.utils.autocrit
 # that numpy/scipy functions accept that. So, we're suppressing the error
 # with type: ignore[arg-type] where needed.
 # ===========================================================================
+
+# pylint: disable=invalid-name
+# Enum values (propagate, omit, auto, z, t, bootstrap, percentile, bca) are lowercase by design
 
 from __future__ import annotations
 
@@ -74,20 +96,16 @@ _PCTS = (5, 25, 50, 75, 95)  # default percentiles
 # Numerical stability constants
 _SMALL_PROB_BOUND = 1e-12  # Minimum probability for BCa bootstrap to avoid log(0)
 _SMALL_VARIANCE_BOUND = 1e-30  # Minimum variance denominator to prevent division by zero
-_BCa_JACKKNIFE_DENOMINATOR = 6.0  # Constant in BCa acceleration calculation
+_BCA_JACKKNIFE_DENOMINATOR = 6.0  # Constant in BCa acceleration calculation
 
 
 # Custom exceptions for better error handling
 class MissingContextError(ValueError):
     """Raised when a required context field is missing."""
 
-    pass
-
 
 class InsufficientDataError(ValueError):
     """Raised when insufficient data is available for computation."""
-
-    pass
 
 
 class NanPolicy(str, Enum):
@@ -142,8 +160,8 @@ class BootstrapMethod(str, Enum):
 
     percentile = "percentile"
     bca = "bca"
-    
-    
+
+
 
 
 @dataclass(slots=True)
@@ -188,7 +206,7 @@ class StatsContext:
     eps : float, optional
         Tolerance used by Chebyshev sizing and Markov bounds, when required.
     ddof : int, default 1
-        Degrees of freedom for :func:`std` (1 => Bessel correction).
+        Degrees of freedom for :func:`numpy.std` (1 => Bessel correction).
     ess : int, optional
         Effective sample size override (e.g., from MCMC diagnostics).
     rng : int or numpy.random.Generator, optional
@@ -406,10 +424,14 @@ class ComputeResult:
 
     Examples
     --------
+    >>> engine = StatsEngine([FnMetric("mean", mean)])
+    >>> data = np.array([1.0, 2.0, 3.0])
+    >>> ctx = StatsContext(n=3)
     >>> result = engine.compute(data, ctx)
-    >>> result.metrics  # dict of computed values
-    >>> result.skipped  # list of skipped metrics with reasons
-    >>> result.successful_metrics()  # set of successful metric names
+    >>> result.metrics['mean']
+    2.0
+    >>> result.skipped
+    []
     """
 
     metrics: dict[str, Any]
@@ -539,8 +561,11 @@ class StatsEngine:
     --------
     >>> eng = StatsEngine([FnMetric("mean", mean), FnMetric("std", std)])
     >>> x = np.array([1., 2., 3.])
-    >>> eng.compute(x, StatsContext(n=len(x)))
-    {'mean': 2.0, 'std': 1.0}
+    >>> result = eng.compute(x, StatsContext(n=len(x)))
+    >>> result.metrics['mean']
+    2.0
+    >>> result.metrics['std']
+    1.0
     """
 
     def __init__(self, metrics: MetricSet):
@@ -568,9 +593,9 @@ class StatsEngine:
             Context parameters. If None, one is built from ``**kwargs``.
         select : sequence of str, optional
             If given, compute only the metrics with these names.
-        ``**kwargs`` :
+        **kwargs : Any
             Used to build a StatsContext if ctx is None.
-            Required: 'n' (int)
+            Required: 'n' (int).
             Optional: 'confidence', 'ci_method', 'percentiles', etc.
 
         Returns
@@ -625,8 +650,8 @@ class StatsEngine:
                     logger.debug("Skipping metric %s: %s", m.name, msg)
                     continue
                 raise
-            except Exception as e:
-                # Log and track unexpected errors
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # Log and track unexpected errors (intentionally broad to not crash engine)
                 error_msg = str(e)
                 errors.append((m.name, error_msg))
                 logger.exception("Error computing metric %s", m.name)
@@ -675,8 +700,10 @@ def _ensure_ctx(ctx: Any, x: np.ndarray) -> StatsContext:
     # Fallback: try to read attributes
     try:
         data = dict(vars(ctx))
-    except TypeError:
-        raise TypeError("ctx must be a StatsContext, dict, None, or an object with attributes")
+    except TypeError as exc:
+        raise TypeError(
+            "ctx must be a StatsContext, dict, None, or an object with attributes"
+        ) from exc
     data.setdefault("n", arr_len)
     return StatsContext(**data)
 
@@ -731,7 +758,9 @@ def _effective_sample_size(x: np.ndarray, ctx: StatsContext) -> int:
         Effective sample size according to :meth:`~mcframework.stats_engine.StatsContext.eff_n`.
     """
     arr, finite = _clean(x, ctx)
-    return ctx.eff_n(observed_len=arr.size, finite_count=finite)
+    # finite is a boolean mask; pass the count of True values
+    finite_count = int(np.sum(finite))
+    return ctx.eff_n(observed_len=arr.size, finite_count=finite_count)
 
 
 def mean(x: np.ndarray, ctx: StatsContext) -> float | None:
@@ -758,7 +787,7 @@ def mean(x: np.ndarray, ctx: StatsContext) -> float | None:
 
     Examples
     --------
-    >>> mean(np.array([1, 2, 3]))
+    >>> mean(np.array([1, 2, 3]), StatsContext(n=3))
     2.0
     """
     ctx = _ensure_ctx(ctx, x)
@@ -795,7 +824,9 @@ def std(x: np.ndarray, ctx: StatsContext) -> float | None:
     """
     ctx = _ensure_ctx(ctx, x)
     arr, finite = _clean(x, ctx)
-    n_eff = ctx.eff_n(observed_len=arr.size, finite_count=finite)
+    # finite is a boolean mask; pass the count of True values
+    finite_count = int(np.sum(finite))
+    n_eff = ctx.eff_n(observed_len=arr.size, finite_count=finite_count)
     if n_eff <= 1:
         return None
     return float(np.std(arr, ddof=ctx.ddof))
@@ -897,8 +928,8 @@ def kurtosis(x: np.ndarray, ctx: StatsContext) -> float:
 
     Examples
     --------
-    >>> round(kurtosis(np.array([1, 2, 3, 4.0]), {}), 6)
-    -1.200000
+    >>> round(kurtosis(np.array([1, 2, 3, 4.0]), {}), 1)
+    -1.2
     """
     ctx = _ensure_ctx(ctx, x)
     arr, _ = _clean(x, ctx)
@@ -984,7 +1015,9 @@ def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
     ).as_dict()
 
 
-def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.ndarray:
+def _bootstrap_means(
+    arr: np.ndarray, n_resamples: int, rng: np.random.Generator
+) -> np.ndarray:
     r"""
     Generate bootstrap replicates of the sample mean.
 
@@ -992,7 +1025,7 @@ def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.nd
     ----------
     arr : ndarray
         Cleaned sample values.
-    B : int
+    n_resamples : int
         Number of bootstrap resamples.
     rng : numpy.random.Generator
         Random generator used to draw resamples.
@@ -1000,10 +1033,10 @@ def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.nd
     Returns
     -------
     ndarray
-        Array of length ``B`` containing :math:`\{\bar X_b^*\}`.
+        Array of length ``n_resamples`` containing :math:`\{\bar X_b^*\}`.
     """
     n = arr.size
-    idx = rng.integers(0, n, size=(B, n), endpoint=False)
+    idx = rng.integers(0, n, size=(n_resamples, n), endpoint=False)
     return arr[idx].mean(axis=1)
 
 
@@ -1092,7 +1125,7 @@ def _bca_acceleration(arr: np.ndarray) -> float:
     # Acceleration formula from Efron & Tibshirani (1993)
     # The constant 6.0 comes from the theoretical derivation
     numerator = float(np.sum(d**3))
-    denominator = _BCa_JACKKNIFE_DENOMINATOR * (np.sum(d**2) ** 1.5) + _SMALL_VARIANCE_BOUND
+    denominator = _BCA_JACKKNIFE_DENOMINATOR * (np.sum(d**2) ** 1.5) + _SMALL_VARIANCE_BOUND
     return numerator / denominator
 
 
@@ -1241,9 +1274,9 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     if arr.size == 0:
         return None
 
-    B = int(ctx.n_bootstrap)
+    n_resamples = int(ctx.n_bootstrap)
     g = ctx.get_generators()
-    means = _bootstrap_means(arr, B, g)
+    means = _bootstrap_means(arr, n_resamples, g)
     loq, hiq = ctx.q_bound()
     method = ctx.bootstrap
 
@@ -1335,10 +1368,9 @@ def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:
     Examples
     --------
     >>> chebyshev_required_n(np.array([1., 2., 3.]), {"eps": 0.5, "confidence": 0.9})
-    8
+    41
     """
     ctx = _ensure_ctx(ctx, x)
-    arr, _ = _clean(x, ctx)
     if ctx.eps is None:
         raise MissingContextError("chebyshev_required_n requires ctx.eps")
     if ctx.eps <= 0:

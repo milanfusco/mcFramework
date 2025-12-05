@@ -1,43 +1,40 @@
 r"""
-
-mcframework.core
-================
-
 Core primitives for building and running Monte Carlo simulations.
-
-The core module of the Monte Carlo Framework provides essential classes and functions to set up and
-run Monte Carlo simulations. It includes tools for defining simulation parameters, executing
-simulations, and managing results.
 
 This module provides:
 
-* :class:`~mcframework.core.MonteCarloSimulation` - abstract base for simulations.
-* :class:`~mcframework.core.SimulationResult` - a lightweight container for outputs.
-* :class:`~mcframework.core.MonteCarloFramework` - registry + convenience runner.
-* :func:`~mcframework.core.make_blocks` - chunking helper for parallel runs.
+Classes
+    :class:`MonteCarloSimulation` — Abstract base class for defining simulations
+    :class:`SimulationResult` — Container for simulation outputs and statistics
+    :class:`MonteCarloFramework` — Registry and runner for multiple simulations
 
-Parallel backends
--------------------
+Functions
+    :func:`make_blocks` — Chunking helper for parallel work distribution
 
-``MonteCarloSimulation.run(..., parallel=True)`` can use threads or processes.
-By default (``MonteCarloSimulation.parallel_backend`` = ``"auto"``),
-the framework **prefers threads** because NumPy's random generators release the Global
-Interpreter Lock (GIL), avoiding the heavy spawn/pickle cost of processes on macOS.
-On Windows, ``"auto"`` resolves to processes to sidestep thread serialization effects.
+Parallel Backends
+    - ``"thread"`` — ThreadPoolExecutor (default on POSIX, NumPy releases GIL)
+    - ``"process"`` — ProcessPoolExecutor with spawn (default on Windows)
+    - ``"auto"`` — Platform-appropriate selection
 
-Set ``parallel_backend = "process"`` for heavy, Python-bound work that does **not**
-release the GIL (the default on Windows).
+Example
+-------
+>>> from mcframework.core import MonteCarloSimulation
+>>> class DiceSim(MonteCarloSimulation):
+...     def single_simulation(self, _rng=None):
+...         rng = self._rng(_rng, self.rng)
+...         return float(rng.integers(1, 7, size=2).sum())
+>>> sim = DiceSim(name="2d6")
+>>> sim.set_seed(42)
+>>> result = sim.run(10_000)  # doctest: +SKIP
+>>> result.mean  # doctest: +SKIP
+7.0
 
-Confidence intervals
---------------------
-
-By default a 95% confidence interval for the mean uses the usual formula
-
-.. math::
-
-   \bar{X} \pm z_{\alpha/2}\,\frac{s}{\sqrt{n}}
-
-or a t–critical value if requested via the stats engine.
+See Also
+--------
+mcframework.stats_engine
+    Statistical metrics and confidence intervals.
+mcframework.sims
+    Built-in simulations (Pi, Portfolio, Black-Scholes).
 """
 
 from __future__ import annotations
@@ -94,7 +91,7 @@ def _worker_run_chunk(
 
     Returns
     -------
-    list of float
+    list[tuple[int, int]]
         The simulated values.
 
     Notes
@@ -107,15 +104,15 @@ def _worker_run_chunk(
     return [float(sim.single_simulation(_rng=local_rng, **simulation_kwargs)) for _ in range(chunk_size)]
 
 
-def make_blocks(n, block_size=10_000):
+def make_blocks(n: int, block_size: int = 10_000) -> list[tuple[int, int]]:
     r"""
-    Partition an integer range ``[0, n)`` into half-open blocks ``(i, j)``.
+    Partition an integer range :math:`[0, n)` into half-open blocks :math:`(i, j)`.
 
     Parameters
     ----------
     n : int
         Total number of items.
-    block_size : int, default ``10_000``
+    block_size : int, default: 10_000
         Target block length.
 
     Returns
@@ -144,23 +141,23 @@ class SimulationResult:
 
     Attributes
     ----------
-    results : ndarray of float
-        Raw simulation values of length :attr:`n_simulations`.
+    results : :class:`numpy.ndarray`
+        Float array of raw simulation values of length :attr:`n_simulations`.
     n_simulations : int
         Number of simulations performed.
     execution_time : float
-        Wall-clock time in seconds.
+        Time taken to execute the simulations in seconds.
     mean : float
         Sample mean :math:`\bar X`.
     std : float
-        Sample standard deviation with ``ddof=1``.
+        Sample standard deviation with ``ddof=1`` (default for NumPy's :func:`numpy.std`).
     percentiles : dict[int, float]
-        Map of computed percentiles, e.g. ``{5: ..., 50: ..., 95: ...}``.
+        Dictionary of computed percentiles, e.g. ``{5: 0.05, 50: 0.50, 95: 0.95}``.
     stats : dict
-        Additional statistics from the stats engine (e.g. ``"ci_mean"``).
+        Additional statistics from the stats engine (e.g. ``"ci_mean"``, ``"skew"``, etc.).
     metadata : dict
-        Freeform metadata. Includes ``"simulation_name"``, ``"timestamp"``,
-        ``"seed_entropy"``, ``"requested_percentiles"`` and ``"engine_defaults_used"``.
+        Freeform metadata. Includes ``"simulation_name"``, ``"timestamp"``, ``"seed_entropy"``,
+        ``"requested_percentiles"``, and ``"engine_defaults_used"``.
     """
 
     results: np.ndarray
@@ -184,10 +181,10 @@ class SimulationResult:
 
         Parameters
         ----------
-        confidence : float, default ``0.95``
-            Confidence level for the displayed CI.
-        method : {"auto", "z", "t"}, default ``"auto"`` Which critical value to use (``"auto"``
-            chooses based on ``n``).
+        confidence : float
+            Confidence level for the displayed CI. (default ``0.95``)
+        method : str
+            Which critical value to use (``"auto"`` chooses based on ``n``). (default ``"auto"``)
 
         Returns
         -------
@@ -196,7 +193,7 @@ class SimulationResult:
 
         Notes
         -----
-        The CI in the string is
+        The parametric CI method for the mean is given by:
 
         .. math::
 
@@ -343,7 +340,8 @@ class MonteCarloSimulation(ABC):
 
         Returns
         -------
-        the result of the simulation run.
+        float
+            The result of the simulation run.
         """
 
     def set_seed(self, seed: int | None) -> None:
@@ -353,7 +351,7 @@ class MonteCarloSimulation(ABC):
         Parameters
         ----------
         seed : int or None
-            Seed for :class:`numpy.random.SeedSequence`. ``None`` chooses entropy
+            Seed for :class:`numpy.random.SeedSequence`. :data:`None` chooses entropy
             from the OS.
 
         Notes
@@ -421,7 +419,7 @@ class MonteCarloSimulation(ABC):
         try:
             ctx = StatsContext(**ctx_dict)
         except (TypeError, ValueError) as e:
-            logger.warning(f"Invalid context parameters: {e}. Using defaults.")
+            logger.warning("Invalid context parameters: %s. Using defaults.", e)
             ctx = StatsContext(
                 n=n_simulations,
                 percentiles=engine_defaults,
@@ -434,8 +432,8 @@ class MonteCarloSimulation(ABC):
             result = eng.compute(results, ctx)
             # Extract metrics from ComputeResult
             stats = result.metrics if hasattr(result, "metrics") else {}
-        except Exception as e:
-            logger.error(f"Stats engine failed: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("Stats engine failed: %s", e)
             stats = {}
 
         # Merge engine stats with baseline (engine wins on collisions)
@@ -530,8 +528,8 @@ class MonteCarloSimulation(ABC):
             Which critical values the stats engine should use.
         extra_context : mapping, optional
             Extra context forwarded to the stats engine.
-        ``**simulation_kwargs`` :
-            Forwarded to :meth:`single_simulation`.
+        **simulation_kwargs : Any
+            Keyword arguments forwarded to :meth:`single_simulation`.
 
         Returns
         -------
@@ -550,10 +548,13 @@ class MonteCarloSimulation(ABC):
         if parallel:
             if n_workers is None:
                 n_workers = mp.cpu_count()  # pragma: no cover
-            logger.info(f"Computing {n_simulations} simulations in parallel using {n_workers} workers...")
+            logger.info(
+                "Computing %d simulations in parallel using %d workers...",
+                n_simulations, n_workers
+            )
             results = self._run_parallel(n_simulations, n_workers, progress_callback, **simulation_kwargs)
         else:
-            logger.info(f"Computing {n_simulations} simulations sequentially...")
+            logger.info("Computing %d simulations sequentially...", n_simulations)
             results = self._run_sequential(n_simulations, progress_callback, **simulation_kwargs)
 
         exec_time = time.time() - t0
@@ -748,10 +749,9 @@ class MonteCarloSimulation(ABC):
             return self._run_with_threads(
                 blocks, child_seqs, n_simulations, n_workers, progress_callback, **simulation_kwargs
             )
-        else:
-            return self._run_with_processes(
-                blocks, child_seqs, n_simulations, n_workers, progress_callback, **simulation_kwargs
-            )
+        return self._run_with_processes(
+            blocks, child_seqs, n_simulations, n_workers, progress_callback, **simulation_kwargs
+        )
 
     @staticmethod
     def _percentiles(arr: np.ndarray, ps: Iterable[int]) -> dict[int, float]:
@@ -825,7 +825,7 @@ class MonteCarloSimulation(ABC):
         ``metadata["requested_percentiles"]`` and whether engine defaults were used
         in ``metadata["engine_defaults_used"]``.
         """
-        mean = float(np.mean(results))
+        mean_val = float(np.mean(results))
         std_sample = float(np.std(results, ddof=1)) if results.size > 1 else 0.0
         stats = dict(stats) if stats else {}
 
@@ -849,7 +849,7 @@ class MonteCarloSimulation(ABC):
             results=results,
             n_simulations=n_simulations,
             execution_time=execution_time,
-            mean=mean,
+            mean=mean_val,
             std=std_sample,
             percentiles=percentiles,
             stats=stats,
@@ -921,7 +921,7 @@ class MonteCarloFramework:
             Key used in :meth:`register_simulation`.
         n_simulations : int
             Number of draws.
-        ``**kwargs`` :
+        **kwargs : Any
             Forwarded to :meth:`MonteCarloSimulation.run`.
 
         Returns

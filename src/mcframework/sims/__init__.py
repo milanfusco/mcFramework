@@ -21,4 +21,3 @@ __all__ = [
     "_simulate_gbm_path",
     "_american_exercise_lsm",
 ]
-

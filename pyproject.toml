@@ -36,6 +36,10 @@ test = [
     "pytest-cov>=4.0",
     "coverage>=7.2",
 ]
+gui = [
+    "PySide6>=6.5",
+    "yfinance>=0.2",
+]
 
 
 [tool.setuptools]
@@ -65,30 +69,32 @@ ignore-paths = [
 ]
 
 [tool.pylint.messages_control]
-# Keep this conservative; we’ll use per-file overrides for tests below
+# Keep this conservative
 disable = [
     "missing-module-docstring",
     "missing-class-docstring",
     "missing-function-docstring",
+    "too-few-public-methods",      # dataclasses/protocols often have few methods
+    "duplicate-code",              # logger setup is intentionally duplicated
+    "fixme",                       # TODO comments are acceptable
+    "no-name-in-module",           # False positive for scipy.special.erfinv
 ]
 
 [tool.pylint.format]
 max-line-length = 110
 
 [tool.pylint.design]
-max-args = 7
+max-args = 15
+max-locals = 35
+max-attributes = 15
+max-positional-arguments = 15
+
+[tool.pylint."pylint.design"]
+max-module-lines = 2000
 
 [tool.pylint.basic]
-good-names = ["i", "j", "k", "x", "y", "n", "df", "ps"]
-
-# Per-file overrides (Pylint 3 feature) for the test suite
-[tool.pylint.overrides."**/tests/**"]
-disable = [
-    "unused-argument",
-    "unused-import",
-    "redefined-outer-name",
-    "protected-access",
-]
+# Standard loop vars + finance/math notation
+good-names = ["i", "j", "k", "x", "y", "n", "df", "ps", "B", "K", "T", "S", "Z", "X", "r", "q"]
 
 [tool.ruff]
 line-length = 110

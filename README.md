@@ -30,9 +30,30 @@ The package requires:
 
 ### Optional Dependencies
 
+For all dependencies:
+```bash
+pip install -e ".[dev,test,docs,gui]"
+```
+
 For development:
 ```bash
-pip install -e ".[dev,test,docs]"
+pip install -e ".[dev]"
+```
+
+For testing:
+```bash
+pip install -e ".[test]"
+```
+
+For documentation:
+```bash
+pip install -e ".[docs]"
+```
+
+
+For the GUI application:
+```bash
+pip install -e ".[gui]"
 ```
 
 ## Features
@@ -59,6 +80,36 @@ print(res.result_to_string())
 ```
 
 For a comprehensive example with visualizations, see [`demo.py`](demo.py) which demonstrates Pi estimation and portfolio simulations with detailed plots.
+
+## GUI Application
+
+The framework includes a PySide6 GUI for Black-Scholes Monte Carlo simulations:
+
+```bash
+# Install GUI dependencies
+pip install -e ".[gui]"
+
+# Run the application
+python demos/gui/quant_black_scholes.py
+```
+
+### Features
+
+- **Live Data**: Fetch real-time stock data from Yahoo Finance
+- **Monte Carlo Simulation**: Run path simulations with configurable parameters
+- **Option Pricing**: Price European call/put options with Greeks (Delta, Gamma, Vega, Theta, Rho)
+- **Interactive Analysis**: What-if sliders for sensitivity analysis
+- **3D Surfaces**: Option price surfaces as functions of stock price and time
+- **Export Reports**: Generate HTML reports with embedded charts
+- **Dark Theme**: Bloomberg terminal-inspired UI
+
+### Scenario Presets
+
+Built-in presets for different market conditions:
+- High volatility tech stocks (TSLA)
+- Index ETFs (SPY)
+- Crypto-adjacent (COIN)
+- Stable dividend stocks (JNJ)
 
 
 ## Cross-platform parallel execution
