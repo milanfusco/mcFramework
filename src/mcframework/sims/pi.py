@@ -36,7 +36,7 @@ class PiEstimationSimulation(MonteCarloSimulation):
     def __init__(self):
         super().__init__("Pi Estimation")
 
-    def single_simulation(
+    def single_simulation(  # pylint: disable=arguments-differ
         self,
         n_points: int = 10_000,
         antithetic: bool = False,
@@ -55,10 +55,8 @@ class PiEstimationSimulation(MonteCarloSimulation):
         antithetic : bool, default ``False``
             Whether to pair each point :math:`(x, y)` with its reflection
             :math:`(-x, -y)` to achieve first-order variance cancellation.
-        _rng : numpy.random.Generator, optional
-            Worker-local generator injected by :class:`~mcframework.core.MonteCarloSimulation`.
-        ``**kwargs`` :
-            Ignored. Present for compatibility with the base signature.
+        **kwargs : Any
+            Ignored. Reserved for framework compatibility.
 
         Returns
         -------
@@ -82,4 +80,3 @@ class PiEstimationSimulation(MonteCarloSimulation):
             pts = np.vstack([pts, rng.uniform(-1.0, 1.0, (1, 2))])
         inside = np.sum(np.sum(pts * pts, axis=1) <= 1.0)
         return float(4.0 * inside / n_points)
-

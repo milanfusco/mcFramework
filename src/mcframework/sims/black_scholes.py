@@ -1,4 +1,6 @@
 """Black-Scholes simulations and helper utilities."""
+# pylint: disable=invalid-name
+# Finance/math notation (S_T, K, T, S0, Z, X, V0, dS, dT) follows standard conventions
 
 from __future__ import annotations
 
@@ -208,7 +210,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
     def __init__(self, name: str = "Black-Scholes Option Pricing"):
         super().__init__(name)
 
-    def single_simulation(
+    def single_simulation(  # pylint: disable=arguments-differ
         self,
         *,
         S0: float = 100.0,
@@ -371,7 +373,7 @@ class BlackScholesPathSimulation(MonteCarloSimulation):
     def __init__(self, name: str = "Black-Scholes Path Simulation"):
         super().__init__(name)
 
-    def single_simulation(
+    def single_simulation(  # pylint: disable=arguments-differ
         self,
         *,
         S0: float = 100.0,
@@ -405,4 +407,3 @@ class BlackScholesPathSimulation(MonteCarloSimulation):
         for i in range(n_paths):
             paths[i] = _simulate_gbm_path(S0, r, sigma, T, n_steps, self.rng)
         return paths
-

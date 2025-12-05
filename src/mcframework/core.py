@@ -91,7 +91,7 @@ def _worker_run_chunk(
 
     Returns
     -------
-    list of float
+    list[tuple[int, int]]
         The simulated values.
 
     Notes
@@ -104,15 +104,15 @@ def _worker_run_chunk(
     return [float(sim.single_simulation(_rng=local_rng, **simulation_kwargs)) for _ in range(chunk_size)]
 
 
-def make_blocks(n, block_size=10_000):
+def make_blocks(n: int, block_size: int = 10_000) -> list[tuple[int, int]]:
     r"""
-    Partition an integer range ``[0, n)`` into half-open blocks ``(i, j)``.
+    Partition an integer range :math:`[0, n)` into half-open blocks :math:`(i, j)`.
 
     Parameters
     ----------
     n : int
         Total number of items.
-    block_size : int, default ``10_000``
+    block_size : int, default: 10_000
         Target block length.
 
     Returns
@@ -419,7 +419,7 @@ class MonteCarloSimulation(ABC):
         try:
             ctx = StatsContext(**ctx_dict)
         except (TypeError, ValueError) as e:
-            logger.warning(f"Invalid context parameters: {e}. Using defaults.")
+            logger.warning("Invalid context parameters: %s. Using defaults.", e)
             ctx = StatsContext(
                 n=n_simulations,
                 percentiles=engine_defaults,
@@ -432,8 +432,8 @@ class MonteCarloSimulation(ABC):
             result = eng.compute(results, ctx)
             # Extract metrics from ComputeResult
             stats = result.metrics if hasattr(result, "metrics") else {}
-        except Exception as e:
-            logger.error(f"Stats engine failed: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("Stats engine failed: %s", e)
             stats = {}
 
         # Merge engine stats with baseline (engine wins on collisions)
@@ -528,8 +528,8 @@ class MonteCarloSimulation(ABC):
             Which critical values the stats engine should use.
         extra_context : mapping, optional
             Extra context forwarded to the stats engine.
-        ``**simulation_kwargs`` :
-            Forwarded to :meth:`single_simulation`.
+        **simulation_kwargs : Any
+            Keyword arguments forwarded to :meth:`single_simulation`.
 
         Returns
         -------
@@ -548,10 +548,13 @@ class MonteCarloSimulation(ABC):
         if parallel:
             if n_workers is None:
                 n_workers = mp.cpu_count()  # pragma: no cover
-            logger.info(f"Computing {n_simulations} simulations in parallel using {n_workers} workers...")
+            logger.info(
+                "Computing %d simulations in parallel using %d workers...",
+                n_simulations, n_workers
+            )
             results = self._run_parallel(n_simulations, n_workers, progress_callback, **simulation_kwargs)
         else:
-            logger.info(f"Computing {n_simulations} simulations sequentially...")
+            logger.info("Computing %d simulations sequentially...", n_simulations)
             results = self._run_sequential(n_simulations, progress_callback, **simulation_kwargs)
 
         exec_time = time.time() - t0
@@ -746,10 +749,9 @@ class MonteCarloSimulation(ABC):
             return self._run_with_threads(
                 blocks, child_seqs, n_simulations, n_workers, progress_callback, **simulation_kwargs
             )
-        else:
-            return self._run_with_processes(
-                blocks, child_seqs, n_simulations, n_workers, progress_callback, **simulation_kwargs
-            )
+        return self._run_with_processes(
+            blocks, child_seqs, n_simulations, n_workers, progress_callback, **simulation_kwargs
+        )
 
     @staticmethod
     def _percentiles(arr: np.ndarray, ps: Iterable[int]) -> dict[int, float]:
@@ -823,7 +825,7 @@ class MonteCarloSimulation(ABC):
         ``metadata["requested_percentiles"]`` and whether engine defaults were used
         in ``metadata["engine_defaults_used"]``.
         """
-        mean = float(np.mean(results))
+        mean_val = float(np.mean(results))
         std_sample = float(np.std(results, ddof=1)) if results.size > 1 else 0.0
         stats = dict(stats) if stats else {}
 
@@ -847,7 +849,7 @@ class MonteCarloSimulation(ABC):
             results=results,
             n_simulations=n_simulations,
             execution_time=execution_time,
-            mean=mean,
+            mean=mean_val,
             std=std_sample,
             percentiles=percentiles,
             stats=stats,
@@ -919,7 +921,7 @@ class MonteCarloFramework:
             Key used in :meth:`register_simulation`.
         n_simulations : int
             Number of draws.
-        ``**kwargs`` :
+        **kwargs : Any
             Forwarded to :meth:`MonteCarloSimulation.run`.
 
         Returns

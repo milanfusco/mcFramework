@@ -50,6 +50,9 @@ mcframework.core.MonteCarloSimulation
 # with type: ignore[arg-type] where needed.
 # ===========================================================================
 
+# pylint: disable=invalid-name
+# Enum values (propagate, omit, auto, z, t, bootstrap, percentile, bca) are lowercase by design
+
 from __future__ import annotations
 
 import logging
@@ -93,20 +96,16 @@ _PCTS = (5, 25, 50, 75, 95)  # default percentiles
 # Numerical stability constants
 _SMALL_PROB_BOUND = 1e-12  # Minimum probability for BCa bootstrap to avoid log(0)
 _SMALL_VARIANCE_BOUND = 1e-30  # Minimum variance denominator to prevent division by zero
-_BCa_JACKKNIFE_DENOMINATOR = 6.0  # Constant in BCa acceleration calculation
+_BCA_JACKKNIFE_DENOMINATOR = 6.0  # Constant in BCa acceleration calculation
 
 
 # Custom exceptions for better error handling
 class MissingContextError(ValueError):
     """Raised when a required context field is missing."""
 
-    pass
-
 
 class InsufficientDataError(ValueError):
     """Raised when insufficient data is available for computation."""
-
-    pass
 
 
 class NanPolicy(str, Enum):
@@ -161,8 +160,8 @@ class BootstrapMethod(str, Enum):
 
     percentile = "percentile"
     bca = "bca"
-    
-    
+
+
 
 
 @dataclass(slots=True)
@@ -594,9 +593,9 @@ class StatsEngine:
             Context parameters. If None, one is built from ``**kwargs``.
         select : sequence of str, optional
             If given, compute only the metrics with these names.
-        ``**kwargs`` :
+        **kwargs : Any
             Used to build a StatsContext if ctx is None.
-            Required: 'n' (int)
+            Required: 'n' (int).
             Optional: 'confidence', 'ci_method', 'percentiles', etc.
 
         Returns
@@ -651,8 +650,8 @@ class StatsEngine:
                     logger.debug("Skipping metric %s: %s", m.name, msg)
                     continue
                 raise
-            except Exception as e:
-                # Log and track unexpected errors
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # Log and track unexpected errors (intentionally broad to not crash engine)
                 error_msg = str(e)
                 errors.append((m.name, error_msg))
                 logger.exception("Error computing metric %s", m.name)
@@ -701,8 +700,10 @@ def _ensure_ctx(ctx: Any, x: np.ndarray) -> StatsContext:
     # Fallback: try to read attributes
     try:
         data = dict(vars(ctx))
-    except TypeError:
-        raise TypeError("ctx must be a StatsContext, dict, None, or an object with attributes")
+    except TypeError as exc:
+        raise TypeError(
+            "ctx must be a StatsContext, dict, None, or an object with attributes"
+        ) from exc
     data.setdefault("n", arr_len)
     return StatsContext(**data)
 
@@ -1014,7 +1015,9 @@ def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
     ).as_dict()
 
 
-def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.ndarray:
+def _bootstrap_means(
+    arr: np.ndarray, n_resamples: int, rng: np.random.Generator
+) -> np.ndarray:
     r"""
     Generate bootstrap replicates of the sample mean.
 
@@ -1022,7 +1025,7 @@ def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.nd
     ----------
     arr : ndarray
         Cleaned sample values.
-    B : int
+    n_resamples : int
         Number of bootstrap resamples.
     rng : numpy.random.Generator
         Random generator used to draw resamples.
@@ -1030,10 +1033,10 @@ def _bootstrap_means(arr: np.ndarray, B: int, rng: np.random.Generator) -> np.nd
     Returns
     -------
     ndarray
-        Array of length ``B`` containing :math:`\{\bar X_b^*\}`.
+        Array of length ``n_resamples`` containing :math:`\{\bar X_b^*\}`.
     """
     n = arr.size
-    idx = rng.integers(0, n, size=(B, n), endpoint=False)
+    idx = rng.integers(0, n, size=(n_resamples, n), endpoint=False)
     return arr[idx].mean(axis=1)
 
 
@@ -1122,7 +1125,7 @@ def _bca_acceleration(arr: np.ndarray) -> float:
     # Acceleration formula from Efron & Tibshirani (1993)
     # The constant 6.0 comes from the theoretical derivation
     numerator = float(np.sum(d**3))
-    denominator = _BCa_JACKKNIFE_DENOMINATOR * (np.sum(d**2) ** 1.5) + _SMALL_VARIANCE_BOUND
+    denominator = _BCA_JACKKNIFE_DENOMINATOR * (np.sum(d**2) ** 1.5) + _SMALL_VARIANCE_BOUND
     return numerator / denominator
 
 
@@ -1271,9 +1274,9 @@ def ci_mean_bootstrap(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str
     if arr.size == 0:
         return None
 
-    B = int(ctx.n_bootstrap)
+    n_resamples = int(ctx.n_bootstrap)
     g = ctx.get_generators()
-    means = _bootstrap_means(arr, B, g)
+    means = _bootstrap_means(arr, n_resamples, g)
     loq, hiq = ctx.q_bound()
     method = ctx.bootstrap
 
@@ -1368,7 +1371,6 @@ def chebyshev_required_n(x: np.ndarray, ctx: StatsContext) -> int:
     41
     """
     ctx = _ensure_ctx(ctx, x)
-    arr, _ = _clean(x, ctx)
     if ctx.eps is None:
         raise MissingContextError("chebyshev_required_n requires ctx.eps")
     if ctx.eps <= 0:

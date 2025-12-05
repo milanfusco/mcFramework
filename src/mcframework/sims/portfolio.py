@@ -35,7 +35,7 @@ class PortfolioSimulation(MonteCarloSimulation):
     def __init__(self):
         super().__init__("Portfolio Simulation")
 
-    def single_simulation(
+    def single_simulation(  # pylint: disable=arguments-differ
         self,
         *,
         initial_value: float = 10_000.0,
@@ -64,10 +64,8 @@ class PortfolioSimulation(MonteCarloSimulation):
         use_gbm : bool, default ``True``
             If ``True`` evolve log returns via GBM; otherwise simulate simple
             returns and compose them multiplicatively.
-        _rng : numpy.random.Generator, optional
-            Worker-local RNG supplied by the framework.
-        ``**kwargs`` :
-            Unused placeholder to maintain parity with the abstract signature.
+        **kwargs : Any
+            Ignored. Reserved for framework compatibility.
 
         Returns
         -------
@@ -84,4 +82,3 @@ class PortfolioSimulation(MonteCarloSimulation):
             return float(initial_value * np.exp(rets.sum()))
         rets = rng.normal(annual_return * dt, volatility * np.sqrt(dt), size=n)
         return float(initial_value * np.exp(np.log1p(rets).sum()))
-
