@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import dataclasses
+import doctest
 import os
 import sys
 from datetime import datetime
@@ -247,7 +248,6 @@ copybutton_prompt_is_regexp = True
 # -- Doctest configuration -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/extensions/doctest.html
 
-import doctest
 
 doctest_global_setup = """
 import numpy as np
