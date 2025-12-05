@@ -7,8 +7,6 @@
 # McFramework
 ## Monte Carlo Simulation Framework
 
-### System and Program Design Document
-
 ---
 
 **Course:** Software Engineering
@@ -20,13 +18,8 @@
 | Milan Fusco | 11:00 AM | mdfusco@student.ysu.edu |
 | James Gabbert | 11:00 AM | jdgabbert@student.ysu.edu |
 
----
-
-**Date:** December 2024
-
 </div>
 
----
 
 ## Table of Contents
 
@@ -607,10 +600,9 @@ sequenceDiagram
     Sim->>Sim: _validate_run_params()
     Sim->>Sim: spawn SeedSequences
 
-    rect rgb(200, 220, 255)
-        Note over Sim,Pool: Parallel Execution
-        Sim->>Pool: submit chunks to workers
-        activate Pool
+    Note over Sim,Pool: Parallel Execution
+    Sim->>Pool: submit chunks to workers
+    activate Pool
 
         par Worker 1
             Pool->>Pool: single_simulation() × chunk_size
@@ -622,7 +614,7 @@ sequenceDiagram
 
         Pool-->>Sim: collected results[]
         deactivate Pool
-    end
+    
 
     Sim->>Engine: compute(results, StatsContext)
     activate Engine
