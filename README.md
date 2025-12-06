@@ -10,19 +10,19 @@
 
 Lightweight, reproducible, and deterministic Monte Carlo simulation framework with statistically robust analytics and parallel execution.
 
-## 📚 Documentation
+## Links
 
-**[View Full Documentation →](https://milanfusco.github.io/mcFramework/)**
+**[Documentation →](https://milanfusco.github.io/mcframework/)**
+**[PyPI Package →](https://pypi.org/project/mcframework/)**
+**[GitHub Repository →](https://github.com/milanfusco/mcframework)**
 
-The documentation includes:
-
-- **Getting Started** — Installation and quick examples
-- **API Reference** — Complete module documentation with type hints
-- **System Design** — Architecture diagrams, UML, and design patterns
-- **Project Plan** — Requirements, stakeholders, and methodology
 ---
 
 ## Installation
+
+```bash
+pip install mcframework
+```
 
 ### From Source (Development)
 
