@@ -4,15 +4,24 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mcframework"
 version = "0.1.0"
-description = "Lightweight, reproducible Monte Carlo simulation framework"
+description = "Lightweight, parallel, and reproducible Monte Carlo simulation framework"
 readme = "README.md"
 authors = [{ name = "Milan Fusco" }]
 requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
 dependencies = [
     "numpy>=1.24",
     "matplotlib>=3.7",
     "scipy>=1.10",
 ]
+[project.urls]
+Homepage = "https://github.com/milanfusco/mcFramework/"
+Docs = "https://milanfusco.github.io/mcFramework/"
 
 [project.optional-dependencies]
 dev = [

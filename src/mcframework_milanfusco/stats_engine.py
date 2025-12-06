@@ -72,10 +72,10 @@ from typing import (
 )
 
 import numpy as np
-from scipy.special import erfinv
-from scipy.stats import kurtosis as sp_kurtosis
-from scipy.stats import norm
-from scipy.stats import skew as sp_skew
+from scipy.special import erfinv  # type: ignore[import-untyped]
+from scipy.stats import kurtosis as sp_kurtosis  # type: ignore[import-untyped]
+from scipy.stats import norm  # type: ignore[import-untyped]
+from scipy.stats import skew as sp_skew  # type: ignore[import-untyped]
 
 from .utils import autocrit
 
@@ -232,16 +232,16 @@ class StatsContext:
 
     n: int
     confidence: float = 0.95
-    ci_method: CIMethod = "auto"
+    ci_method: CIMethod = CIMethod.auto
     percentiles: tuple[int, ...] = (5, 25, 50, 75, 95)
-    nan_policy: NanPolicy = "propagate"
+    nan_policy: NanPolicy = NanPolicy.propagate
     target: float | None = None
     eps: float | None = None
     ddof: int = 1
     ess: int | None = None
     rng: int | np.random.Generator | None = None
     n_bootstrap: int = 10_000
-    bootstrap: BootstrapMethod = "percentile"
+    bootstrap: BootstrapMethod = BootstrapMethod.percentile
 
     # ergonomics
     def with_overrides(self, **changes) -> "StatsContext":
@@ -399,7 +399,7 @@ class _CIResult:
     def as_dict(self) -> dict[str, float | str]:
         result: dict[str, float | str] = {
             "confidence": float(self.confidence),
-            "method": str(self.method),
+            "method": self.method.value if hasattr(self.method, 'value') else str(self.method),
             "low": float(self.low),
             "high": float(self.high),
         }
@@ -476,7 +476,8 @@ class Metric(Protocol):
         Human-readable key under which the metric's value is returned.
     """
 
-    name: str
+    @property
+    def name(self) -> str: ...
 
     def __call__(self, x: np.ndarray, ctx: StatsContext, /) -> Any: ...
 
@@ -1437,7 +1438,10 @@ def bias_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     ctx = _ensure_ctx(ctx, x)
     if ctx.target is None:
         raise MissingContextError("bias_to_target requires ctx.target")
-    return float(mean(x, ctx) - ctx.target)
+    sample_mean = mean(x, ctx)
+    if sample_mean is None:
+        raise InsufficientDataError("bias_to_target requires non-empty data after cleaning")
+    return float(sample_mean - ctx.target)
 
 
 def mse_to_target(x: np.ndarray, ctx: StatsContext) -> float:
@@ -1487,21 +1491,21 @@ def build_default_engine(
     StatsEngine
     """
     metrics: list[Metric] = [
-        FnMetric[float]("mean", mean, "Sample mean"),
-        FnMetric[float]("std", std, "Sample standard deviation"),
-        FnMetric[dict[int, float]]("percentiles", percentiles, "Percentiles over the sample"),
-        FnMetric[float]("skew", skew, "Fisher skewness (unbiased)"),
-        FnMetric[float]("kurtosis", kurtosis, "Excess kurtosis (unbiased)"),
-        FnMetric[dict[str, float | str]]("ci_mean", ci_mean, "z/t CI for the mean"),
-        FnMetric[dict[str, float | str]]("ci_mean_bootstrap", ci_mean_bootstrap, "Bootstrap CI for the mean"),
+        FnMetric("mean", mean, "Sample mean"),
+        FnMetric("std", std, "Sample standard deviation"),
+        FnMetric("percentiles", percentiles, "Percentiles over the sample"),
+        FnMetric("skew", skew, "Fisher skewness (unbiased)"),
+        FnMetric("kurtosis", kurtosis, "Excess kurtosis (unbiased)"),
+        FnMetric("ci_mean", ci_mean, "z/t CI for the mean"),
+        FnMetric("ci_mean_bootstrap", ci_mean_bootstrap, "Bootstrap CI for the mean"),
     ]
     if include_dist_free:
         metrics.extend(
             [
-                FnMetric[dict[str, float | str]](
+                FnMetric(
                     "ci_mean_chebyshev", ci_mean_chebyshev, "Chebyshev bound CI for the mean"
                 ),
-                FnMetric[int](
+                FnMetric(
                     "chebyshev_required_n", chebyshev_required_n, "Required n under Chebyshev to reach eps"
                 ),
             ]
@@ -1509,9 +1513,9 @@ def build_default_engine(
     if include_target_bounds:
         metrics.extend(
             [
-                FnMetric[float]("markov_error_prob", markov_error_prob, "Markov bound P(|X-target|>=eps)"),
-                FnMetric[float]("bias_to_target", bias_to_target, "Bias relative to target"),
-                FnMetric[float]("mse_to_target", mse_to_target, "Mean squared error to target"),
+                FnMetric("markov_error_prob", markov_error_prob, "Markov bound P(|X-target|>=eps)"),
+                FnMetric("bias_to_target", bias_to_target, "Bias relative to target"),
+                FnMetric("mse_to_target", mse_to_target, "Mean squared error to target"),
             ]
         )
     return StatsEngine(metrics)

@@ -284,14 +284,23 @@ class BlackScholesSimulation(MonteCarloSimulation):
         }
 
         self.set_seed(42)
-        res_base = self.run(n_simulations, S0=S0, parallel=parallel, compute_stats=False, **sim_kwargs)
+        res_base = self.run(
+            n_simulations, S0=S0, parallel=parallel, compute_stats=False,
+            **sim_kwargs,  # type: ignore[arg-type]
+        )
         V0 = res_base.mean
 
         dS = S0 * bump_pct
         self.set_seed(42)
-        res_up = self.run(n_simulations, S0=S0 + dS, parallel=parallel, compute_stats=False, **sim_kwargs)
+        res_up = self.run(
+            n_simulations, S0=S0 + dS, parallel=parallel, compute_stats=False,
+            **sim_kwargs,  # type: ignore[arg-type]
+        )
         self.set_seed(42)
-        res_down = self.run(n_simulations, S0=S0 - dS, parallel=parallel, compute_stats=False, **sim_kwargs)
+        res_down = self.run(
+            n_simulations, S0=S0 - dS, parallel=parallel, compute_stats=False,
+            **sim_kwargs,  # type: ignore[arg-type]
+        )
         delta = (res_up.mean - res_down.mean) / (2 * dS)
         gamma = (res_up.mean - 2 * V0 + res_down.mean) / (dS * dS)
 
@@ -303,7 +312,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
             parallel=parallel,
             compute_stats=False,
             sigma=sigma + dsigma,
-            **{k: v for k, v in sim_kwargs.items() if k != "sigma"},
+            **{k: v for k, v in sim_kwargs.items() if k != "sigma"},  # type: ignore[arg-type]
         )
         self.set_seed(42)
         res_vol_down = self.run(
@@ -312,7 +321,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
             parallel=parallel,
             compute_stats=False,
             sigma=sigma - dsigma,
-            **{k: v for k, v in sim_kwargs.items() if k != "sigma"},
+            **{k: v for k, v in sim_kwargs.items() if k != "sigma"},  # type: ignore[arg-type]
         )
         vega = (res_vol_up.mean - res_vol_down.mean) / (2 * dsigma) * 0.01
 
@@ -325,7 +334,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
                 parallel=parallel,
                 compute_stats=False,
                 T=T - dT,
-                **{k: v for k, v in sim_kwargs.items() if k != "T"},
+                **{k: v for k, v in sim_kwargs.items() if k != "T"},  # type: ignore[arg-type]
             )
             theta = (res_time.mean - V0) / dT / 365.0
         else:
@@ -339,7 +348,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
             parallel=parallel,
             compute_stats=False,
             r=r + dr,
-            **{k: v for k, v in sim_kwargs.items() if k != "r"},
+            **{k: v for k, v in sim_kwargs.items() if k != "r"},  # type: ignore[arg-type]
         )
         self.set_seed(42)
         res_rate_down = self.run(
@@ -348,7 +357,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
             parallel=parallel,
             compute_stats=False,
             r=r - dr,
-            **{k: v for k, v in sim_kwargs.items() if k != "r"},
+            **{k: v for k, v in sim_kwargs.items() if k != "r"},  # type: ignore[arg-type]
         )
         rho = (res_rate_up.mean - res_rate_down.mean) / (2 * dr) * 0.01
 

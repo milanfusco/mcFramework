@@ -9,7 +9,7 @@ that chooses between normal and t criticals in a reproducible way.
 
 from __future__ import annotations
 
-from scipy.stats import norm, t
+from scipy.stats import norm, t  # type: ignore[import-untyped]
 
 __all__ = ["z_crit", "t_crit", "autocrit"]
 

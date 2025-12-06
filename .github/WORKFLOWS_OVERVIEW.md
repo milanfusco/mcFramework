@@ -1,340 +1,204 @@
-# GitHub Actions Workflows Overview
+# CI/CD Workflows
 
-## 📊 Workflow Architecture
+Here's what all the GitHub Actions do. Reference this when something breaks or you need to add stuff.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         GitHub Push/PR                          │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        CI Workflow (ci.yml)                     │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐    │
-│  │   Lint Job   │  │   Test Job   │  │  Docs Build Job  │    │
-│  │              │  │              │  │                  │    │
-│  │ • Ruff       │  │ • Python 3.10│  │ • Sphinx         │    │
-│  │ • Pylint     │  │ • Python 3.11│  │ • Upload Artifact│    │
-│  │              │  │ • Python 3.12│  │                  │    │
-│  │              │  │ • Coverage   │  │                  │    │
-│  │              │  │ • Codecov    │  │                  │    │
-│  └──────────────┘  └──────────────┘  └──────────────────┘    │
-│                                                                 │
-│  ┌──────────────────────────┐  ┌──────────────────────────┐  │
-│  │ Test-Multiplatform Job   │  │     Build Job            │  │
-│  │                          │  │                          │  │
-│  │ • macOS-latest           │  │ • Build wheel            │  │
-│  │ • Windows-latest         │  │ • Build source dist      │  │
-│  │                          │  │ • Test installation      │  │
-│  └──────────────────────────┘  └──────────────────────────┘  │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+## What's What
 
-┌─────────────────────────────────────────────────────────────────┐
-│                   Publish Workflow (publish.yml)                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Triggered by:                                                  │
-│  • GitHub Release (→ PyPI)                                     │
-│  • Manual Dispatch (→ Test PyPI)                               │
-│                                                                 │
-│  Steps:                                                         │
-│  1. Build package (wheel + source)                             │
-│  2. Verify with twine check                                    │
-│  3. Upload to PyPI/Test PyPI                                   │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+| Workflow | What it does | When it runs |
+|----------|--------------|--------------|
+| `ci.yml` | Tests, linting, type checking | Every push/PR |
+| `publish.yml` | Pushes to PyPI | When you create a release |
+| `docs-deploy.yml` | Deploys docs to GitHub Pages | Push to main |
+| `docs-validate.yml` | Makes sure docs build | PRs only |
+| `codeql.yml` | Security scanning | Push/PR + weekly |
+| `release-drafter.yml` | Writes release notes for you | When PRs merge |
+| `stale.yml` | Closes old issues/PRs | Daily |
 
-┌─────────────────────────────────────────────────────────────────┐
-│              Dependabot (dependabot.yml)                        │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Weekly Updates:                                                │
-│  • GitHub Actions versions                                      │
-│  • Python dependencies (grouped)                                │
-│                                                                 │
-│  Auto-creates PRs with:                                         │
-│  • Updated versions                                             │
-│  • Changelog links                                              │
-│  • Security info                                                │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+---
 
-## 🎯 Workflow Triggers
+## CI (`ci.yml`)
 
-### CI Workflow
+The big one. Runs on every push and PR.
 
-| Trigger | Branches | When |
-|---------|----------|------|
-| **Push** | main, master, develop | Every commit pushed |
-| **Pull Request** | main, master, develop | When PR is opened/updated |
-| **Manual** | Any branch | Via workflow_dispatch |
-
-### Publish Workflow
-
-| Trigger | When | Publishes To |
-|---------|------|--------------|
-| **Release** | New GitHub release created | PyPI (production) |
-| **Manual** | Via workflow_dispatch | Test PyPI |
-
-## 🔄 Job Dependencies & Parallelization
+### Jobs (all run in parallel)
 
 ```
-All jobs run in PARALLEL (no dependencies):
-
-├── Lint Job (2-3 minutes)
-├── Test Job - Python 3.10 (5-7 minutes)
-├── Test Job - Python 3.11 (5-7 minutes)
-├── Test Job - Python 3.12 (5-7 minutes) + Codecov upload
-├── Test-Multiplatform - macOS (6-8 minutes)
-├── Test-Multiplatform - Windows (6-8 minutes)
-├── Docs Job (3-5 minutes)
-└── Build Job (2-3 minutes)
-
-Total Time: ~8 minutes (all run in parallel)
+┌─────────────────────────────────────────────────────────────┐
+│  lint        test           typecheck       build          │
+│  ────        ────           ─────────       ─────          │
+│  Ruff        Py 3.10        mypy            wheel + sdist  │
+│  Pylint      Py 3.11                        test install   │
+│              Py 3.12 + coverage                            │
+│                                                             │
+│  test-multiplatform                                         │
+│  ──────────────────                                         │
+│  macOS + Windows (Py 3.12 only)                            │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## 📈 Test Coverage Flow
+Takes a little while since everything runs at once, Windows takes the longest.
 
-```
-Developer → Commits Code → Push to GitHub
-                                │
-                                ▼
-                         CI Workflow Runs
-                                │
-                                ▼
-                    pytest --cov runs on all platforms
-                                │
-                                ▼
-                    coverage.xml generated
-                                │
-                                ▼
-              Uploaded to Codecov (Python 3.12 only)
-                                │
-                                ▼
-                    Codecov analyzes coverage
-                                │
-                                ▼
-           Comment posted on PR with coverage report
-                                │
-                                ▼
-                Badge updated in README.md
-```
+### Triggers
 
-## 🚀 Release Flow
+- Push to main/master/develop
+- Any PR to those branches
+- Manual run from Actions tab
 
-```
-Developer → Update Version → Commit & Push
-                                    │
-                                    ▼
-                        Create GitHub Release
-                                    │
-                                    ▼
-                    Publish Workflow Triggered
-                                    │
-                                    ▼
-                ┌───────────────────┴───────────────────┐
-                ▼                                       ▼
-        Build Package                           Verify Package
-        (wheel + source)                        (twine check)
-                │                                       │
-                └───────────────────┬───────────────────┘
-                                    ▼
-                            Upload to PyPI
-                                    │
-                                    ▼
-                    Package Available Worldwide
-                                    │
-                                    ▼
-                    pip install mcframework
-```
+### Notes
 
-## 🔍 Linting Flow
+- **Ruff** fails the build if it finds issues
+- **Pylint** just warns (set to `continue-on-error`)
+- **mypy** also just warns for now (set to `continue-on-error`)
+- Coverage only uploads from the Py 3.12 run (for now)
 
-```
-Code Changes
-      │
-      ▼
-┌─────────────┐
-│ Ruff Check  │ ← Fast syntax & style checks
-└─────┬───────┘
-      │ PASS
-      ▼
-┌─────────────┐
-│Pylint Check │ ← Deep static analysis
-└─────┬───────┘
-      │ PASS/WARN
-      ▼
-   Success ✅
-```
+---
 
-**Ruff checks:**
-- Import sorting
-- PEP 8 style
-- Unused imports
-- Syntax errors
+## Publishing (`publish.yml`)
 
-**Pylint checks:**
-- Code quality
-- Design patterns
-- Complexity
-- Documentation
+Pushes the package to PyPI. Uses trusted publishing so no API tokens needed.
 
-## 💾 Caching Strategy
+### How to release
 
-```
-First Run:
-├── Download Python ⏱️ 30s
-├── Install pip packages ⏱️ 2-3 min
-└── Run tests ⏱️ 3-4 min
-Total: ~6 minutes
+1. Bump version in `pyproject.toml`
+2. Commit and push
+3. Create a GitHub Release with tag `v0.x.x`
+4. Workflow runs automatically → package on PyPI
 
-Subsequent Runs (with cache):
-├── Download Python ⏱️ 30s
-├── Restore pip cache ⏱️ 10s ← CACHED!
-└── Run tests ⏱️ 3-4 min
-Total: ~4 minutes
+### Manual options
 
-💾 Cache saves ~2 minutes per run!
-```
+You can also trigger manually from Actions tab:
 
-## 🛡️ Security Features
+- Pick `testpypi` to test the release flow first
+- Pick `pypi` to force publish without a release
 
-### Dependabot
-- **Monitors:** All dependencies + GitHub Actions
-- **Frequency:** Weekly
-- **Auto-creates:** Security update PRs
-- **Grouped:** Minor/patch updates bundled
+---
 
-### Secrets Management
-- **Required:** 
-  - `CODECOV_TOKEN` (optional, for coverage)
-  - `PYPI_API_TOKEN` (when publishing)
-  - `TEST_PYPI_API_TOKEN` (for testing)
-- **Stored:** Encrypted in GitHub
-- **Access:** Only available during workflow runs
+## Docs
 
-## 📊 Matrix Testing
+Two workflows here:
 
-### Python Versions Matrix
+**`docs-deploy.yml`** - Builds and deploys to GitHub Pages on push to main.
 
-```python
-Python 3.10 → Ubuntu Latest ✅
-Python 3.11 → Ubuntu Latest ✅  
-Python 3.12 → Ubuntu Latest ✅ + Coverage Upload
-```
+**`docs-validate.yml`** - Just builds on PRs to catch broken docs before merge. Uploads the built HTML as an artifact you can download.
 
-### Platform Matrix
+Make sure GitHub Pages is enabled (Settings → Pages → Source: GitHub Actions).
 
-```
-Python 3.12 → macOS Latest   ✅
-Python 3.12 → Windows Latest ✅
-Python 3.12 → Ubuntu Latest  ✅ (covered in main test job)
-```
+---
 
-**Why this strategy?**
-- Python version testing on Linux (fastest)
-- Platform testing on latest stable Python
-- Coverage on most common deployment target (Linux + Python 3.12)
+## Security (`codeql.yml`)
 
-## 🎨 Badge Status
+GitHub's code scanner. Runs on every push/PR plus weekly on Sundays.
 
-Badges in README.md show real-time status:
+Checks for the usual stuff: injection attacks, bad crypto, path traversal, etc.
 
-```markdown
-[![CI](badge-url)]         → Green: All checks pass
-                             Red: Something failed
-                             Yellow: In progress
+Check results in Security tab → Code scanning alerts.
 
-[![codecov](badge-url)]    → Shows coverage percentage
-                             Green: >80%
-                             Yellow: 60-80%
-                             Red: <60%
+---
 
-[![Python 3.10+](badge)]   → Minimum Python version
+## Release Notes (`release-drafter.yml`)
 
-[![License](badge)]        → Project license
-```
+Auto-generates release notes from your PRs. Label your PRs and they'll show up in the right section:
 
-## 📦 Artifacts Generated
+| Label | Shows up as |
+|-------|-------------|
+| `feature`, `enhancement` | 🚀 Features |
+| `bug`, `fix` | 🐛 Bug Fixes |
+| `docs` | 📚 Documentation |
+| `dependencies` | 📦 Dependencies |
 
-### CI Workflow
-- **Documentation HTML** (docs job)
-  - Available for 90 days
-  - Download from Actions tab
+Also auto-labels PRs based on what files changed:
 
-### Publish Workflow
-- **Wheel file** (.whl)
-- **Source distribution** (.tar.gz)
-- Published to PyPI (not stored in GitHub)
+- Touch `docs/*` → gets `documentation` label
+- Touch `tests/*` → gets `testing` label
+- Touch `pyproject.toml` → gets `dependencies` label
 
-## ⚙️ Configuration Files
+When you're ready to release, there's already a draft release waiting with all the notes written.
+
+---
+
+## Stale Bot (`stale.yml`)
+
+Keeps the repo clean. Marks stuff stale after:
+- Issues: 60 days inactive
+- PRs: 45 days inactive
+
+Then closes after 14 more days if still no activity.
+
+Won't touch anything labeled `pinned`, `security`, `bug`, or `enhancement`.
+
+---
+
+## Dependabot
+
+Not a workflow but worth mentioning. Lives in `.github/dependabot.yml`.
+
+Creates PRs weekly for:
+- GitHub Actions updates
+- Python dependency updates (grouped by dev/docs/etc)
+
+---
+
+## Files
 
 ```
 .github/
 ├── workflows/
-│   ├── ci.yml           ← Main CI/CD workflow
-│   └── publish.yml      ← PyPI publishing
-├── dependabot.yml       ← Dependency updates
-├── README.md            ← Workflow documentation
-├── SETUP_GUIDE.md       ← Step-by-step setup
-├── QUICK_REFERENCE.md   ← Command reference
-└── WORKFLOWS_OVERVIEW.md ← This file!
+│   ├── ci.yml              # main CI
+│   ├── publish.yml         # PyPI
+│   ├── docs-deploy.yml     # deploy docs
+│   ├── docs-validate.yml   # validate docs
+│   ├── codeql.yml          # security
+│   ├── release-drafter.yml # release notes
+│   └── stale.yml           # cleanup
+├── release-drafter.yml     # config for release-drafter
+└── dependabot.yml          # dependency updates
 ```
-
-## 🎯 Success Criteria
-
-A successful CI run means:
-- ✅ Code passes Ruff style checks
-- ✅ Code passes Pylint quality checks
-- ✅ All tests pass on Python 3.10, 3.11, 3.12
-- ✅ Tests pass on Linux, macOS, Windows
-- ✅ Documentation builds without errors
-- ✅ Package can be built and installed
-- ✅ Code coverage maintained/improved
-
-## 🔧 Customization Points
-
-Easy to customize:
-
-1. **Add Python versions:** Edit matrix in `ci.yml`
-2. **Add OS platforms:** Edit matrix in `ci.yml`
-3. **Change branches:** Edit `on:` section
-4. **Add jobs:** Copy existing job structure
-5. **Modify linting:** Update pyproject.toml
-6. **Adjust coverage:** Update pytest config
-
-## 📈 Metrics Tracked
-
-- **Test Results:** Pass/Fail for each test
-- **Code Coverage:** Line coverage percentage
-- **Lint Score:** Ruff and Pylint findings
-- **Build Time:** Duration of each job
-- **Platform Compatibility:** Pass rate per OS
-
-## 🚦 Status Checks
-
-GitHub can require these checks before merging PRs:
-
-**Recommended required checks:**
-- ✅ Lint Code
-- ✅ Test Python 3.12
-
-**Optional required checks:**
-- Test Python 3.10
-- Test Python 3.11
-- Build Package
-- Build Documentation
-
-Configure in: **Settings → Branches → Branch protection rules**
 
 ---
 
-**Need more details?** Check out:
-- [SETUP_GUIDE.md](SETUP_GUIDE.md) - Complete setup instructions
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Command cheat sheet
-- [README.md](README.md) - Workflow details
+## Secrets
 
+| Secret | What for | Required? |
+|--------|----------|-----------|
+| `CODECOV_TOKEN` | Coverage reports | Optional |
+| `GITHUB_TOKEN` | Everything else | Auto-provided |
+
+PyPI publishing uses OIDC (trusted publishing) - no tokens stored.
+
+---
+
+## Branch Protection
+
+If you want to require checks before merging to main:
+
+**Definitely require:**
+- `Lint Code`
+- `Test Python 3.12`
+
+**Maybe require:**
+- `Type Check` (once types are stable)
+- `Build Package`
+
+Set this up in Settings → Branches → Add rule.
+
+---
+
+## When Things Break
+
+**Tests pass locally but fail in CI?**
+- Check Python version
+- CI is a clean environment, no leftover state
+- Make sure deps are in pyproject.toml
+
+**Codecov not updating?**
+- Check CODECOV_TOKEN is set in repo secrets
+- Make sure coverage.xml is being generated
+
+**PyPI publish fails?**
+- Trusted publisher set up correctly?
+- Version number already exists? (PyPI rejects dupes)
+- Environment names match exactly?
+
+**Docs deploy fails?**
+- GitHub Pages enabled?
+- Try building locally: `sphinx-build -b html docs/source docs/_build/html`
