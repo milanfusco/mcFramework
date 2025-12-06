@@ -19,9 +19,6 @@ The documentation includes:
 - **API Reference** — Complete module documentation with type hints
 - **System Design** — Architecture diagrams, UML, and design patterns
 - **Project Plan** — Requirements, stakeholders, and methodology
-
-> 💡 The docs feature direct link references to dependencies via intersphinx, light/dark theme toggle, and interactive Mermaid diagrams
-
 ---
 
 ## Installation
@@ -160,8 +157,7 @@ python demos/gui/quant_black_scholes.py
 - Interactive what-if analysis
 - 3D option price surfaces
 - HTML report export
-- Bloomberg-inspired dark theme
-
+- 
 **Scenario Presets:** High volatility (TSLA), Index ETFs (SPY), Crypto-adjacent (COIN), Dividend stocks (JNJ)
 
 ---
@@ -218,19 +214,6 @@ The documentation uses:
 - **NumPy-style docstrings** with LaTeX math
 - **Light/dark theme toggle** with diagram re-rendering
 
----
-
-## Design Patterns
-
-| Pattern | Location | Purpose |
-|---------|----------|---------|
-| **Template Method** | `MonteCarloSimulation.run()` | Reusable execution, customizable simulation |
-| **Strategy** | `StatsEngine` + `Metric` | Pluggable statistics without engine changes |
-| **Registry** | `MonteCarloFramework` | Named simulation lookup and comparison |
-| **Adapter** | `FnMetric` | Convert functions to `Metric` protocol |
-| **Builder** | `StatsContext.with_overrides()` | Fluent configuration |
-
----
 
 ## License
 
