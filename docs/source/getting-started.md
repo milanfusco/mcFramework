@@ -7,6 +7,19 @@ This guide walks you through the fundamentals of `mcframework`, from running you
 - Python 3.10+
 - NumPy, SciPy, Matplotlib (installed automatically with the package)
 
+### Installation
+
+**From PyPI** (recommended)
+
+Install the package from PyPI using pip (or your favorite package manager):
+
+```bash
+pip install mcframework
+```
+
+**From Source** (for development)
+
+Clone the repository and install in editable mode with all dependencies:
 ```bash
 git clone https://github.com/milanfusco/mcframework.git
 cd mcframework

@@ -48,7 +48,7 @@ McFramework is a Python library providing a robust, extensible foundation for bu
 3) Software System Type
 -----------------------
 
-**☑ System for Modeling and Simulation**
+**System for Modeling and Simulation**
 
 The framework is designed for computational experiments involving:
 
@@ -68,55 +68,79 @@ The framework is designed for computational experiments involving:
 4) Project Plan
 ---------------
 
-Phase 1: Core Abstractions (Weeks 1-2)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. note::
 
-- ☑ Design ``MonteCarloSimulation`` abstract base class
-- ☑ Implement ``SimulationResult`` dataclass for outputs
-- ☑ Create ``MonteCarloFramework`` registry for managing multiple simulations
-- ☑ Define public API in ``__init__.py``
+   Development will follow a **hybrid Agile-XP methodology** with continuous practices
+   applied throughout all phases of the project:
 
-Phase 2: RNG & Parallel Execution (Weeks 3-4)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   - **Continuous Testing** — Tests written alongside implementation, not after
+   - **Continuous Documentation** — Inline docstrings updated with each feature
+   - **Continuous Review/Refactor** — Iterative PRs with code review and cleanup
 
-- ☑ Implement reproducible seeding with ``numpy.random.SeedSequence``
-- ☑ Build parallel execution with ``ThreadPoolExecutor`` (POSIX)
-- ☑ Build parallel execution with ``ProcessPoolExecutor`` (Windows)
-- ☑ Implement platform-aware backend auto-selection
-- ☑ Chunk-based work distribution for load balancing
+Phase 1: Core Framework
+~~~~~~~~~~~~~~~~~~~~~~~
 
-Phase 3: Statistics Engine (Weeks 5-7)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Define abstract base class for custom simulation development
+- Design result encapsulation for simulation outputs
+- Create registry pattern for managing multiple simulations
+- Establish reproducible RNG seeding with independent streams
+- Build parallel execution backends (threads for POSIX, processes for Windows)
+- Implement platform-aware backend auto-selection
+- Design chunk-based work distribution for load balancing
+- Define public API and module organization
 
-- ☑ Design ``StatsContext`` configuration dataclass
-- ☑ Implement descriptive statistics: ``mean``, ``std``, ``percentiles``, ``skew``, ``kurtosis``
-- ☑ Implement parametric CI: ``ci_mean`` with z/t critical values
-- ☑ Implement bootstrap CI: ``ci_mean_bootstrap`` with percentile and BCa methods
-- ☑ Implement distribution-free bounds: ``ci_mean_chebyshev``, ``markov_error_prob``
-- ☑ Build ``StatsEngine`` orchestrator with ``ComputeResult`` tracking
+Phase 2: Statistics Engine
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Phase 4: Built-in Simulations (Weeks 8-9)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Design configuration system for statistical parameters
+- Implement descriptive statistics (mean, std, percentiles, skew, kurtosis)
+- Implement parametric confidence intervals (z/t critical values)
+- Implement bootstrap confidence intervals (percentile and BCa methods)
+- Implement distribution-free bounds (Chebyshev, Markov)
+- Build orchestrator with result encapsulation and error tracking
 
-- ☑ ``PiEstimationSimulation`` — geometric probability on unit disk
-- ☑ ``PortfolioSimulation`` — GBM wealth dynamics
-- ☑ ``BlackScholesSimulation`` — European/American option pricing
-- ☑ ``BlackScholesPathSimulation`` — path generation for visualization
+Phase 3: Built-in Simulations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Phase 5: Testing & Quality (Weeks 10-11)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Pi estimation via geometric probability sampling
+- Portfolio wealth simulation with GBM dynamics
+- Black-Scholes European/American option pricing
+- Path generation for visualization and analysis
 
-- ☑ Unit tests for all modules (16 test files)
-- ☑ Edge case and error handling tests
-- ☑ Integration tests for full simulation runs
-- ☑ CI pipeline: lint, test, coverage, docs
+Phase 4: CI/CD & Quality Assurance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Phase 6: Documentation (Week 12)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- GitHub Actions pipeline (linting, testing, type checking, building)
+- Cross-platform testing matrix (Linux, macOS, Windows; Python 3.10-3.12)
+- Code coverage reporting and quality metrics
+- Automated dependency management and security scanning
+- Release automation with changelog generation
 
-- ☑ NumPy-style docstrings with LaTeX math
-- ☑ Sphinx API documentation
-- ☑ UML class diagrams
+Phase 5: GUI Application (MVP Demo)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Interactive Black-Scholes Monte Carlo simulator using PySide6
+- Real-time market data visualization with candlestick charts
+- Option pricing calculator with Greeks display
+- Monte Carlo path visualization with live statistics
+- 3D volatility/time sensitivity surfaces
+- Scenario presets for different market conditions
+
+Phase 6: Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+- NumPy-style docstrings with LaTeX math notation
+- Sphinx API documentation with autosummary
+- Architecture diagrams (Mermaid UML)
+- User guides and getting started documentation
+- GitHub Pages deployment
+
+Phase 7: Release & Deployment using GitHub Actions workflow.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Package distribution via PyPI (trusted publishing with OIDC)
+- Documentation hosting on GitHub Pages 
+- Version management and semantic versioning, release automation with changelog generation.
 
 ----
 
@@ -180,6 +204,7 @@ System Requirements
 6) Stakeholders
 ---------------
 
+
 .. list-table::
    :header-rows: 1
    :widths: 25 20 55
@@ -202,38 +227,40 @@ System Requirements
    * - **Framework Integrators**
      - Embed in larger systems
      - Modular design, minimal dependencies
+   * - **FOSS Community**
+     - MIT licensed, open source, free and libre software.
+     - Contribute to the project, report issues, and request features.
 
 ----
 
 7) Development Methodology
 --------------------------
 
-**☑ Agile with XP (Extreme Programming) Practices**
+**Agile with XP (Extreme Programming) Practices**
+
+- Continuous testing and improvement. Testing happened continuously, not after implementation but throughout the development process. 
+- Continuous code review and improvement. Features evolved through iterative PRs and reviews.
+- Continuous documentation improvement. Documentation was written inline with the code and updated continuously as features were added and refactored.
 
 .. list-table::
    :header-rows: 1
    :widths: 30 70
 
-   * - XP Practice
-     - Evidence in Project
+   * - Development Practice
+     - Evidence in Project Implementation
    * - **Test-Driven Development**
-     - 16 test files covering unit, integration, edge cases, regression
+     - 16 test files covering unit, integration, edge cases, regression and performance.
    * - **Continuous Integration**
-     - GitHub Actions: lint (ruff, pylint) → test (pytest) → build → docs
+     - GitHub Actions CI (lint, test, build, docs, codeql, dependabot, release-drafter, stale).
+       Runs on every push to main or PR, and on every release to PyPI and GitHub Pages.
    * - **Refactoring**
-     - Stats engine refactored from inline functions to ``ComputeResult`` class
+     - Continuous refactoring and improvement of the codebase, documentation, and test coverage.
    * - **Small Releases**
-     - Semantic versioning: v0.1.0 → v0.2.0 → v0.3.x → v0.4.0 → v0.5.0
+     - Semantic versioning: dev-0.1.0 → dev-0.2.0 → dev-0.x.x → 0.1.0 (initial public release)
    * - **Coding Standards**
-     - PEP 8, PEP 585 type hints, NumPy docstring convention
-   * - **Collective Code Ownership**
-     - Modular architecture (core, stats_engine, sims, utils)
+     - PEP 8, PEP 585 type hints, NumPy docstring convention, clear and consistent naming conventions,
+       modular architecture, separation of concerns, and maintainability. Code is well-organized and easy to understand.
 
-**Not Waterfall because:**
-
-- Testing happened continuously, not after implementation
-- Features evolved through iterative PRs
-- No upfront comprehensive design document
 
 ----
 
@@ -398,5 +425,5 @@ System Requirements
    * - USA-7
      - Built-in simulations shall demonstrate framework capabilities with realistic parameters
    * - USA-8
-     - Docstrings shall include Examples sections with executable code
+     - Docstrings shall include Examples sections with executable code, and shall be tested with doctest to ensure they are working correctly.
 

@@ -9,22 +9,22 @@ mcframework
 .. grid:: 2
    :gutter: 3
 
-   .. grid-item-card:: 🎯 Deterministic & Reproducible
+   .. grid-item-card:: Deterministic & Reproducible
       
       Parallel execution with SeedSequence spawning ensures identical results 
       regardless of worker scheduling or system load.
 
-   .. grid-item-card:: ⚡ Parallel by Design
+   .. grid-item-card:: Parallel by Design
       
       Automatic backend selection (threads vs processes) optimized per platform.
       NumPy's GIL-releasing RNGs enable efficient thread-based parallelism.
 
-   .. grid-item-card:: 📊 Rich Statistics Engine
+   .. grid-item-card:: Rich Statistics Engine
       
       Built-in metrics: mean, std, percentiles, skew, kurtosis, and multiple 
       CI methods (z, t, bootstrap, Chebyshev).
 
-   .. grid-item-card:: 🔌 Extensible Architecture
+   .. grid-item-card:: Extensible Architecture
       
       Simple base class design—just implement ``single_simulation()`` and 
       the framework handles parallelism, statistics, and result management.
@@ -58,6 +58,12 @@ Quick Example
 
 Installation
 ------------
+
+**From PyPI** (recommended)
+
+.. code-block:: bash
+
+   pip install mcframework
 
 **From Source (Development)**
 
