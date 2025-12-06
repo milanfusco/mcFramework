@@ -1,9 +1,10 @@
 # mcframework
 
+![PyPI - Version](https://img.shields.io/pypi/v/mcframework)
+[![Publish to PyPI](https://github.com/milanfusco/mcFramework/actions/workflows/publish.yml/badge.svg)](https://github.com/milanfusco/mcFramework/actions/workflows/publish.yml)
+[![codecov](https://codecov.io/gh/milanfusco/mcframework/branch/main/graph/badge.svg)](https://codecov.io/gh/milanfusco/mcframework)
 [![CI](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml/badge.svg)](https://github.com/milanfusco/mcframework/actions/workflows/ci.yml)
 [![Docs Deploy](https://github.com/milanfusco/mcFramework/actions/workflows/docs-deploy.yml/badge.svg)](https://github.com/milanfusco/mcFramework/actions/workflows/docs-deploy.yml)
-[![codecov](https://codecov.io/gh/milanfusco/mcframework/branch/main/graph/badge.svg)](https://codecov.io/gh/milanfusco/mcframework)
-[![PyPI version](https://badge.fury.io/py/mcframework.svg)](https://badge.fury.io/py/mcframework)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
