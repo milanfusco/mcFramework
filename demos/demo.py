@@ -4,7 +4,6 @@ import multiprocessing as mp
 
 import matplotlib.pyplot as plt
 import numpy as np
-
 from mcframework import MonteCarloFramework, PiEstimationSimulation, PortfolioSimulation
 from mcframework.stats_engine import build_default_engine
 
@@ -358,7 +357,7 @@ def main():
     fw.register_simulation(port_sim)
     
     print("Running Pi Estimation…")
-    pi_engine = build_default_engine()
+    build_default_engine()
     pi_result = fw.run_simulation("Pi Estimation",
                                   55_000,
                                   n_points=30_000,

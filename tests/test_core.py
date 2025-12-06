@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-
 from mcframework import MonteCarloFramework, MonteCarloSimulation, SimulationResult
 from mcframework.core import make_blocks
 from mcframework.sims import PiEstimationSimulation

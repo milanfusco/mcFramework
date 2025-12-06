@@ -8,7 +8,7 @@ percentiles, and multiple confidence interval methods.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 from PySide6.QtCore import Qt, Signal
@@ -18,8 +18,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )

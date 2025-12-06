@@ -13,7 +13,6 @@ import copy
 
 import numpy as np
 import pytest
-
 from mcframework.sims import (
     BlackScholesPathSimulation,
     BlackScholesSimulation,

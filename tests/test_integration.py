@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-
 from mcframework import MonteCarloFramework, MonteCarloSimulation, PiEstimationSimulation, PortfolioSimulation
 
 

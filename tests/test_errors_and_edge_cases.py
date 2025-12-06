@@ -2,7 +2,6 @@ from unittest.mock import Mock
 
 import numpy as np
 import pytest
-
 from mcframework.sims import PortfolioSimulation
 from mcframework.stats_engine import StatsEngine, ci_mean, mean
 

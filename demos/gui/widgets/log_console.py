@@ -10,8 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QColor, QTextCharFormat
+from PySide6.QtCore import Slot
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
