@@ -403,28 +403,26 @@ class MonteCarloSimulation(ABC):
 
         engine_defaults = self._PCTS
 
-        # Build context dictionary
-        ctx_dict = {
-            "n": n_simulations,
-            "percentiles": engine_defaults,
-            "confidence": confidence,
-            "ci_method": ci_method,
-        }
-
-        # Merge extra_context if provided
-        if extra_context:
-            ctx_dict.update(dict(extra_context))
+        # Convert string ci_method to enum
+        from .stats_engine import CIMethod
+        ci_method_enum = CIMethod(ci_method)
 
         # Create StatsContext object
         try:
-            ctx = StatsContext(**ctx_dict)
+            ctx = StatsContext(
+                n=n_simulations,
+                percentiles=engine_defaults,
+                confidence=confidence,
+                ci_method=ci_method_enum,
+                **(dict(extra_context) if extra_context else {}),
+            )
         except (TypeError, ValueError) as e:
             logger.warning("Invalid context parameters: %s. Using defaults.", e)
             ctx = StatsContext(
                 n=n_simulations,
                 percentiles=engine_defaults,
                 confidence=confidence,
-                ci_method=ci_method,
+                ci_method=ci_method_enum,
             )
 
         # Compute stats
@@ -443,7 +441,7 @@ class MonteCarloSimulation(ABC):
         stats = merged_stats
 
         # Pull percentiles returned by the engine (if any)
-        engine_perc = {}
+        engine_perc: dict[int, float] = {}
         if isinstance(stats, dict) and "percentiles" in stats:
             engine_perc = stats.pop("percentiles") or {}
 
@@ -775,8 +773,8 @@ class MonteCarloSimulation(ABC):
         s = std(results, ctx)
         ci = ci_mean(results, ctx)
         return {
-            "mean": float(m),
-            "std": float(s),
+            "mean": float(m) if m is not None else float("nan"),
+            "std": float(s) if s is not None else float("nan"),
             "ci_mean": (float(ci["low"]), float(ci["high"])),
             "confidence": float(ci["confidence"]),
             "method": ci["method"],

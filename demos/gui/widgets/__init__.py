@@ -1,12 +1,5 @@
 """Reusable UI widgets for the Quant Simulator."""
 
-from .sidebar import SidebarWidget
-from .market_data_tab import MarketDataTab
-from .monte_carlo_tab import MonteCarloTab
-from .options_greeks_tab import OptionsGreeksTab
-from .surfaces_tab import SurfacesTab
-from .log_console import LogConsoleWidget
-from .option_calculator import OptionCalculatorDialog
 from .empty_state import (
     EmptyStateWidget,
     MarketDataEmptyState,
@@ -14,14 +7,21 @@ from .empty_state import (
     OptionsEmptyState,
     SurfacesEmptyState,
 )
-from .toast import ToastManager, ToastType, ToastWidget
+from .log_console import LogConsoleWidget
+from .market_data_tab import MarketDataTab
+from .monte_carlo_tab import MonteCarloTab
+from .option_calculator import OptionCalculatorDialog
+from .options_greeks_tab import OptionsGreeksTab
+from .sidebar import SidebarWidget
 from .stats_panel import (
-    StatCard,
     CICard,
-    PercentileBar,
-    StatsPanel,
     CompactStatsRow,
+    PercentileBar,
+    StatCard,
+    StatsPanel,
 )
+from .surfaces_tab import SurfacesTab
+from .toast import ToastManager, ToastType, ToastWidget
 
 __all__ = [
     "SidebarWidget",

@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+
 def api_link(path: str) -> str:
     """
     src/mcframework/core.py -> :mod:`mcframework.core`
