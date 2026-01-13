@@ -7,23 +7,15 @@ System and Program Design
 
 ----
 
-**Team Members:**
-
 .. list-table::
    :header-rows: 1
-   :widths: 30 20 50
+   :widths: 30  50
    :align: center
 
    * - Name
-     - Section
      - Email
    * - Milan Fusco
-     - 11:00 AM
      - mdfusco@student.ysu.edu
-   * - James Gabbert
-     - 11:00 AM
-     - jdgabbert@student.ysu.edu
-
 .. note::
 
    For requirements, stakeholders, and project plan, see :doc:`PROJECT_PLAN`
