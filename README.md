@@ -223,7 +223,6 @@ MIT License. See [LICENSE](LICENSE) file.
 
 ---
 
-## Authors
+## Author
 
 - **Milan Fusco** — [mdfusco@student.ysu.edu](mailto:mdfusco@student.ysu.edu)
-- **James Gabbert** — [jdgabbert@student.ysu.edu](mailto:jdgabbert@student.ysu.edu)
