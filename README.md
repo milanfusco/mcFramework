@@ -177,6 +177,12 @@ Override explicitly with `parallel_backend="thread"` or `parallel_backend="proce
 
 ---
 
+## WIP Features 
+Pytorch GPU acceleration
+- Apple MPS
+- CUDA 
+---
+
 ## Development
 
 ### Testing
