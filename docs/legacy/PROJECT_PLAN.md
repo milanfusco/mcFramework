@@ -6,16 +6,7 @@
 
 ---
 
-## 1) Team Members
-
-| Name | Section | Email |
-|:----:|:-------:|:-----:|
-| Milan Fusco | 11:00 AM | mdfusco@student.ysu.edu |
-| James Gabbert | 11:00 AM | jdgabbert@student.ysu.edu |
-
----
-
-## 2) Project Description
+## 1) Project Description
 
 McFramework is a Python library providing a robust, extensible foundation for building and running Monte Carlo simulations with rigorous statistical analysis.
 
@@ -31,9 +22,9 @@ McFramework is a Python library providing a robust, extensible foundation for bu
 
 ---
 
-## 3) Software System Type
+## 2) Software System Type
 
-**☑ System for Modeling and Simulation**
+### System for Modeling and Simulation
 
 The framework is designed for computational experiments involving:
 
@@ -42,7 +33,7 @@ The framework is designed for computational experiments involving:
 - Financial modeling (option pricing, portfolio analysis)
 - Uncertainty quantification (confidence intervals, error bounds)
 
-**Architecture Classification:**
+### Architecture Classification
 
 - **Library/Framework** — Provides reusable abstractions for simulation development
 - **Batch Processing** — Executes thousands of independent simulation runs
@@ -50,7 +41,7 @@ The framework is designed for computational experiments involving:
 
 ---
 
-## 4) Project Plan
+## 3) Project Plan
 
 ### Phase 1: Core Abstractions (Weeks 1-2)
 
@@ -98,7 +89,7 @@ The framework is designed for computational experiments involving:
 
 ---
 
-## 5) Requirements
+## 4) Requirements
 
 ### User Requirements
 
@@ -128,7 +119,7 @@ The framework is designed for computational experiments involving:
 
 ---
 
-## 6) Stakeholders
+## 5) Stakeholders
 
 | Stakeholder Type | Role | Primary Concerns |
 |------------------|------|------------------|
@@ -140,11 +131,11 @@ The framework is designed for computational experiments involving:
 
 ---
 
-## 7) Development Methodology
+## 6) Development Methodology
 
-**☑ Agile with XP (Extreme Programming) Practices**
+### Agile with XP (Extreme Programming) Practices
 
-| Practice | Evidence in Project |
+| Practice    | Evidence in Project |
 |-------------|---------------------|
 | **Test-Driven Development** | 16 test files covering unit, integration, edge cases, regression |
 | **Git Workflow** | GitFlow with feature branches and pull requests |
@@ -156,11 +147,11 @@ The framework is designed for computational experiments involving:
 
 ---
 
-## 8) Functional Requirements
+## 7) Functional Requirements
 
 | ID | Requirement | Module |
 |----|-------------|--------|
-| FR-1 | Provide abstract `MonteCarloSimulation` class with `single_simulation()` method | `core.py` |
+| FR-1 | Provide abstract `MonteCarloSimulation` class with `single_simulation()` method | `simulation.py` |
 | FR-2 | Execute simulations sequentially via `_run_sequential()` | `core.py` |
 | FR-3 | Execute simulations in parallel via `_run_parallel()` with thread/process backends | `core.py` |
 | FR-4 | Spawn independent RNG streams per worker chunk using `SeedSequence` | `core.py` |
@@ -187,7 +178,7 @@ The framework is designed for computational experiments involving:
 
 ---
 
-## 9) Non-Functional Requirements
+## 8) Non-Functional Requirements
 
 | ID | Category | Requirement |
 |----|----------|-------------|
@@ -207,7 +198,7 @@ The framework is designed for computational experiments involving:
 
 ---
 
-## 10) Usability Requirements
+## 9) Usability Requirements
 
 | ID | Requirement |
 |----|-------------|

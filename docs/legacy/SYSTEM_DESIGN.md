@@ -4,15 +4,6 @@
 
 ### McFramework — Monte Carlo Simulation Framework
 
----
-
-**Team Members:**
-
-| Name | Section | Email |
-|:----:|:-------:|:-----:|
-| Milan Fusco | 11:00 AM | mdfusco@student.ysu.edu |
-| James Gabbert | 11:00 AM | jdgabbert@student.ysu.edu |
-
 > *For requirements, stakeholders, and project plan, see [PROJECT_PLAN.md](PROJECT_PLAN.md)*
 
 ---
