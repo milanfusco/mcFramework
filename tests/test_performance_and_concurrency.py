@@ -15,13 +15,13 @@ class TestPerformance:
     #     # Sequential
     #     simple_simulation.set_seed(42)
     #     start = time.time()
-    #     _ = simple_simulation.run(n, parallel=False, compute_stats=False) # noqa: F841
+    #     _ = simple_simulation.run(n, backend="sequential", compute_stats=False) # noqa: F841
     #     seq_time = time.time() - start
 
     #     # Parallel
     #     simple_simulation.set_seed(42)
     #     start = time.time()
-    #     _ = simple_simulation.run(n, parallel=True, n_workers=3, compute_stats=False)
+    #     _ = simple_simulation.run(n, backend="auto", n_workers=3, compute_stats=False)
     #     par_time = time.time() - start
 
     #     # Parallel should be faster (allowing for overhead)
@@ -44,7 +44,7 @@ class TestPerformance:
         # This should work without OOM
         result = simple_simulation.run(
             50000,
-            parallel=True,
+            backend="auto",
             n_workers=2,
             compute_stats=False
         )

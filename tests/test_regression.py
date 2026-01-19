@@ -11,11 +11,11 @@ class TestRegression:
         """Regression: Ensure seeds produce identical results"""
         sim1 = PiEstimationSimulation()
         sim1.set_seed(12345)
-        result1 = sim1.run(100, n_points=5000, parallel=False, compute_stats=False)
+        result1 = sim1.run(100, n_points=5000, backend="sequential", compute_stats=False)
 
         sim2 = PiEstimationSimulation()
         sim2.set_seed(12345)
-        result2 = sim2.run(100, n_points=5000, parallel=False, compute_stats=False)
+        result2 = sim2.run(100, n_points=5000, backend="sequential", compute_stats=False)
 
         np.testing.assert_array_equal(result1.results, result2.results)
 
@@ -26,7 +26,7 @@ class TestRegression:
 
         result = sim.run(
             100,
-            parallel=False,
+            backend="sequential",
             percentiles=[10,50,90],
             compute_stats=True,
             eps=0.05,
@@ -49,7 +49,7 @@ class TestRegression:
             volatility=0.2,
             years=5,
             use_gbm=True,
-            parallel=False,
+            backend="sequential",
             compute_stats=False
         )
 
@@ -61,7 +61,7 @@ class TestRegression:
             volatility=0.2,
             years=5,
             use_gbm=False,
-            parallel=False,
+            backend="sequential",
             compute_stats=False
         )
 
