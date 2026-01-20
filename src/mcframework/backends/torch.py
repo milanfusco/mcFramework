@@ -159,7 +159,7 @@ class TorchBackend:
     :class:`TorchCUDABackend` : Direct CUDA backend access (stub).
     """
 
-    def __init__(self, device: str = "cpu"):
+    def __init__(self, device: str = "cpu", **device_kwargs):
         """
         Initialize Torch backend with specified device.
 
@@ -167,6 +167,13 @@ class TorchBackend:
         ----------
         device : {"cpu", "mps", "cuda"}, default ``"cpu"``
             Torch device for computation.
+        **device_kwargs : Any
+            Device-specific options. For CUDA:
+            
+            - ``device_id`` : int, default 0 — CUDA device index
+            - ``use_curand`` : bool, default False — Use cuRAND instead of torch.Generator
+            - ``batch_size`` : int or None, default None — Fixed batch size (None = adaptive)
+            - ``use_streams`` : bool, default True — Enable CUDA streams
 
         Raises
         ------
@@ -176,6 +183,25 @@ class TorchBackend:
             If the device type is not recognized.
         RuntimeError
             If the requested device is not available.
+
+        Notes
+        -----
+        CUDA-specific options are backend configuration parameters and do not
+        pollute the simulation layer. This maintains clean separation of concerns.
+
+        Examples
+        --------
+        >>> # Simple usage with defaults
+        >>> backend = TorchBackend(device="cuda")  # doctest: +SKIP
+
+        >>> # Advanced CUDA configuration
+        >>> backend = TorchBackend(
+        ...     device="cuda",
+        ...     device_id=0,
+        ...     use_curand=True,
+        ...     batch_size=100_000,
+        ...     use_streams=True
+        ... )  # doctest: +SKIP
         """
         # Validate device before creating backend
         validate_torch_device(device)
@@ -184,11 +210,32 @@ class TorchBackend:
 
         # Create device-specific backend
         if device == "cpu":
+            # CPU backend ignores device_kwargs
+            if device_kwargs:
+                logger.warning("CPU backend ignores device kwargs: %s", device_kwargs)
             self._backend = TorchCPUBackend()
         elif device == "mps":
+            # MPS backend ignores device_kwargs
+            if device_kwargs:
+                logger.warning("MPS backend ignores device kwargs: %s", device_kwargs)
             self._backend = TorchMPSBackend()
         elif device == "cuda":
-            self._backend = TorchCUDABackend()
+            # Extract CUDA-specific kwargs
+            device_id = device_kwargs.pop('device_id', 0)
+            use_curand = device_kwargs.pop('use_curand', False)
+            batch_size = device_kwargs.pop('batch_size', None)
+            use_streams = device_kwargs.pop('use_streams', True)
+            
+            # Warn about unused kwargs
+            if device_kwargs:
+                logger.warning("Unused CUDA kwargs: %s", device_kwargs)
+            
+            self._backend = TorchCUDABackend(
+                device_id=device_id,
+                use_curand=use_curand,
+                batch_size=batch_size,
+                use_streams=use_streams,
+            )
         else:
             # Should not reach here due to validation
             raise ValueError(f"Unknown device: {device}")

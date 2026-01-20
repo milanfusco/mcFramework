@@ -12,7 +12,7 @@ Torch Backends (GPU-accelerated)
     :class:`TorchBackend` — Unified Torch backend (auto-selects device)
     :class:`TorchCPUBackend` — Torch CPU execution
     :class:`TorchMPSBackend` — Apple Silicon GPU (Metal Performance Shaders)
-    :class:`TorchCUDABackend` — NVIDIA GPU (stub implementation)
+    :class:`TorchCUDABackend` — NVIDIA GPU (CUDA 12.x with adaptive batching)
 
 Utilities
     :func:`make_blocks` — Chunking helper for parallel work distribution
@@ -22,6 +22,7 @@ Utilities
 Torch Utilities
     :func:`validate_torch_device` — Check Torch device availability
     :func:`make_torch_generator` — Create explicit Torch RNG generators
+    :func:`make_curand_generator` — Create explicit cuRAND RNG generators
     :func:`is_mps_available` — Check Apple MPS availability
     :func:`is_cuda_available` — Check NVIDIA CUDA availability
     :data:`VALID_TORCH_DEVICES` — Supported Torch device types
@@ -50,6 +51,7 @@ _TORCH_NAMES = (
     "validate_cuda_device",
     # Utilities
     "make_torch_generator",
+    "make_curand_generator",
     "VALID_TORCH_DEVICES",
 )
 
@@ -81,6 +83,7 @@ __all__ = [
     # Torch Utilities
     "validate_torch_device",
     "make_torch_generator",
+    "make_curand_generator",
     "is_mps_available",
     "is_cuda_available",
     "VALID_TORCH_DEVICES",

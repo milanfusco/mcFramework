@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "VALID_TORCH_DEVICES",
     "make_torch_generator",
+    "make_curand_generator",
     "validate_torch_available",
     "import_torch",
 ]
@@ -140,3 +141,82 @@ def make_torch_generator(
         )
 
     return generator
+
+
+def make_curand_generator(
+    device_id: int,
+    seed_seq: np.random.SeedSequence | None,
+):
+    r"""
+    Create an explicit cuRAND generator seeded from a SeedSequence.
+
+    This function spawns a child seed from the provided SeedSequence and
+    uses it to initialize a CuPy RandomState. This preserves the hierarchical
+    spawning model used by the NumPy backend.
+
+    Parameters
+    ----------
+    device_id : int
+        CUDA device index for the generator.
+    seed_seq : SeedSequence or None
+        NumPy seed sequence to derive the cuRAND seed from.
+
+    Returns
+    -------
+    cupy.random.RandomState
+        Explicitly seeded cuRAND generator for reproducible sampling.
+
+    Raises
+    ------
+    ImportError
+        If CuPy is not installed.
+
+    Notes
+    -----
+    **Why explicit generators?**
+
+    - ``cupy.random.seed()`` is global state that breaks parallel composition
+    - Explicit generators enable deterministic multi-stream MC
+    - This mirrors NumPy's ``SeedSequence.spawn()`` semantics
+
+    **Seed derivation:**
+
+    .. code-block:: python
+
+        child_seed = seed_seq.spawn(1)[0]
+        seed_int = child_seed.generate_state(1, dtype="uint64")[0]
+        rng = cupy.random.RandomState(seed=seed_int)
+
+    This ensures each call with the same ``seed_seq`` produces identical results.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> seed_seq = np.random.SeedSequence(42)
+    >>> # Requires CuPy installation
+    >>> # gen = make_curand_generator(0, seed_seq)  # doctest: +SKIP
+    """
+    try:
+        import cupy as cp  # pylint: disable=import-outside-toplevel
+    except ImportError as e:
+        raise ImportError(
+            "cuRAND backend requires CuPy. Install with: pip install mcframework[cuda]"
+        ) from e
+
+    # Set device context
+    cp.cuda.Device(device_id).use()
+
+    if seed_seq is not None:
+        # Spawn a child seed to preserve hierarchical RNG structure
+        child_seed = seed_seq.spawn(1)[0]
+        # Convert to 64-bit integer for cuRAND
+        seed_int = int(child_seed.generate_state(1, dtype=np.uint64)[0])
+        rng = cp.random.RandomState(seed=seed_int)
+    else:
+        logger.warning(
+            "No seed set for cuRAND backend; results will not be reproducible. "
+            "Call set_seed() before run() for deterministic simulations."
+        )
+        rng = cp.random.RandomState()
+
+    return rng

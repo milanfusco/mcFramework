@@ -1,7 +1,6 @@
 numpy>=1.26
 matplotlib>=3.7
 scipy>=1.10
-torch>=2.9.1
 
 [dev]
 pylint>=3.2
@@ -19,6 +18,9 @@ sphinxcontrib-mermaid>=0.9
 numpydoc>=1.6
 sphinx-gallery>=0.16
 matplotlib>=3.7
+
+[gpu]
+torch>=2.9.1
 
 [gui]
 PySide6>=6.5
