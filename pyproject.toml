@@ -15,10 +15,10 @@ classifiers = [
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
-    "numpy>=1.24",
+    "numpy>=1.26",
     "matplotlib>=3.7",
     "scipy>=1.10",
-    "torch>=2.1",
+    "torch>=2.9.1",
 ]
 [project.urls]
 Homepage = "https://github.com/milanfusco/mcFramework/"
@@ -49,7 +49,7 @@ test = [
 ]
 gui = [
     "PySide6>=6.5",
-    "yfinance>=0.2",
+    "yfinance>=1.0",
 ]
 
 
