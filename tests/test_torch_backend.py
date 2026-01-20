@@ -264,28 +264,32 @@ class TestExplicitGeneratorInfrastructure:
     """[GPU-06] Test explicit torch.Generator infrastructure from SeedSequence."""
 
     def test_make_torch_generator_creates_valid_generator(self):
-        """[GPU-06] _make_torch_generator creates a valid torch.Generator."""
+        """[GPU-06] make_torch_generator creates a valid torch.Generator."""
+        from mcframework.backends import make_torch_generator
+        
         sim = PiEstimationSimulation()
         sim.set_seed(42)
         device = torch.device("cpu")
 
-        generator = sim._make_torch_generator(device)
+        generator = make_torch_generator(device, sim.seed_seq)
 
         assert isinstance(generator, torch.Generator)
         assert generator.device == device
 
     def test_make_torch_generator_deterministic_from_seed_seq(self):
         """[GPU-06] Same SeedSequence produces same generator state."""
+        from mcframework.backends import make_torch_generator
+        
         device = torch.device("cpu")
 
         # Two simulations with same seed
         sim1 = PiEstimationSimulation()
         sim1.set_seed(42)
-        gen1 = sim1._make_torch_generator(device)
+        gen1 = make_torch_generator(device, sim1.seed_seq)
 
         sim2 = PiEstimationSimulation()
         sim2.set_seed(42)
-        gen2 = sim2._make_torch_generator(device)
+        gen2 = make_torch_generator(device, sim2.seed_seq)
 
         # Generate samples from each
         samples1 = torch.rand(1000, generator=gen1)
@@ -295,15 +299,17 @@ class TestExplicitGeneratorInfrastructure:
 
     def test_make_torch_generator_different_seeds_differ(self):
         """[GPU-06] Different SeedSequences produce different generator states."""
+        from mcframework.backends import make_torch_generator
+        
         device = torch.device("cpu")
 
         sim1 = PiEstimationSimulation()
         sim1.set_seed(111)
-        gen1 = sim1._make_torch_generator(device)
+        gen1 = make_torch_generator(device, sim1.seed_seq)
 
         sim2 = PiEstimationSimulation()
         sim2.set_seed(222)
-        gen2 = sim2._make_torch_generator(device)
+        gen2 = make_torch_generator(device, sim2.seed_seq)
 
         samples1 = torch.rand(1000, generator=gen1)
         samples2 = torch.rand(1000, generator=gen2)
@@ -333,6 +339,8 @@ class TestExplicitGeneratorInfrastructure:
 
     def test_seed_sequence_spawn_preserves_hierarchy(self):
         """[GPU-06] Generator seeding uses SeedSequence.spawn() for proper hierarchy."""
+        from mcframework.backends import make_torch_generator
+        
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
@@ -342,7 +350,7 @@ class TestExplicitGeneratorInfrastructure:
 
         # Create generator and verify it's deterministic
         device = torch.device("cpu")
-        gen = sim._make_torch_generator(device)
+        gen = make_torch_generator(device, sim.seed_seq)
 
         # The generator should be seeded from a spawned child
         # Verify by checking reproducibility
@@ -351,7 +359,7 @@ class TestExplicitGeneratorInfrastructure:
         # Recreate with same seed
         sim2 = PiEstimationSimulation()
         sim2.set_seed(42)
-        gen2 = sim2._make_torch_generator(device)
+        gen2 = make_torch_generator(device, sim2.seed_seq)
         sample2 = torch.rand(100, generator=gen2)
 
         torch.testing.assert_close(sample1, sample2)
