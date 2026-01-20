@@ -228,9 +228,14 @@ class MonteCarloSimulation(ABC):
         **RNG discipline.** All random sampling must use the provided ``generator``
         explicitly. Never use global Torch RNG (``torch.manual_seed``).
 
-        **Dtype policy.** Return float32 tensors for MPS compatibility (MPS doesn't
-        support float64). The framework handles promotion to float64 after moving
-        results to CPU, ensuring stats engine precision.
+        **Dtype policy (device-specific):**
+
+        - **MPS (Apple Silicon):** Must return float32 (Metal doesn't support float64).
+          Framework promotes to float64 on CPU.
+        - **CUDA (NVIDIA):** Can return float32 or float64. Float64 preferred for zero
+          conversion overhead and full precision.
+        - **CPU:** Can return float32 or float64. Float64 preferred for consistency
+          with framework precision.
 
         This method is optional and must be implemented by subclasses that support
         the Torch backend. If not implemented, the framework will fall back to the
