@@ -295,6 +295,41 @@ class TestMonteCarloSimulation:
             assert issubclass(w[0].category, DeprecationWarning)
             assert result.n_simulations == 5
 
+    def test_deprecated_parallel_with_explicit_backend_uses_backend(self, simple_simulation):
+        """[DEPRECATION] When both parallel and backend provided, backend wins."""
+        import warnings
+
+        # When user provides both, the explicit backend should be used
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            # parallel=True would normally map to "auto", but backend="sequential" is explicit
+            result = simple_simulation.run(
+                5,
+                parallel=True,
+                backend="sequential",
+                compute_stats=False
+            )
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            # Warning should mention that parallel is ignored
+            assert "ignored" in str(w[0].message).lower()
+            assert "backend='sequential'" in str(w[0].message)
+            assert result.n_simulations == 5
+
+        # Same for parallel=False with explicit backend="thread"
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = simple_simulation.run(
+                5,
+                parallel=False,
+                backend="thread",
+                compute_stats=False
+            )
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "ignored" in str(w[0].message).lower()
+            assert result.n_simulations == 5
+
     def test_run_handles_invalid_extra_context(self, simple_simulation):
         """[NFR-4] Extra context with invalid keys should fall back to defaults."""
         result = simple_simulation.run(

@@ -179,7 +179,9 @@ class TestTorchBatchMethod:
 
         assert isinstance(result, torch.Tensor)
         assert result.shape == (1000,)
-        assert result.dtype == torch.float64
+        # torch_batch returns float32 for MPS compatibility
+        # Framework promotes to float64 after moving to CPU
+        assert result.dtype == torch.float32
 
     def test_torch_batch_values_are_valid(self):
         """[GPU-04] torch_batch returns valid Pi indicator values."""
@@ -262,28 +264,32 @@ class TestExplicitGeneratorInfrastructure:
     """[GPU-06] Test explicit torch.Generator infrastructure from SeedSequence."""
 
     def test_make_torch_generator_creates_valid_generator(self):
-        """[GPU-06] _make_torch_generator creates a valid torch.Generator."""
+        """[GPU-06] make_torch_generator creates a valid torch.Generator."""
+        from mcframework.backends import make_torch_generator
+        
         sim = PiEstimationSimulation()
         sim.set_seed(42)
         device = torch.device("cpu")
 
-        generator = sim._make_torch_generator(device)
+        generator = make_torch_generator(device, sim.seed_seq)
 
         assert isinstance(generator, torch.Generator)
         assert generator.device == device
 
     def test_make_torch_generator_deterministic_from_seed_seq(self):
         """[GPU-06] Same SeedSequence produces same generator state."""
+        from mcframework.backends import make_torch_generator
+        
         device = torch.device("cpu")
 
         # Two simulations with same seed
         sim1 = PiEstimationSimulation()
         sim1.set_seed(42)
-        gen1 = sim1._make_torch_generator(device)
+        gen1 = make_torch_generator(device, sim1.seed_seq)
 
         sim2 = PiEstimationSimulation()
         sim2.set_seed(42)
-        gen2 = sim2._make_torch_generator(device)
+        gen2 = make_torch_generator(device, sim2.seed_seq)
 
         # Generate samples from each
         samples1 = torch.rand(1000, generator=gen1)
@@ -293,15 +299,17 @@ class TestExplicitGeneratorInfrastructure:
 
     def test_make_torch_generator_different_seeds_differ(self):
         """[GPU-06] Different SeedSequences produce different generator states."""
+        from mcframework.backends import make_torch_generator
+        
         device = torch.device("cpu")
 
         sim1 = PiEstimationSimulation()
         sim1.set_seed(111)
-        gen1 = sim1._make_torch_generator(device)
+        gen1 = make_torch_generator(device, sim1.seed_seq)
 
         sim2 = PiEstimationSimulation()
         sim2.set_seed(222)
-        gen2 = sim2._make_torch_generator(device)
+        gen2 = make_torch_generator(device, sim2.seed_seq)
 
         samples1 = torch.rand(1000, generator=gen1)
         samples2 = torch.rand(1000, generator=gen2)
@@ -331,6 +339,8 @@ class TestExplicitGeneratorInfrastructure:
 
     def test_seed_sequence_spawn_preserves_hierarchy(self):
         """[GPU-06] Generator seeding uses SeedSequence.spawn() for proper hierarchy."""
+        from mcframework.backends import make_torch_generator
+        
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
@@ -340,7 +350,7 @@ class TestExplicitGeneratorInfrastructure:
 
         # Create generator and verify it's deterministic
         device = torch.device("cpu")
-        gen = sim._make_torch_generator(device)
+        gen = make_torch_generator(device, sim.seed_seq)
 
         # The generator should be seeded from a spawned child
         # Verify by checking reproducibility
@@ -349,8 +359,203 @@ class TestExplicitGeneratorInfrastructure:
         # Recreate with same seed
         sim2 = PiEstimationSimulation()
         sim2.set_seed(42)
-        gen2 = sim2._make_torch_generator(device)
+        gen2 = make_torch_generator(device, sim2.seed_seq)
         sample2 = torch.rand(100, generator=gen2)
 
         torch.testing.assert_close(sample1, sample2)
+
+
+class TestTorchDeviceValidation:
+    """[GPU-07] Test device validation and error handling."""
+
+    def test_invalid_torch_device_raises(self):
+        """[GPU-07] Invalid torch_device raises ValueError."""
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+
+        with pytest.raises(ValueError, match="torch_device must be one of"):
+            sim.run(100, backend="torch", torch_device="invalid")
+
+    def test_cpu_device_always_available(self):
+        """[GPU-07] CPU device is always available."""
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+
+        # Should not raise
+        result = sim.run(1000, backend="torch", torch_device="cpu", compute_stats=False)
+        assert result.n_simulations == 1000
+
+    @pytest.mark.skipif(
+        torch.backends.mps.is_available(),
+        reason="MPS is available, cannot test unavailable error"
+    )
+    def test_mps_unavailable_raises(self):
+        """[GPU-07] MPS device raises RuntimeError when not available."""
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+
+        with pytest.raises(RuntimeError, match="MPS device requested but not available"):
+            sim.run(100, backend="torch", torch_device="mps")
+
+    @pytest.mark.skipif(
+        torch.cuda.is_available(),
+        reason="CUDA is available, cannot test unavailable error"
+    )
+    def test_cuda_unavailable_raises(self):
+        """[GPU-07] CUDA device raises RuntimeError when not available."""
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+
+        with pytest.raises(RuntimeError, match="CUDA device requested but not available"):
+            sim.run(100, backend="torch", torch_device="cuda")
+
+
+# =============================================================================
+# MPS Backend Tests (Apple Silicon)
+# =============================================================================
+
+MPS_AVAILABLE = torch.backends.mps.is_available() and torch.backends.mps.is_built()
+
+
+@pytest.mark.skipif(not MPS_AVAILABLE, reason="MPS not available")
+class TestTorchMPSBackend:
+    """[MPS-01] Tests for Apple Metal Performance Shaders backend."""
+
+    def test_pi_mps_returns_valid_results(self):
+        """[MPS-01] MPS backend returns valid Pi estimates."""
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+
+        result = sim.run(10_000, backend="torch", torch_device="mps", compute_stats=False)
+
+        # Mean should be close to pi (relaxed tolerance for MPS)
+        assert 2.5 < result.mean < 3.8
+        assert result.n_simulations == 10_000
+        assert len(result.results) == 10_000
+
+    def test_pi_mps_converges_to_pi(self):
+        """[MPS-01] MPS backend converges to pi with large sample."""
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+
+        result = sim.run(500_000, backend="torch", torch_device="mps", compute_stats=False)
+
+        # Should be close to pi (not tightening tolerance for MPS)
+        assert math.isclose(result.mean, np.pi, rel_tol=1e-2, abs_tol=1e-2)
+
+    def test_mps_stats_computation_works(self):
+        """[MPS-01] Stats engine works correctly with MPS backend results."""
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+
+        result = sim.run(
+            100_000,
+            backend="torch",
+            torch_device="mps",
+            compute_stats=True,
+            confidence=0.95,
+        )
+
+        # Stats should be computed
+        assert "mean" in result.stats
+        assert "std" in result.stats
+        assert "ci_mean" in result.stats
+
+        # CI should contain pi
+        ci = result.stats["ci_mean"]
+        assert ci["low"] < np.pi < ci["high"]
+
+    def test_mps_results_are_float64(self):
+        """[MPS-01] MPS results are promoted to float64 for stats precision."""
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+
+        result = sim.run(1000, backend="torch", torch_device="mps", compute_stats=False)
+
+        # Results should be float64 (promoted from MPS float32)
+        assert result.results.dtype == np.float64
+
+    def test_mps_no_nans_or_infs(self):
+        """[MPS-01] MPS backend produces no NaN or Inf values."""
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+
+        result = sim.run(50_000, backend="torch", torch_device="mps", compute_stats=False)
+
+        assert not np.any(np.isnan(result.results))
+        assert not np.any(np.isinf(result.results))
+
+    def test_mps_ci_widths_reasonable(self):
+        """[MPS-01] MPS confidence intervals have reasonable widths."""
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+
+        result = sim.run(
+            100_000,
+            backend="torch",
+            torch_device="mps",
+            compute_stats=True,
+            confidence=0.95,
+        )
+
+        ci = result.stats["ci_mean"]
+        ci_width = ci["high"] - ci["low"]
+
+        # CI width should be small for 100k samples (< 0.1)
+        assert ci_width < 0.1
+        assert ci_width > 0  # Not degenerate
+
+    def test_mps_execution_time_reasonable(self):
+        """[MPS-01] MPS backend execution time is reasonable."""
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+
+        result = sim.run(100_000, backend="torch", torch_device="mps", compute_stats=False)
+
+        # MPS should be fast (generous upper bound)
+        assert result.execution_time < 30.0
+        assert result.execution_time > 0
+
+
+@pytest.mark.skipif(not MPS_AVAILABLE, reason="MPS not available")
+class TestMPSDeterminism:
+    """[MPS-02] Test MPS determinism behavior (best-effort, not bitwise)."""
+
+    def test_mps_same_seed_similar_mean(self):
+        """[MPS-02] Same seed produces statistically similar results on MPS."""
+        # Note: MPS determinism is best-effort, so we compare means not bitwise
+        sim1 = PiEstimationSimulation()
+        sim1.set_seed(42)
+        result1 = sim1.run(100_000, backend="torch", torch_device="mps", compute_stats=False)
+
+        sim2 = PiEstimationSimulation()
+        sim2.set_seed(42)
+        result2 = sim2.run(100_000, backend="torch", torch_device="mps", compute_stats=False)
+
+        # Means should be very close (even if not bitwise identical)
+        assert math.isclose(result1.mean, result2.mean, rel_tol=1e-2, abs_tol=1e-2)
+
+    def test_mps_different_seeds_differ(self):
+        """[MPS-02] Different seeds produce different results on MPS."""
+        sim1 = PiEstimationSimulation()
+        sim1.set_seed(111)
+        result1 = sim1.run(10_000, backend="torch", torch_device="mps", compute_stats=False)
+
+        sim2 = PiEstimationSimulation()
+        sim2.set_seed(222)
+        result2 = sim2.run(10_000, backend="torch", torch_device="mps", compute_stats=False)
+
+        # Results should differ (extremely unlikely to be equal)
+        assert not np.array_equal(result1.results, result2.results)
+
+    def test_mps_generator_structure_preserved(self):
+        """[MPS-02] MPS uses explicit generator from SeedSequence spawn."""
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+
+        # This should work without error, using spawned generator
+        result = sim.run(10_000, backend="torch", torch_device="mps", compute_stats=False)
+
+        # Verify metadata shows seed was used
+        assert result.metadata["seed_entropy"] == 42
 
