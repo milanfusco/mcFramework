@@ -41,9 +41,11 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping
 
 import numpy as np
-import torch
 
 from .backends import ProcessBackend, SequentialBackend, ThreadBackend
+
+if TYPE_CHECKING:
+    import torch
 from .stats_engine import (
     DEFAULT_ENGINE,
     CIMethod,
@@ -212,7 +214,9 @@ class MonteCarloSimulation(ABC):
         Returns
         -------
         torch.Tensor
-            A 1D tensor of length ``n`` containing simulation results.
+            A 1D tensor of length ``n`` containing simulation results. Use float32
+            for MPS compatibility; the framework promotes to float64 after moving
+            to CPU.
 
         Raises
         ------
@@ -223,6 +227,10 @@ class MonteCarloSimulation(ABC):
         -----
         **RNG discipline.** All random sampling must use the provided ``generator``
         explicitly. Never use global Torch RNG (``torch.manual_seed``).
+
+        **Dtype policy.** Return float32 tensors for MPS compatibility (MPS doesn't
+        support float64). The framework handles promotion to float64 after moving
+        results to CPU, ensuring stats engine precision.
 
         This method is optional and must be implemented by subclasses that support
         the Torch backend. If not implemented, the framework will fall back to the
@@ -237,7 +245,7 @@ class MonteCarloSimulation(ABC):
         ...         x = torch.rand(n, device=device, generator=generator)
         ...         y = torch.rand(n, device=device, generator=generator)
         ...         inside = (x * x + y * y) <= 1.0
-        ...         return 4.0 * inside.to(torch.float64)
+        ...         return 4.0 * inside.float()  # float32 for MPS compatibility
         """
         raise NotImplementedError
 
@@ -390,6 +398,7 @@ class MonteCarloSimulation(ABC):
         n_simulations: int,
         *,
         backend: str = "auto",
+        torch_device: str = "cpu",
         parallel: bool | None = None,  # Deprecated, use backend instead
         n_workers: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
@@ -408,13 +417,21 @@ class MonteCarloSimulation(ABC):
         ----------
         n_simulations : int
             Number of simulation draws.
-        backend : {"auto", "sequential", "thread", "process"}, default ``"auto"``
+        backend : {"auto", "sequential", "thread", "process", "torch"}, default ``"auto"``
             Execution backend to use:
 
             - ``"auto"`` — Sequential for small jobs, parallel (thread/process) for large jobs
             - ``"sequential"`` — Single-threaded execution
             - ``"thread"`` — Thread-based parallelism (best when NumPy releases GIL)
             - ``"process"`` — Process-based parallelism (required on Windows for true parallelism)
+            - ``"torch"`` — Torch batch execution (requires ``supports_batch = True``)
+
+        torch_device : {"cpu", "mps", "cuda"}, default ``"cpu"``
+            Torch device for ``backend="torch"``. Ignored for other backends.
+
+            - ``"cpu"`` — Safe default, works everywhere
+            - ``"mps"`` — Apple Metal Performance Shaders (M1/M2/M3 Macs)
+            - ``"cuda"`` — NVIDIA GPU acceleration
 
         parallel : bool, optional
             **Deprecated.** Use ``backend`` instead. If provided, ``parallel=True`` maps to
@@ -447,6 +464,13 @@ class MonteCarloSimulation(ABC):
         SimulationResult
             See :class:`~mcframework.core.SimulationResult`.
 
+        Notes
+        -----
+        **MPS determinism caveat.** When using ``torch_device="mps"``, the framework
+        preserves RNG stream structure but does not guarantee bitwise reproducibility
+        due to Metal backend scheduling and float32 arithmetic. Statistical properties
+        (mean, variance, CI coverage) remain correct.
+
         See Also
         --------
         :meth:`~mcframework.core.MonteCarloFramework.run_simulation` : Run a registered simulation by name.
@@ -455,17 +479,29 @@ class MonteCarloSimulation(ABC):
 
         # Handle deprecated parallel parameter
         if parallel is not None:
-            warnings.warn(
-                "The 'parallel' parameter is deprecated. Use 'backend' instead: "
-                "backend='sequential' for parallel=False, backend='thread' or 'process' for parallel=True.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if parallel:
-                # parallel=True -> let auto-resolution handle small-job fallback
-                backend = "auto"
+            # Check if user also explicitly provided backend (not using default)
+            if backend != "auto":
+                # User provided both - warn and ignore the deprecated parameter
+                warnings.warn(
+                    f"Both 'parallel' and 'backend' parameters provided. "
+                    f"The deprecated 'parallel={parallel}' is ignored; using backend='{backend}'.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
             else:
-                backend = "sequential"
+                # Only parallel provided - apply deprecated behavior with warning
+                warnings.warn(
+                    "The 'parallel' parameter is deprecated. Use 'backend' instead: "
+                    "backend='sequential' for parallel=False, "
+                    "backend='thread' or 'process' for parallel=True.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                if parallel:
+                    # parallel=True -> let auto-resolution handle small-job fallback
+                    backend = "auto"
+                else:
+                    backend = "sequential"
 
         # Validate parameters
         self._validate_run_params(n_simulations, n_workers, confidence, ci_method, backend)
@@ -473,7 +509,8 @@ class MonteCarloSimulation(ABC):
         # Execute simulation using appropriate backend
         t0 = time.time()
         results = self._execute_with_backend(
-            backend, n_simulations, n_workers, progress_callback, **simulation_kwargs
+            backend, n_simulations, n_workers, progress_callback,
+            torch_device=torch_device, **simulation_kwargs
         )
 
         exec_time = time.time() - t0
@@ -588,6 +625,8 @@ class MonteCarloSimulation(ABC):
         n_simulations: int,
         n_workers: int | None,
         progress_callback: Callable[[int, int], None] | None,
+        *,
+        torch_device: str = "cpu",
         **simulation_kwargs: Any,
     ) -> np.ndarray:
         r"""
@@ -603,6 +642,8 @@ class MonteCarloSimulation(ABC):
             Number of workers for parallel backends.
         progress_callback : callable or None
             Progress reporting callback.
+        torch_device : str, default ``"cpu"``
+            Torch device type (``"cpu"``, ``"mps"``, ``"cuda"``). Only used for ``backend="torch"``.
         **simulation_kwargs : Any
             Arguments forwarded to ``single_simulation``.
 
@@ -628,7 +669,7 @@ class MonteCarloSimulation(ABC):
                     f"Simulation '{self.name}' does not support Torch batch execution. "
                     "Set supports_batch = True and implement torch_batch()."
                 )
-            return self._run_torch_batch(n_simulations, device_type="cpu")
+            return self._run_torch_batch(n_simulations, device_type=torch_device)
 
         # Resolve "auto" backend
         if backend == "auto":
@@ -657,6 +698,9 @@ class MonteCarloSimulation(ABC):
         return backend_instance.run(
             self, n_simulations, self.seed_seq, progress_callback, **simulation_kwargs
         )
+
+    # Valid Torch device types
+    _VALID_TORCH_DEVICES = ("cpu", "mps", "cuda")
 
     def _run_torch_batch(
         self,
@@ -687,7 +731,7 @@ class MonteCarloSimulation(ABC):
         NotImplementedError
             If the simulation does not implement :meth:`torch_batch`.
         RuntimeError
-            If Torch is not available.
+            If the requested device is not available.
 
         Notes
         -----
@@ -705,13 +749,38 @@ class MonteCarloSimulation(ABC):
         - ``"mps"``: Apple Metal Performance Shaders (M1/M2/M3). Best-effort determinism.
         - ``"cuda"``: NVIDIA GPU acceleration. Fully deterministic with explicit generators.
 
+        **MPS dtype policy.** MPS performs best with float32. Sampling uses float32,
+        but results are promoted to float64 before returning to ensure stats engine
+        precision. This is transparent to the user.
+
+        **MPS determinism caveat.** Torch MPS preserves RNG stream structure but
+        does not guarantee bitwise reproducibility due to Metal backend scheduling
+        and float32 arithmetic. Statistical properties remain correct.
+
         Example
         -------
         >>> sim = PiSimulation()
         >>> sim.set_seed(42)
         >>> results = sim._run_torch_batch(100_000, device_type="cpu")
         """
-        device = torch.device(device_type)
+        # Lazy import torch (optional dependency)
+        try:
+            import torch as th  # pylint: disable=import-outside-toplevel
+        except ImportError as e:
+            raise ImportError(
+                "Torch backend requires PyTorch. Install with: pip install mcframework[gpu]"
+            ) from e
+
+        # Validate device type
+        if device_type not in self._VALID_TORCH_DEVICES:
+            raise ValueError(
+                f"torch_device must be one of {self._VALID_TORCH_DEVICES}, got '{device_type}'"
+            )
+
+        # Check device availability
+        self._validate_torch_device(device_type)
+
+        device = th.device(device_type)
 
         # Create explicit generator from SeedSequence (never use global RNG)
         generator = self._make_torch_generator(device)
@@ -724,8 +793,53 @@ class MonteCarloSimulation(ABC):
         # Execute the vectorized batch with explicit generator
         samples = self.torch_batch(n_simulations, device=device, generator=generator)
 
-        # Convert back to NumPy for stats engine compatibility
-        return samples.detach().cpu().numpy()
+        # Move to CPU first (required before float64 conversion for MPS)
+        samples = samples.detach().cpu()
+
+        # Ensure float64 for stats engine precision (MPS returns float32)
+        samples = samples.to(th.float64)
+
+        # Convert to NumPy for stats engine compatibility
+        return samples.numpy()
+
+    def _validate_torch_device(self, device_type: str) -> None:
+        r"""
+        Validate that the requested Torch device is available.
+
+        Parameters
+        ----------
+        device_type : str
+            Device type to validate (``"cpu"``, ``"mps"``, ``"cuda"``).
+
+        Raises
+        ------
+        RuntimeError
+            If the device is not available on this system.
+        """
+        import torch as th  # pylint: disable=import-outside-toplevel
+
+        if device_type == "cpu":
+            return  # Always available
+
+        if device_type == "mps":
+            if not th.backends.mps.is_available():
+                raise RuntimeError(
+                    "MPS device requested but not available. "
+                    "MPS requires macOS 12.3+ with Apple Silicon (M1/M2/M3)."
+                )
+            if not th.backends.mps.is_built():
+                raise RuntimeError(
+                    "MPS device requested but PyTorch was not built with MPS support."
+                )
+            return
+
+        if device_type == "cuda":
+            if not th.cuda.is_available():
+                raise RuntimeError(
+                    "CUDA device requested but not available. "
+                    "Ensure NVIDIA drivers and CUDA toolkit are installed."
+                )
+            return
 
     def _make_torch_generator(self, device: "torch.device") -> "torch.Generator":
         r"""
@@ -764,7 +878,9 @@ class MonteCarloSimulation(ABC):
         This ensures each call to ``_run_torch_batch`` with the same ``seed_seq``
         produces identical results.
         """
-        generator = torch.Generator(device=device)
+        import torch as th  # pylint: disable=import-outside-toplevel
+
+        generator = th.Generator(device=device)
 
         if self.seed_seq is not None:
             # Spawn a child seed to preserve hierarchical RNG structure

@@ -129,17 +129,22 @@ class PiEstimationSimulation(MonteCarloSimulation):
         -------
         torch.Tensor
             A 1D tensor of length ``n`` where each element is ``4.0`` (inside disk)
-            or ``0.0`` (outside disk).
+            or ``0.0`` (outside disk). Returns float32 for MPS compatibility;
+            the framework promotes to float64 after moving to CPU.
 
         Notes
         -----
         Unlike :meth:`single_simulation`, this method does not support the
-        ``n_points`` parameter, since each simulation is a single point evaluation.
+        ``n_points`` parameter—each simulation is a single point evaluation.
         For high-precision estimates, use many simulations and let the framework
         compute the mean.
 
         The expected value of each element is :math:`\pi`, so the sample mean
         converges to :math:`\pi` as ``n → ∞``.
+
+        **MPS compatibility.** This method returns float32 tensors to support
+        Apple MPS backend (which doesn't support float64). The framework handles
+        promotion to float64 after moving results to CPU.
         """
         import torch as th  # pylint: disable=import-outside-toplevel
 
@@ -151,4 +156,6 @@ class PiEstimationSimulation(MonteCarloSimulation):
         inside = (x * x + y * y) <= 1.0
 
         # Return 4.0 * indicator (expected value = pi)
-        return 4.0 * inside.to(th.float64)
+        # Note: Use float32 on device (MPS doesn't support float64)
+        # The framework promotes to float64 after moving to CPU
+        return 4.0 * inside.float()
