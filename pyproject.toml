@@ -49,6 +49,10 @@ test = [
 gpu = [
     "torch>=2.9.1",
 ]
+cuda = [
+    "torch>=2.9.1",
+    "cupy-cuda12x>=12.0.0",  # CUDA 12.x support for cuRAND backend
+]
 gui = [
     "PySide6>=6.5",
     "yfinance>=1.0",
