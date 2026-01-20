@@ -270,9 +270,10 @@ class TestMonteCarloSimulation:
         with pytest.raises(ValueError, match="backend must be one of"):
             simple_simulation.run(5, backend="invalid_backend")
 
-    def test_run_torch_backend_not_available(self, simple_simulation):
-        """[GPU-1] Torch backend should raise RuntimeError until implemented."""
-        with pytest.raises(RuntimeError, match="Torch backend not available"):
+    def test_run_torch_backend_requires_supports_batch(self, simple_simulation):
+        """[GPU-1] Torch backend requires supports_batch=True and torch_batch implementation."""
+        # SimpleSim doesn't have supports_batch=True, so it should raise
+        with pytest.raises(ValueError, match="does not support Torch batch"):
             simple_simulation.run(5, backend="torch")
 
     def test_deprecated_parallel_parameter_warns(self, simple_simulation):
