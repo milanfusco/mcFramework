@@ -41,6 +41,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping
 
 import numpy as np
+import torch
 
 from .backends import ProcessBackend, SequentialBackend, ThreadBackend
 from .stats_engine import (
@@ -182,6 +183,63 @@ class MonteCarloSimulation(ABC):
             The result of the simulation run.
         """
         raise NotImplementedError  # pragma: no cover
+
+    def torch_batch(
+        self,
+        n: int,
+        *,
+        device: "torch.device",
+        generator: "torch.Generator",
+    ) -> "torch.Tensor":
+        """
+        Optional vectorized Torch implementation.
+
+        Override this method in subclasses to enable GPU-accelerated batch execution.
+        When implemented alongside ``supports_batch = True``, the framework will use
+        this method instead of repeated ``single_simulation`` calls.
+
+        Parameters
+        ----------
+        n : int
+            Number of simulation draws.
+        device : torch.device
+            Device to use for the simulation (``"cpu"``, ``"mps"``, or ``"cuda"``).
+        generator : torch.Generator
+            Explicit Torch generator for reproducible random sampling. This generator
+            is seeded from :class:`numpy.random.SeedSequence` to maintain the same
+            spawning semantics as the NumPy backend.
+
+        Returns
+        -------
+        torch.Tensor
+            A 1D tensor of length ``n`` containing simulation results.
+
+        Raises
+        ------
+        NotImplementedError
+            If the subclass does not implement this method.
+
+        Notes
+        -----
+        **RNG discipline.** All random sampling must use the provided ``generator``
+        explicitly. Never use global Torch RNG (``torch.manual_seed``).
+
+        This method is optional and must be implemented by subclasses that support
+        the Torch backend. If not implemented, the framework will fall back to the
+        NumPy backend.
+
+        Example
+        -------
+        >>> class PiSim(MonteCarloSimulation):
+        ...     supports_batch = True
+        ...     def torch_batch(self, n, *, device, generator):
+        ...         import torch
+        ...         x = torch.rand(n, device=device, generator=generator)
+        ...         y = torch.rand(n, device=device, generator=generator)
+        ...         inside = (x * x + y * y) <= 1.0
+        ...         return 4.0 * inside.to(torch.float64)
+        """
+        raise NotImplementedError
 
     def set_seed(self, seed: int | None) -> None:
         r"""
@@ -393,7 +451,7 @@ class MonteCarloSimulation(ABC):
         --------
         :meth:`~mcframework.core.MonteCarloFramework.run_simulation` : Run a registered simulation by name.
         """
-        # Import here to avoid circular dependency
+        
 
         # Handle deprecated parallel parameter
         if parallel is not None:
@@ -511,8 +569,9 @@ class MonteCarloSimulation(ABC):
             return SequentialBackend()
 
         if backend == "torch":
+            # Torch backend is handled separately via _run_torch_batch
             raise RuntimeError(
-                "Torch backend not available. Install mcframework[gpu] or torch separately."
+                "Torch backend should be dispatched via _run_torch_batch, not _create_backend."
             )
 
         # Parallel backends need n_workers
@@ -537,7 +596,7 @@ class MonteCarloSimulation(ABC):
         Parameters
         ----------
         backend : str
-            Backend type: ``"auto"``, ``"sequential"``, ``"thread"``, or ``"process"``.
+            Backend type: ``"auto"``, ``"sequential"``, ``"thread"``, ``"process"``, or ``"torch"``.
         n_simulations : int
             Number of simulation draws.
         n_workers : int or None
@@ -557,7 +616,20 @@ class MonteCarloSimulation(ABC):
         For ``"auto"`` backend:
         - Small jobs (< ``_PARALLEL_THRESHOLD``) use sequential execution
         - Large jobs resolve to thread/process based on platform
+
+        For ``"torch"`` backend:
+        - Requires ``supports_batch = True`` and :meth:`torch_batch` implementation
+        - Ignores ``simulation_kwargs`` (batch method handles all parameters)
         """
+        # Early dispatch to Torch if explicitly requested
+        if backend == "torch":
+            if not self.supports_batch:
+                raise ValueError(
+                    f"Simulation '{self.name}' does not support Torch batch execution. "
+                    "Set supports_batch = True and implement torch_batch()."
+                )
+            return self._run_torch_batch(n_simulations, device_type="cpu")
+
         # Resolve "auto" backend
         if backend == "auto":
             if n_workers is None:
@@ -585,6 +657,128 @@ class MonteCarloSimulation(ABC):
         return backend_instance.run(
             self, n_simulations, self.seed_seq, progress_callback, **simulation_kwargs
         )
+
+    def _run_torch_batch(
+        self,
+        n_simulations: int,
+        device_type: str = "cpu",
+    ) -> np.ndarray:
+        r"""
+        Execute simulation using the Torch batch path.
+
+        This method provides vectorized GPU-accelerated execution for simulations
+        that implement :meth:`torch_batch` and set ``supports_batch = True``.
+
+        Parameters
+        ----------
+        n_simulations : int
+            Number of simulation draws.
+        device_type : {"cpu", "mps", "cuda"}, default ``"cpu"``
+            Torch device to use. Start with ``"cpu"`` for validation,
+            then switch to ``"mps"`` (Apple Silicon) or ``"cuda"`` (NVIDIA).
+
+        Returns
+        -------
+        np.ndarray
+            Array of simulation results (converted from Torch tensor).
+
+        Raises
+        ------
+        NotImplementedError
+            If the simulation does not implement :meth:`torch_batch`.
+        RuntimeError
+            If Torch is not available.
+
+        Notes
+        -----
+        **RNG architecture.** Uses explicit ``torch.Generator`` objects seeded from
+        :class:`numpy.random.SeedSequence` via ``spawn()``. This preserves:
+
+        - Deterministic parallel streams
+        - Counter-based RNG (Philox) semantics
+        - Identical statistical structure across backends
+
+        **Never uses** ``torch.manual_seed()`` (global state).
+
+        **Device selection.**
+        - ``"cpu"``: Safe default, works everywhere.
+        - ``"mps"``: Apple Metal Performance Shaders (M1/M2/M3). Best-effort determinism.
+        - ``"cuda"``: NVIDIA GPU acceleration. Fully deterministic with explicit generators.
+
+        Example
+        -------
+        >>> sim = PiSimulation()
+        >>> sim.set_seed(42)
+        >>> results = sim._run_torch_batch(100_000, device_type="cpu")
+        """
+        device = torch.device(device_type)
+
+        # Create explicit generator from SeedSequence (never use global RNG)
+        generator = self._make_torch_generator(device)
+
+        logger.info(
+            "Computing %d simulations using Torch batch on device '%s'...",
+            n_simulations, device_type
+        )
+
+        # Execute the vectorized batch with explicit generator
+        samples = self.torch_batch(n_simulations, device=device, generator=generator)
+
+        # Convert back to NumPy for stats engine compatibility
+        return samples.detach().cpu().numpy()
+
+    def _make_torch_generator(self, device: "torch.device") -> "torch.Generator":
+        r"""
+        Create an explicit Torch generator seeded from :attr:`seed_seq`.
+
+        This method spawns a child seed from the simulation's SeedSequence and
+        uses it to initialize a Torch Generator. This preserves the hierarchical
+        spawning model used by the NumPy backend.
+
+        Parameters
+        ----------
+        device : torch.device
+            Device for the generator (``"cpu"``, ``"mps"``, or ``"cuda"``).
+
+        Returns
+        -------
+        torch.Generator
+            Explicitly seeded generator for reproducible sampling.
+
+        Notes
+        -----
+        **Why explicit generators?**
+
+        - ``torch.manual_seed()`` is global state that breaks parallel composition
+        - Explicit generators enable deterministic multi-stream MC
+        - This mirrors NumPy's ``SeedSequence.spawn()`` semantics
+
+        **Seed derivation:**
+
+        .. code-block:: python
+
+            child_seed = self.seed_seq.spawn(1)[0]
+            seed_int = child_seed.generate_state(1, dtype="uint64")[0]
+            generator.manual_seed(seed_int)
+
+        This ensures each call to ``_run_torch_batch`` with the same ``seed_seq``
+        produces identical results.
+        """
+        generator = torch.Generator(device=device)
+
+        if self.seed_seq is not None:
+            # Spawn a child seed to preserve hierarchical RNG structure
+            child_seed = self.seed_seq.spawn(1)[0]
+            # Convert to 64-bit integer for Torch's Philox counter
+            seed_int = int(child_seed.generate_state(1, dtype=np.uint64)[0])
+            generator.manual_seed(seed_int)
+        else:
+            logger.warning(
+                "No seed set for Torch backend; results will not be reproducible. "
+                "Call set_seed() before run() for deterministic simulations."
+            )
+
+        return generator
 
     # Backward compatibility aliases
     def _resolve_parallel_backend(self, requested: str | None = None) -> str:
