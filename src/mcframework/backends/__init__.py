@@ -64,6 +64,9 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+# Lazily-imported Torch names are available via __getattr__ but not defined at module level.
+# This is intentional to avoid requiring torch as a hard dependency.
+# pylint: disable=undefined-all-variable
 __all__ = [
     # Protocol
     "ExecutionBackend",
@@ -71,7 +74,7 @@ __all__ = [
     "SequentialBackend",
     "ThreadBackend",
     "ProcessBackend",
-    # Torch Backends
+    # Torch Backends (lazily imported via __getattr__)
     "TorchBackend",
     "TorchCPUBackend",
     "TorchMPSBackend",
@@ -80,7 +83,7 @@ __all__ = [
     "make_blocks",
     "worker_run_chunk",
     "is_windows_platform",
-    # Torch Utilities
+    # Torch Utilities (lazily imported via __getattr__)
     "validate_torch_device",
     "make_torch_generator",
     "make_curand_generator",
@@ -88,3 +91,4 @@ __all__ = [
     "is_cuda_available",
     "VALID_TORCH_DEVICES",
 ]
+# pylint: enable=undefined-all-variable
