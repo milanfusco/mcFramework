@@ -43,9 +43,6 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping
 import numpy as np
 
 from .backends import ProcessBackend, SequentialBackend, ThreadBackend
-
-if TYPE_CHECKING:
-    import torch
 from .stats_engine import (
     DEFAULT_ENGINE,
     CIMethod,
@@ -56,11 +53,11 @@ from .stats_engine import (
     mean,
     std,
 )
-from .stats_engine import (
-    percentiles as pct,
-)
+from .stats_engine import percentiles as pct
 
 if TYPE_CHECKING:
+    import torch
+
     from .core import SimulationResult
 
 logger = logging.getLogger(__name__)
@@ -480,8 +477,6 @@ class MonteCarloSimulation(ABC):
         --------
         :meth:`~mcframework.core.MonteCarloFramework.run_simulation` : Run a registered simulation by name.
         """
-        
-
         # Handle deprecated parallel parameter
         if parallel is not None:
             # Check if user also explicitly provided backend (not using default)
