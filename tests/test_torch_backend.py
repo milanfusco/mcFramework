@@ -366,6 +366,269 @@ class TestExplicitGeneratorInfrastructure:
         torch.testing.assert_close(sample1, sample2)
 
 
+class TestTorchBaseUtilities:
+    """[GPU-08] Test torch_base.py utility functions."""
+
+    def test_validate_torch_available_succeeds(self):
+        """validate_torch_available() succeeds when torch is installed."""
+        from mcframework.backends.torch_base import validate_torch_available
+        
+        # Should not raise since torch is installed
+        validate_torch_available()
+
+    def test_make_torch_generator_with_no_seed_returns_valid_generator(self):
+        """make_torch_generator returns valid generator even without seed."""
+        from mcframework.backends import make_torch_generator
+        
+        device = torch.device("cpu")
+        
+        # The function should still return a valid generator (warns internally)
+        gen = make_torch_generator(device, None)
+        assert isinstance(gen, torch.Generator)
+        
+        # Generator should still work (just not reproducible)
+        samples = torch.rand(10, generator=gen)
+        assert samples.shape == (10,)
+
+    def test_import_torch_returns_module(self):
+        """import_torch() returns the torch module."""
+        from mcframework.backends.torch_base import import_torch
+        
+        th = import_torch()
+        assert hasattr(th, "Tensor")
+        assert hasattr(th, "Generator")
+
+
+class TestTorchBackendFactory:
+    """[GPU-09] Test TorchBackend factory class."""
+
+    def test_torch_backend_cpu_with_kwargs_warns(self, caplog):
+        """TorchBackend warns when CPU backend receives device_kwargs."""
+        from mcframework.backends import TorchBackend
+        
+        caplog.set_level("WARNING")
+        
+        # CPU backend should warn about unused kwargs
+        backend = TorchBackend(device="cpu", some_unused_kwarg=True)
+        
+        assert "CPU backend ignores device kwargs" in caplog.text
+        assert backend.device_type == "cpu"
+
+    @pytest.mark.skipif(
+        not (torch.backends.mps.is_available() and torch.backends.mps.is_built()),
+        reason="MPS not available"
+    )
+    def test_torch_backend_mps_with_kwargs_warns(self, caplog):
+        """TorchBackend warns when MPS backend receives device_kwargs."""
+        from mcframework.backends import TorchBackend
+        
+        caplog.set_level("WARNING")
+        
+        # MPS backend should warn about unused kwargs
+        backend = TorchBackend(device="mps", some_unused_kwarg=True)
+        
+        assert "MPS backend ignores device kwargs" in caplog.text
+        assert backend.device_type == "mps"
+
+    def test_torch_backend_exposes_device(self):
+        """TorchBackend exposes the underlying device."""
+        from mcframework.backends import TorchBackend
+        
+        backend = TorchBackend(device="cpu")
+        
+        assert backend.device == torch.device("cpu")
+        assert backend.device_type == "cpu"
+
+    def test_torch_backend_delegates_run(self):
+        """TorchBackend delegates run() to underlying backend."""
+        from mcframework.backends import TorchBackend
+        
+        backend = TorchBackend(device="cpu")
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+        
+        results = backend.run(sim, 1000, sim.seed_seq, None)
+        
+        assert len(results) == 1000
+        assert 2.5 < np.mean(results) < 3.8
+
+
+class TestTorchCPUBackendDirect:
+    """[GPU-10] Direct tests for TorchCPUBackend class."""
+
+    def test_cpu_backend_direct_instantiation(self):
+        """TorchCPUBackend can be instantiated directly."""
+        from mcframework.backends import TorchCPUBackend
+        
+        backend = TorchCPUBackend()
+        
+        assert backend.device_type == "cpu"
+        assert backend.device == torch.device("cpu")
+
+    def test_cpu_backend_direct_run(self):
+        """TorchCPUBackend.run() works correctly."""
+        from mcframework.backends import TorchCPUBackend
+        
+        backend = TorchCPUBackend()
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+        
+        results = backend.run(sim, 5000, sim.seed_seq, None)
+        
+        assert len(results) == 5000
+        assert results.dtype == np.float64
+
+    def test_cpu_backend_with_progress_callback(self):
+        """TorchCPUBackend calls progress callback on completion."""
+        from mcframework.backends import TorchCPUBackend
+        
+        backend = TorchCPUBackend()
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+        
+        callback_calls = []
+        def progress_callback(completed, total):
+            callback_calls.append((completed, total))
+        
+        results = backend.run(sim, 1000, sim.seed_seq, progress_callback)
+        
+        # Callback should be called at completion
+        assert len(callback_calls) == 1
+        assert callback_calls[0] == (1000, 1000)
+        # Verify results are still valid
+        assert len(results) == 1000
+
+    def test_cpu_backend_rejects_unsupported_simulation(self):
+        """TorchCPUBackend raises ValueError for unsupported simulation."""
+        from mcframework.backends import TorchCPUBackend
+        
+        class UnsupportedSim(MonteCarloSimulation):
+            supports_batch = False
+            def single_simulation(self, _rng=None, **kwargs):
+                return 1.0
+        
+        backend = TorchCPUBackend()
+        sim = UnsupportedSim(name="Unsupported")
+        sim.set_seed(42)
+        
+        with pytest.raises(ValueError, match="does not support Torch batch execution"):
+            backend.run(sim, 100, sim.seed_seq, None)
+
+
+MPS_AVAILABLE = torch.backends.mps.is_available() and torch.backends.mps.is_built()
+
+
+@pytest.mark.skipif(not MPS_AVAILABLE, reason="MPS not available")
+class TestTorchMPSBackendDirect:
+    """[GPU-11] Direct tests for TorchMPSBackend class."""
+
+    def test_mps_backend_direct_instantiation(self):
+        """TorchMPSBackend can be instantiated directly."""
+        from mcframework.backends import TorchMPSBackend
+        
+        backend = TorchMPSBackend()
+        
+        assert backend.device_type == "mps"
+        assert backend.device == torch.device("mps")
+
+    def test_mps_backend_direct_run(self):
+        """TorchMPSBackend.run() works correctly."""
+        from mcframework.backends import TorchMPSBackend
+        
+        backend = TorchMPSBackend()
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+        
+        results = backend.run(sim, 5000, sim.seed_seq, None)
+        
+        assert len(results) == 5000
+        # Results should be float64 after conversion
+        assert results.dtype == np.float64
+
+    def test_mps_backend_with_progress_callback(self):
+        """TorchMPSBackend calls progress callback on completion."""
+        from mcframework.backends import TorchMPSBackend
+        
+        backend = TorchMPSBackend()
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+        
+        callback_calls = []
+        def progress_callback(completed, total):
+            callback_calls.append((completed, total))
+        
+        results = backend.run(sim, 1000, sim.seed_seq, progress_callback)
+        
+        # Callback should be called at completion
+        assert len(callback_calls) == 1
+        assert callback_calls[0] == (1000, 1000)
+        # Verify results are still valid
+        assert len(results) == 1000
+
+    def test_mps_backend_rejects_unsupported_simulation(self):
+        """TorchMPSBackend raises ValueError for unsupported simulation."""
+        from mcframework.backends import TorchMPSBackend
+        
+        class UnsupportedSim(MonteCarloSimulation):
+            supports_batch = False
+            def single_simulation(self, _rng=None, **kwargs):
+                return 1.0
+        
+        backend = TorchMPSBackend()
+        sim = UnsupportedSim(name="Unsupported")
+        sim.set_seed(42)
+        
+        with pytest.raises(ValueError, match="does not support Torch batch execution"):
+            backend.run(sim, 100, sim.seed_seq, None)
+
+
+class TestMPSAvailabilityCheck:
+    """[GPU-12] Test is_mps_available() function."""
+
+    def test_is_mps_available_returns_bool(self):
+        """is_mps_available() returns a boolean."""
+        from mcframework.backends import is_mps_available
+        
+        result = is_mps_available()
+        assert isinstance(result, bool)
+
+    def test_is_mps_available_matches_torch(self):
+        """is_mps_available() matches torch.backends.mps checks."""
+        from mcframework.backends import is_mps_available
+        
+        expected = (
+            torch.backends.mps.is_available() and 
+            torch.backends.mps.is_built()
+        )
+        assert is_mps_available() == expected
+
+
+class TestValidateTorchDevice:
+    """[GPU-13] Test validate_torch_device() function."""
+
+    def test_validate_cpu_always_passes(self):
+        """validate_torch_device('cpu') always succeeds."""
+        from mcframework.backends import validate_torch_device
+        
+        # Should not raise
+        validate_torch_device("cpu")
+
+    def test_validate_invalid_device_raises(self):
+        """validate_torch_device() raises ValueError for invalid device."""
+        from mcframework.backends import validate_torch_device
+        
+        with pytest.raises(ValueError, match="torch_device must be one of"):
+            validate_torch_device("invalid_device")
+
+    @pytest.mark.skipif(not MPS_AVAILABLE, reason="MPS not available")
+    def test_validate_mps_passes_when_available(self):
+        """validate_torch_device('mps') passes on Apple Silicon."""
+        from mcframework.backends import validate_torch_device
+        
+        # Should not raise on MPS-capable system
+        validate_torch_device("mps")
+
+
 class TestTorchDeviceValidation:
     """[GPU-07] Test device validation and error handling."""
 
@@ -414,8 +677,6 @@ class TestTorchDeviceValidation:
 # =============================================================================
 # MPS Backend Tests (Apple Silicon)
 # =============================================================================
-
-MPS_AVAILABLE = torch.backends.mps.is_available() and torch.backends.mps.is_built()
 
 
 @pytest.mark.skipif(not MPS_AVAILABLE, reason="MPS not available")
@@ -588,7 +849,6 @@ class TestCUDAValidationAndErrors:
         class NoSupportsBatch(MonteCarloSimulation):
             # Doesn't set supports_batch, inherits False from base class
             def single_simulation(self, _rng=None, **kwargs):
-                rng = self._rng(_rng, self.rng)
                 return 1.0
 
         sim = NoSupportsBatch(name="Invalid")
@@ -604,7 +864,6 @@ class TestCUDAValidationAndErrors:
             supports_batch = False  # Explicitly disabled
 
             def single_simulation(self, _rng=None, **kwargs):
-                rng = self._rng(_rng, self.rng)
                 return 1.0
 
         sim = ExplicitlyDisabled(name="Disabled")
@@ -619,7 +878,6 @@ class TestCUDAValidationAndErrors:
             supports_batch = True  # Claims support
 
             def single_simulation(self, _rng=None, **kwargs):
-                rng = self._rng(_rng, self.rng)
                 return 1.0
             # No torch_batch method (inherits base class version that raises NotImplementedError)
 
@@ -756,7 +1014,7 @@ class TestCUDAAdaptiveBatching:
         def callback(completed, total):
             progress_calls.append((completed, total))
 
-        result = sim.run(
+        sim.run(
             50_000,
             backend="torch",
             torch_device="cuda",
