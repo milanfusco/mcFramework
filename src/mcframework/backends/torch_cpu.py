@@ -83,7 +83,7 @@ class TorchCPUBackend:
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None = None,
-        **simulation_kwargs: Any,
+        **_simulation_kwargs: Any,
     ) -> np.ndarray:
         r"""
         Run simulations using Torch CPU batch execution.
@@ -99,7 +99,7 @@ class TorchCPUBackend:
             Seed sequence for reproducible random streams.
         progress_callback : callable or None
             Optional callback ``f(completed, total)`` for progress reporting.
-        **simulation_kwargs : Any
+        **_simulation_kwargs : Any
             Ignored for Torch backend (batch method handles all parameters).
 
         Returns
@@ -143,4 +143,3 @@ class TorchCPUBackend:
 
         # Convert to NumPy for stats engine compatibility
         return samples.numpy()
-

@@ -225,11 +225,11 @@ class TorchBackend:
             use_curand = device_kwargs.pop('use_curand', False)
             batch_size = device_kwargs.pop('batch_size', None)
             use_streams = device_kwargs.pop('use_streams', True)
-            
+
             # Warn about unused kwargs
             if device_kwargs:
                 logger.warning("Unused CUDA kwargs: %s", device_kwargs)
-            
+
             self._backend = TorchCUDABackend(
                 device_id=device_id,
                 use_curand=use_curand,

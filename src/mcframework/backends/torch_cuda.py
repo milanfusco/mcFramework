@@ -62,6 +62,7 @@ from .torch_base import import_torch, make_torch_generator
 
 if TYPE_CHECKING:
     import torch
+
     from ..simulation import MonteCarloSimulation
 
 logger = logging.getLogger(__name__)
@@ -243,7 +244,7 @@ class TorchCUDABackend:
         """
         validate_cuda_device(device_id)
         th = import_torch()
-        
+
         self.device_id = device_id
         self.device = th.device(f"cuda:{device_id}")
         self.use_curand = use_curand
@@ -253,7 +254,7 @@ class TorchCUDABackend:
         # Validate CuPy if cuRAND mode requested
         if use_curand:
             try:
-                import cupy as cp  # noqa: F401
+                import cupy as cp  # noqa: F401  # pylint: disable=import-outside-toplevel,import-error,unused-import
             except ImportError as e:
                 raise ImportError(
                     "cuRAND mode requires CuPy. Install with: pip install mcframework[cuda]"
@@ -323,10 +324,11 @@ class TorchCUDABackend:
         else:
             # Default mode requires torch_batch method to be overridden
             # Check if torch_batch is overridden from base class
+            # pylint: disable-next=import-outside-toplevel
             from ..simulation import MonteCarloSimulation
             base_torch_batch = MonteCarloSimulation.torch_batch
             sim_torch_batch = sim.__class__.torch_batch
-            
+
             if sim_torch_batch is base_torch_batch:
                 # Method is not overridden - using base class stub
                 raise NotImplementedError(
@@ -376,7 +378,7 @@ class TorchCUDABackend:
             Estimated optimal batch size, clamped to [1000, n_simulations].
         """
         th = import_torch()
-        
+
         # Query available memory
         free_mem, total_mem = self._estimate_available_memory()
         logger.debug(
@@ -392,9 +394,10 @@ class TorchCUDABackend:
         try:
             if self.use_curand:
                 # cuRAND probe
-                from .torch_base import _make_curand_generator  # noqa: F401
                 # Note: _make_curand_generator will be added to torch_base.py
+                # pylint: disable=import-outside-toplevel,import-error
                 import cupy as cp
+                from .torch_base import _make_curand_generator  # noqa: F401
                 cp.cuda.Device(self.device_id).use()
                 child_seed = seed_seq.spawn(1)[0] if seed_seq else None
                 if child_seed:
@@ -414,7 +417,7 @@ class TorchCUDABackend:
             mem_used = mem_after - mem_before
             per_sample_mem = mem_used / probe_size
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Probe run failed: %s. Using conservative batch size.", e)
             # Conservative fallback
             per_sample_mem = 1024  # 1KB per sample estimate
@@ -461,9 +464,9 @@ class TorchCUDABackend:
 
         if self.use_curand:
             # cuRAND path
-            import cupy as cp
+            import cupy as cp  # pylint: disable=import-outside-toplevel,import-error
             cp.cuda.Device(self.device_id).use()
-            
+
             # Create cuRAND generator from SeedSequence
             if seed_seq:
                 child_seed = seed_seq.spawn(1)[0]
@@ -517,7 +520,7 @@ class TorchCUDABackend:
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None = None,
-        **simulation_kwargs: Any,
+        **_simulation_kwargs: Any,
     ) -> np.ndarray:
         r"""
         Run simulations using Torch CUDA batch execution with adaptive batching.
@@ -534,7 +537,7 @@ class TorchCUDABackend:
             Seed sequence for reproducible random streams.
         progress_callback : callable or None
             Optional callback ``f(completed, total)`` for progress reporting.
-        **simulation_kwargs : Any
+        **_simulation_kwargs : Any
             Ignored for Torch backend (batch method handles all parameters).
 
         Returns
@@ -551,6 +554,8 @@ class TorchCUDABackend:
             If the simulation does not support batch execution.
         NotImplementedError
             If the simulation does not implement required batch method.
+        RuntimeError
+            If CUDA out-of-memory error occurs during execution.
 
         Notes
         -----
@@ -583,10 +588,10 @@ class TorchCUDABackend:
         # Single batch: fast path
         if n_simulations <= batch_size:
             samples = self._run_single_batch(sim, n_simulations, seed_seq)
-            
+
             if progress_callback:
                 progress_callback(n_simulations, n_simulations)
-            
+
             return samples.numpy()
 
         # Multiple batches: adaptive execution with progress tracking
@@ -608,7 +613,7 @@ class TorchCUDABackend:
                 # Execute batch
                 batch_samples = self._run_single_batch(sim, current_batch_size, batch_seed)
                 results_list.append(batch_samples)
-                
+
                 completed += current_batch_size
 
                 # Progress callback
