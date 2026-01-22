@@ -47,7 +47,7 @@ Estimate π using the Monte Carlo integration identity:
        n_simulations=50_000,
        n_points=10_000,        # Points per simulation
        antithetic=True,        # Variance reduction
-       parallel=True
+       backend="thread"
    )
    
    print(f"π ≈ {result.mean:.6f}")
@@ -86,7 +86,7 @@ where :math:`Z_k \sim \mathcal{N}(0, 1)` and :math:`\Delta t = 1/252` (daily ste
        volatility=0.20,         # 20% annual volatility
        years=20,                # Investment horizon
        use_gbm=True,            # GBM dynamics
-       parallel=True,
+       backend="thread",
        percentiles=(5, 25, 50, 75, 95)
    )
    
@@ -140,7 +140,7 @@ calculation via finite differences.
        sigma=0.25,            # 25% volatility
        option_type="call",
        exercise_type="european",
-       parallel=True
+       backend="thread"
    )
    
    print(f"Call Price: ${result.mean:.4f}")
@@ -155,7 +155,7 @@ calculation via finite differences.
        S0=100, K=100, T=1.0, r=0.05, sigma=0.20,
        option_type="call",
        exercise_type="european",
-       parallel=True
+       backend="thread"
    )
    
    print(f"Delta: {greeks['delta']:.4f}")   # ∂V/∂S
@@ -177,7 +177,7 @@ with polynomial basis regression for early exercise decisions.
        option_type="put",
        exercise_type="american",   # LSM algorithm
        n_steps=252,                # Daily time steps
-       parallel=True
+       backend="thread"
    )
 
 **Parameters:**
@@ -260,5 +260,6 @@ See Also
 --------
 
 - :doc:`core` — Base classes and framework
+- :doc:`backends` — Execution backends (sequential, parallel, GPU)
 - :doc:`stats_engine` — Statistical analysis of results
 - ``demos/gui/`` — Interactive Black-Scholes GUI application
