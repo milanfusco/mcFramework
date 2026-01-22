@@ -407,12 +407,13 @@ class TestTorchBackendFactory:
         from mcframework.backends import TorchBackend
         
         caplog.set_level("WARNING")
-        
-        # CPU backend should warn about unused kwargs
+        # CPU  backend should warn about unused kwargs
         backend = TorchBackend(device="cpu", some_unused_kwarg=True)
-        
-        assert "CPU backend ignores device kwargs" in caplog.text
+
+        assert "CPU backend ignores device_kwargs" in caplog.text
+        assert "some_unused_kwarg" in caplog.text
         assert backend.device_type == "cpu"
+        assert "some_unused_kwarg" not in backend.__dict__
 
     @pytest.mark.skipif(
         not (torch.backends.mps.is_available() and torch.backends.mps.is_built()),
@@ -427,7 +428,8 @@ class TestTorchBackendFactory:
         # MPS backend should warn about unused kwargs
         backend = TorchBackend(device="mps", some_unused_kwarg=True)
         
-        assert "MPS backend ignores device kwargs" in caplog.text
+        assert "MPS backend ignores device_kwargs" in caplog.text
+        assert "some_unused_kwarg" in caplog.text
         assert backend.device_type == "mps"
 
     def test_torch_backend_exposes_device(self):
