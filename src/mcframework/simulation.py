@@ -56,6 +56,7 @@ from .stats_engine import (
 from .stats_engine import percentiles as pct
 
 if TYPE_CHECKING:
+    import cupy
     import torch
 
     from .core import SimulationResult
@@ -104,8 +105,38 @@ class MonteCarloSimulation(ABC):
     _PARALLEL_THRESHOLD = 20_000
     # Number of chunks per worker for load balancing (ensures dynamic work distribution)
     _CHUNKS_PER_WORKER = 8
-    # Whether this simulation supports batch GPU execution (override in subclass)
-    supports_batch: bool = False
+
+    #: Whether this simulation supports batch GPU execution.
+    #: Override in subclass by setting ``supports_batch = True``.
+    _supports_batch: bool = False
+
+    @property
+    def supports_batch(self) -> bool:
+        """
+        Whether this simulation supports batch GPU execution.
+
+        Subclasses that implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` 
+        or :meth:`~mcframework.core.MonteCarloSimulation.cupy_batch`  should set this to 
+        ``True`` either as a class attribute or by setting ``self.supports_batch = True``.
+
+        Returns
+        -------
+        bool
+            ``True`` if the simulation supports vectorized Torch execution.
+
+        Examples
+        --------
+        >>> class MySim(MonteCarloSimulation):
+        ...     supports_batch = True  # Class-level override
+        ...     def torch_batch(self, n, *, device, generator):
+        ...         ...
+        """
+        # Check instance attribute first, then class attribute
+        return getattr(self, "_supports_batch", False)
+
+    @supports_batch.setter
+    def supports_batch(self, value: bool) -> None:
+        self._supports_batch = value
 
     @staticmethod
     def _rng(
@@ -238,8 +269,8 @@ class MonteCarloSimulation(ABC):
         the Torch backend. If not implemented, the framework will fall back to the
         NumPy backend.
 
-        Example
-        -------
+        Examples
+        --------
         >>> class PiSim(MonteCarloSimulation):
         ...     supports_batch = True
         ...     def torch_batch(self, n, *, device, generator):
@@ -248,6 +279,31 @@ class MonteCarloSimulation(ABC):
         ...         y = torch.rand(n, device=device, generator=generator)
         ...         inside = (x * x + y * y) <= 1.0
         ...         return 4.0 * inside.float()  # float32 for MPS compatibility
+        """
+        raise NotImplementedError
+
+    def cupy_batch(
+        self, n: int, *, device: "torch.device", rng: cupy.random.RandomState) -> "cupy.ndarray":
+        """
+        Optional vectorized cuRAND implementation using CuPy.
+
+        Override this method in subclasses to enable GPU-accelerated batch execution.
+        When implemented alongside ``supports_batch = True``, the framework will use
+        this method instead of repeated ``single_simulation`` calls.
+
+        Parameters
+        ----------
+        n : int
+            Number of simulation draws.
+        device : torch.device
+            Device to use for the simulation (``"cuda"``).
+        rng : cupy.random.RandomState
+            cuRAND generator for reproducible random sampling.
+
+        Returns
+        -------
+        cupy.ndarray
+            A 1D array of length ``n`` containing simulation results.
         """
         raise NotImplementedError
 
@@ -395,12 +451,16 @@ class MonteCarloSimulation(ABC):
         requested_percentiles = list(user_pcts)
         return percentile_map, requested_percentiles, True
 
-    def run(
+    def run(  # pylint: disable=too-many-arguments
         self,
         n_simulations: int,
         *,
         backend: str = "auto",
         torch_device: str = "cpu",
+        cuda_device_id: int = 0,
+        cuda_use_curand: bool = False,
+        cuda_batch_size: int | None = None,
+        cuda_use_streams: bool = True,
         parallel: bool | None = None,  # Deprecated, use backend instead
         n_workers: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
@@ -435,6 +495,17 @@ class MonteCarloSimulation(ABC):
             - ``"mps"`` — Apple Metal Performance Shaders (M1/M2/M3 Macs)
             - ``"cuda"`` — NVIDIA GPU acceleration
 
+        cuda_device_id : int, default 0
+            CUDA device index for multi-GPU systems. Only used when
+            ``backend="torch"`` and ``torch_device="cuda"``.
+        cuda_use_curand : bool, default False
+            Use cuRAND (via CuPy) instead of torch.Generator for maximum
+            GPU performance. Requires CuPy and ``curand_batch()`` implementation.
+        cuda_batch_size : int or None, default None
+            Fixed batch size for CUDA execution. If None, automatically
+            estimates optimal batch size based on available GPU memory.
+        cuda_use_streams : bool, default True
+            Use CUDA streams for overlapped execution. Recommended for performance.
         parallel : bool, optional
             **Deprecated.** Use ``backend`` instead. If provided, ``parallel=True`` maps to
             ``backend="auto"`` with parallel preference, ``parallel=False`` maps to
@@ -510,7 +581,12 @@ class MonteCarloSimulation(ABC):
         t0 = time.time()
         results = self._execute_with_backend(
             backend, n_simulations, n_workers, progress_callback,
-            torch_device=torch_device, **simulation_kwargs
+            torch_device=torch_device,
+            cuda_device_id=cuda_device_id,
+            cuda_use_curand=cuda_use_curand,
+            cuda_batch_size=cuda_batch_size,
+            cuda_use_streams=cuda_use_streams,
+            **simulation_kwargs,
         )
 
         exec_time = time.time() - t0
@@ -627,6 +703,10 @@ class MonteCarloSimulation(ABC):
         progress_callback: Callable[[int, int], None] | None,
         *,
         torch_device: str = "cpu",
+        cuda_device_id: int = 0,
+        cuda_use_curand: bool = False,
+        cuda_batch_size: int | None = None,
+        cuda_use_streams: bool = True,
         **simulation_kwargs: Any,
     ) -> np.ndarray:
         r"""
@@ -644,6 +724,14 @@ class MonteCarloSimulation(ABC):
             Progress reporting callback.
         torch_device : str, default ``"cpu"``
             Torch device type (``"cpu"``, ``"mps"``, ``"cuda"``). Only used for ``backend="torch"``.
+        cuda_device_id : int, default 0
+            CUDA device index. Only used when ``torch_device="cuda"``.
+        cuda_use_curand : bool, default False
+            Use cuRAND via CuPy. Only used when ``torch_device="cuda"``.
+        cuda_batch_size : int or None, default None
+            Fixed batch size for CUDA (None = adaptive). Only used when ``torch_device="cuda"``.
+        cuda_use_streams : bool, default True
+            Enable CUDA streams. Only used when ``torch_device="cuda"``.
         **simulation_kwargs : Any
             Arguments forwarded to ``single_simulation``.
 
@@ -665,7 +753,18 @@ class MonteCarloSimulation(ABC):
         # Early dispatch to Torch if explicitly requested
         if backend == "torch":
             from .backends import TorchBackend  # pylint: disable=import-outside-toplevel
-            torch_backend = TorchBackend(device=torch_device)
+
+            # Build device kwargs for CUDA
+            device_kwargs: dict[str, Any] = {}
+            if torch_device == "cuda":
+                device_kwargs = {
+                    "device_id": cuda_device_id,
+                    "use_curand": cuda_use_curand,
+                    "batch_size": cuda_batch_size,
+                    "use_streams": cuda_use_streams,
+                }
+
+            torch_backend = TorchBackend(device=torch_device, **device_kwargs)
             return torch_backend.run(self, n_simulations, self.seed_seq, progress_callback)
 
         # Resolve "auto" backend

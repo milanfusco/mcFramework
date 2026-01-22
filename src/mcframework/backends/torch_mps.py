@@ -109,26 +109,29 @@ class TorchMPSBackend:
     r"""
     Torch MPS batch execution backend for Apple Silicon GPUs.
 
-    Uses PyTorch's Metal Performance Shaders (MPS) backend for GPU-accelerated
-    execution on Apple Silicon Macs. Requires simulations to implement
-    :meth:`torch_batch` and set ``supports_batch = True``.
+    Uses PyTorch with MPS (Metal Performance Shaders) backend for GPU-accelerated
+    execution on Apple Silicon Macs and leverage unified memory architecture. 
+    Requires simulations to implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` and 
+    set :attr:`~mcframework.simulation.MonteCarloSimulation.supports_batch` to ``True`` to 
+    enable Metal Performance Shaders GPU-accelerated batch execution.
 
     Notes
     -----
-    **RNG architecture.** Uses explicit ``torch.Generator`` objects seeded from
-    :class:`numpy.random.SeedSequence` via ``spawn()``. This preserves:
+    **RNG architecture.** Uses explicit :class:`~torch.Generator` objects seeded from
+    :class:`~numpy.random.SeedSequence` via :meth:`~numpy.random.SeedSequence.spawn`. This preserves:
 
     - Deterministic parallel streams (best-effort on MPS)
     - Counter-based RNG (Philox) semantics
     - Correct statistical structure
 
-    **Never uses** ``torch.manual_seed()`` (global state).
+    **Never uses** :meth:`~torch.Generator.manual_seed` (global state).
 
-    **Dtype policy.** MPS performs best with float32:
+    **Dtype policy.** MPS performs best with :meth:`~torch.Tensor.float` (float32):
 
-    - Sampling uses float32 on device
-    - Results moved to CPU and promoted to float64
-    - Stats engine receives float64 for precision
+    - Sampling uses :meth:`~torch.Tensor.float` (float32) on device
+    - Results moved to CPU and promoted to :meth:`~torch.Tensor.double` (float64). 
+    - The framework converts the results to :class:`numpy.ndarray` of :class:`numpy.double` (float64)
+    for stats engine compatibility.
 
     **MPS determinism caveat.** Torch MPS preserves RNG stream structure but
     does not guarantee bitwise reproducibility due to:
@@ -138,7 +141,8 @@ class TorchMPSBackend:
     - GPU kernel execution order
 
     Statistical properties (mean, variance, CI coverage) remain correct
-    despite potential bitwise differences between runs.
+    despite potential bitwise differences between runs. (see ``TestMPSDeterminism`` 
+    in ``tests/test_torch_backend.py`` for actual tests)
 
     Examples
     --------
@@ -184,8 +188,9 @@ class TorchMPSBackend:
         Parameters
         ----------
         sim : MonteCarloSimulation
-            The simulation instance to run. Must have ``supports_batch = True``
-            and implement :meth:`torch_batch`.
+            The simulation instance to run. Must have 
+            :attr:`~mcframework.simulation.MonteCarloSimulation.supports_batch` = ``True``
+            and implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch`.
         n_simulations : int
             Number of simulation draws to perform.
         seed_seq : SeedSequence or None
@@ -206,19 +211,19 @@ class TorchMPSBackend:
         ValueError
             If the simulation does not support batch execution.
         NotImplementedError
-            If the simulation does not implement :meth:`torch_batch`.
+            If the simulation does not implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch`.
 
         Notes
         -----
         The dtype conversion flow is:
 
-        1. ``torch_batch()`` returns float32 tensor on MPS device
-        2. Tensor moved to CPU via ``.detach().cpu()``
-        3. Promoted to float64 via ``.to(torch.float64)``
-        4. Converted to NumPy array
+        1. :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` returns :meth:`~torch.Tensor.float` (float32) on MPS device.
+        2. :class:`~torch.Tensor` moved to CPU via :meth:`~torch.Tensor.detach` and :meth:`~torch.Tensor.cpu`
+        3. Promoted to :meth:`~torch.Tensor.double` (float64) via :meth:`~torch.Tensor.to`
+        4. Converted to :class:`~numpy.ndarray` of :class:`~numpy.double` (float64) via :meth:`~torch.Tensor.numpy`
 
         This ensures stats engine precision while maximizing MPS performance.
-        """
+        """# noqa: E501 pylint: disable=line-too-long
         th = import_torch()
 
         # Validate simulation supports batch execution

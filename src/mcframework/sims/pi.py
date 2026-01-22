@@ -44,14 +44,19 @@ class PiEstimationSimulation(MonteCarloSimulation):
     - **NumPy path**: Uses :meth:`single_simulation` with optional antithetic sampling.
     - **Torch path**: Uses :meth:`torch_batch` for GPU-accelerated batch execution.
 
-    Example
-    -------
+    Examples
+    --------
     >>> sim = PiEstimationSimulation()
     >>> sim.set_seed(42)
     >>> result = sim.run(100_000, backend="torch")  # GPU-ready  # doctest: +SKIP
     """
 
     supports_batch: bool = True
+    """
+    Set whether this simulation supports batch GPU execution.
+    Did you implement .torch_batch() or .cupy_batch()? If so, set to True.
+    """
+
 
     def __init__(self):
         super().__init__("Pi Estimation")

@@ -19,7 +19,7 @@ Utilities
 Device Support
     - ``cpu`` — Safe default, works everywhere
     - ``mps`` — Apple Metal Performance Shaders (M1/M2/M3/M4 Macs)
-    - ``cuda`` — NVIDIA GPU acceleration (stub implementation)
+    - ``cuda`` — NVIDIA Compute Unified Device Architecture (CUDA 12.x with CuPy for CuRAND)
 
 Notes
 -----
@@ -114,7 +114,7 @@ def validate_torch_device(device_type: str) -> None:
 
 class TorchBackend:
     r"""
-    Unified Torch backend that delegates to device-specific implementations.
+    Factory class that creates and wraps the appropriate device-specific backend.
 
     This is a factory class that creates and wraps the appropriate
     device-specific backend (:class:`TorchCPUBackend`, :class:`TorchMPSBackend`,
@@ -149,17 +149,17 @@ class TorchBackend:
     >>> backend = TorchBackend(device="mps")  # doctest: +SKIP
     >>> results = backend.run(sim, n_simulations=1000000, seed_seq=seed_seq)  # doctest: +SKIP
 
-    >>> # NVIDIA GPU (stub)
+    >>> # NVIDIA GPU (CUDA 12.x with CuPy for CuRAND)
     >>> backend = TorchBackend(device="cuda")  # doctest: +SKIP
 
     See Also
     --------
     :class:`TorchCPUBackend` : Direct CPU backend access.
     :class:`TorchMPSBackend` : Direct MPS backend access.
-    :class:`TorchCUDABackend` : Direct CUDA backend access (stub).
+    :class:`TorchCUDABackend` : Direct CUDA backend access.
     """
 
-    def __init__(self, device: str = "cpu", **device_kwargs):
+    def __init__(self, device: str = "cpu", **device_kwargs: Any):
         """
         Initialize Torch backend with specified device.
 
@@ -168,11 +168,13 @@ class TorchBackend:
         device : {"cpu", "mps", "cuda"}, default ``"cpu"``
             Torch device for computation.
         **device_kwargs : Any
-            Device-specific options. For CUDA:
-            
+            Device-specific configuration options:
+
+            **CUDA options** (ignored for cpu/mps):
+
             - ``device_id`` : int, default 0 — CUDA device index
-            - ``use_curand`` : bool, default False — Use cuRAND instead of torch.Generator
-            - ``batch_size`` : int or None, default None — Fixed batch size (None = adaptive)
+            - ``use_curand`` : bool, default False — Use cuRAND via CuPy
+            - ``batch_size`` : int or None — Fixed batch size (None = adaptive)
             - ``use_streams`` : bool, default True — Enable CUDA streams
 
         Raises
@@ -184,59 +186,68 @@ class TorchBackend:
         RuntimeError
             If the requested device is not available.
 
-        Notes
-        -----
-        CUDA-specific options are backend configuration parameters and do not
-        pollute the simulation layer. This maintains clean separation of concerns.
-
         Examples
         --------
-        >>> # Simple usage with defaults
+        >>> # CPU (no kwargs needed)
+        >>> backend = TorchBackend(device="cpu")  # doctest: +SKIP
+
+        >>> # MPS (no kwargs needed)
+        >>> backend = TorchBackend(device="mps")  # doctest: +SKIP
+
+        >>> # CUDA with default settings
         >>> backend = TorchBackend(device="cuda")  # doctest: +SKIP
 
-        >>> # Advanced CUDA configuration
+        >>> # CUDA with custom settings
         >>> backend = TorchBackend(
         ...     device="cuda",
         ...     device_id=0,
         ...     use_curand=True,
         ...     batch_size=100_000,
-        ...     use_streams=True
+        ...     use_streams=True,
         ... )  # doctest: +SKIP
         """
-        # Validate device before creating backend
+        # Check torch availability (optional dependency)
+        import importlib.util  # pylint: disable=import-outside-toplevel
+
+        if importlib.util.find_spec("torch") is None:
+            raise ImportError(
+                "Torch backend requires PyTorch. Install with: pip install mcframework[gpu]"
+            )
+
+        # Validate device type and availability
         validate_torch_device(device)
 
         self.device_type = device
 
-        # Create device-specific backend
+        # Create device-specific backend with appropriate kwargs
         if device == "cpu":
-            # CPU backend ignores device_kwargs
             if device_kwargs:
-                logger.warning("CPU backend ignores device kwargs: %s", device_kwargs)
+                logger.warning(
+                    "CPU backend ignores device_kwargs: %s", list(device_kwargs.keys())
+                )
             self._backend = TorchCPUBackend()
+
         elif device == "mps":
-            # MPS backend ignores device_kwargs
             if device_kwargs:
-                logger.warning("MPS backend ignores device kwargs: %s", device_kwargs)
+                logger.warning(
+                    "MPS backend ignores device_kwargs: %s", list(device_kwargs.keys())
+                )
             self._backend = TorchMPSBackend()
+
         elif device == "cuda":
             # Extract CUDA-specific kwargs
-            device_id = device_kwargs.pop('device_id', 0)
-            use_curand = device_kwargs.pop('use_curand', False)
-            batch_size = device_kwargs.pop('batch_size', None)
-            use_streams = device_kwargs.pop('use_streams', True)
+            cuda_kwargs = {
+                k: v for k, v in device_kwargs.items()
+                if k in ("device_id", "use_curand", "batch_size", "use_streams")
+            }
+            extra_kwargs = set(device_kwargs.keys()) - set(cuda_kwargs.keys())
+            if extra_kwargs:
+                logger.warning(
+                    "CUDA backend ignores unknown kwargs: %s", list(extra_kwargs)
+                )
+            self._backend = TorchCUDABackend(**cuda_kwargs)
 
-            # Warn about unused kwargs
-            if device_kwargs:
-                logger.warning("Unused CUDA kwargs: %s", device_kwargs)
-
-            self._backend = TorchCUDABackend(
-                device_id=device_id,
-                use_curand=use_curand,
-                batch_size=batch_size,
-                use_streams=use_streams,
-            )
-        else:
+        else:  # pragma: no cover
             # Should not reach here due to validation
             raise ValueError(f"Unknown device: {device}")
 
@@ -258,7 +269,7 @@ class TorchBackend:
         ----------
         sim : MonteCarloSimulation
             The simulation instance to run. Must have ``supports_batch = True``
-            and implement :meth:`torch_batch`.
+            and implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch`.
         n_simulations : int
             Number of simulation draws to perform.
         seed_seq : SeedSequence or None
@@ -266,19 +277,19 @@ class TorchBackend:
         progress_callback : callable or None
             Optional callback ``f(completed, total)`` for progress reporting.
         **simulation_kwargs : Any
-            Ignored for Torch backend (batch method handles all parameters).
+            Ignored for Torch backend (batch method handles all parameters). 
 
         Returns
         -------
         np.ndarray
-            Array of simulation results with shape ``(n_simulations,)``.
+            Array of simulation results with shape ``(n_simulations, ...)``.
 
         Raises
         ------
         ValueError
             If the simulation does not support batch execution.
         NotImplementedError
-            If the simulation does not implement :meth:`torch_batch`.
+            If the simulation does not implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch`.
         """
         return self._backend.run(
             sim, n_simulations, seed_seq, progress_callback, **simulation_kwargs

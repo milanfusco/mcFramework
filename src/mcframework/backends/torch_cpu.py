@@ -18,7 +18,7 @@ Notes
 - Debugging and validation
 - Small to medium simulation sizes
 
-**RNG discipline.** Uses explicit ``torch.Generator`` objects seeded from
+**RNG discipline.** Uses explicit :class:`torch.Generator` objects seeded from
 :class:`numpy.random.SeedSequence`. Fully deterministic with same seed.
 """
 
@@ -44,18 +44,19 @@ class TorchCPUBackend:
     Torch CPU batch execution backend.
 
     Uses PyTorch for vectorized execution on CPU. Requires simulations to
-    implement :meth:`torch_batch` and set ``supports_batch = True``.
+    implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` and
+    set :attr:`~mcframework.simulation.MonteCarloSimulation.supports_batch` to ``True``.
 
     Notes
     -----
-    **RNG architecture.** Uses explicit ``torch.Generator`` objects seeded from
-    :class:`numpy.random.SeedSequence` via ``spawn()``. This preserves:
+    **RNG architecture.** Uses explicit :class:`torch.Generator` objects seeded from
+    :meth:`numpy.random.SeedSequence.spawn`. This preserves:
 
     - Deterministic parallel streams
     - Counter-based RNG (Philox) semantics
     - Identical statistical structure across backends
 
-    **Never uses** ``torch.manual_seed()`` (global state).
+    **Never uses** :func:`torch.manual_seed` (global state).
 
     Examples
     --------
@@ -91,8 +92,9 @@ class TorchCPUBackend:
         Parameters
         ----------
         sim : MonteCarloSimulation
-            The simulation instance to run. Must have ``supports_batch = True``
-            and implement :meth:`torch_batch`.
+            The simulation instance to run. Must have 
+            :attr:`~mcframework.simulation.MonteCarloSimulation.supports_batch` = ``True``
+            and implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch`.
         n_simulations : int
             Number of simulation draws to perform.
         seed_seq : SeedSequence or None
@@ -105,14 +107,14 @@ class TorchCPUBackend:
         Returns
         -------
         np.ndarray
-            Array of simulation results with shape ``(n_simulations,)``.
+            Array of simulation results with shape ``(n_simulations, ...)``.
 
         Raises
         ------
         ValueError
             If the simulation does not support batch execution.
         NotImplementedError
-            If the simulation does not implement :meth:`torch_batch`.
+            If the simulation does not implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch`.
         """
         th = import_torch()
 

@@ -137,17 +137,19 @@ class TorchCUDABackend:
 
     CUDA backend with adaptive batch sizing, dual RNG modes,
     and native float64 support. Requires simulations to implement
-    :meth:`torch_batch` (or :meth:`curand_batch` for cuRAND mode) and set
-    ``supports_batch = True``.
+    :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` (or 
+    :meth:`~mcframework.core.MonteCarloSimulation.cupy_batch` for cuRAND mode) 
+    and set ``supports_batch = True``.
 
     Parameters
     ----------
     device_id : int, default 0
-        CUDA device index to use. Use ``torch.cuda.device_count()`` to
+        CUDA device index to use. Use :func:`torch.cuda.device_count` to
         check available devices.
     use_curand : bool, default False
         Use cuRAND (via CuPy) instead of torch.Generator for RNG.
-        Requires CuPy installation and simulation to implement ``curand_batch()``.
+        Requires CuPy installation and simulation to 
+        implement :meth:`~mcframework.core.MonteCarloSimulation.cupy_batch`.
     batch_size : int or None, default None
         Fixed batch size for simulation execution. If None, automatically
         estimates optimal batch size based on available GPU memory.
@@ -173,15 +175,17 @@ class TorchCUDABackend:
     -----
     **RNG architecture**: Uses explicit generators seeded from
     :class:`numpy.random.SeedSequence` via ``spawn()``. Never uses global
-    RNG state (``torch.manual_seed`` or ``cupy.random.seed``).
+    RNG state (:func:`torch.manual_seed` or :meth:`cupy.random.RandomState.seed`).
 
     **Adaptive batching**: When ``batch_size=None``, performs a probe run
     with 1000 samples to estimate memory requirements, then calculates
     optimal batch size to use ~75% of available GPU memory.
 
     **Native float64**: CUDA fully supports float64 tensors. If simulation's
-    ``torch_batch()`` returns float64, the backend uses it directly with
-    zero conversion overhead. If float32, converts on GPU before CPU transfer.
+    :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` or 
+    :meth:`~mcframework.core.MonteCarloSimulation.cupy_batch` returns float64, 
+    the backend uses it directly with zero conversion overhead. If float32, it 
+    converts to float64 on GPU before moving to CPU for stats engine compatibility.
 
     **CUDA streams**: When ``use_streams=True``, executes each batch in a
     dedicated stream for better GPU utilization and overlapped execution.
@@ -194,7 +198,7 @@ class TorchCUDABackend:
     ...     results = backend.run(sim, n_simulations=1_000_000, seed_seq=seed_seq)
     ... # doctest: +SKIP
 
-    >>> # High-performance configuration (fixed batching, cuRAND)
+    >>> # High-performance configuration (fixed batching, CuPy)
     >>> if is_cuda_available():
     ...     backend = TorchCUDABackend(
     ...         device_id=0,
@@ -397,6 +401,7 @@ class TorchCUDABackend:
                 # Note: _make_curand_generator will be added to torch_base.py
                 # pylint: disable=import-outside-toplevel,import-error
                 import cupy as cp
+
                 from .torch_base import _make_curand_generator  # noqa: F401
                 cp.cuda.Device(self.device_id).use()
                 child_seed = seed_seq.spawn(1)[0] if seed_seq else None
