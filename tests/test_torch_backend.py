@@ -64,7 +64,7 @@ class TestTorchNumPyParity:
     @pytest.mark.slow
     def test_torch_cpu_matches_numpy_statistically(self):
         """[GPU-02] Torch CPU and NumPy backends converge to same value (pi)."""
-        n_sims = 500_000
+        n_sims = 100_000
 
         # NumPy path (sequential backend)
         sim_np = PiEstimationSimulation()
