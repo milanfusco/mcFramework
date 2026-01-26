@@ -12,6 +12,8 @@ import os
 import sys
 from datetime import datetime
 
+import sphinx_autosummary_accessors
+
 # -- Import the package to document ----------------------------------------------
 sys.path.insert(0, os.path.abspath("../../src"))
 
@@ -80,7 +82,10 @@ extensions = [
     "numpydoc",
     "myst_parser",
     "sphinx.ext.doctest",
-    
+
+    # Custom extensions
+    "sphinx_autosummary_accessors",
+
     # UX polish
     "sphinx_copybutton",
     "sphinx_design",
@@ -100,9 +105,48 @@ nitpick_ignore = [
     ("py:mod", "mcframework.stats_engine"),
     ("py:mod", "mcframework.sims"),
     ("py:mod", "mcframework.utils"),
+    ("py:mod", "mcframework.backends"),
+    ("py:mod", "mcframework.simulation"),
     # Metric is a Protocol, not a regular class
     ("py:class", "mcframework.stats_engine.Metric"),
     ("py:obj", "mcframework.stats_engine.Metric"),
+    # Torch types (may not be installed)
+    ("py:class", "torch.device"),
+    ("py:class", "torch.Generator"),
+    ("py:class", "torch.Tensor"),
+    # Backend classes (lazily imported, may not resolve)
+    ("py:class", "ExecutionBackend"),
+    ("py:class", "SequentialBackend"),
+    ("py:class", "ThreadBackend"),
+    ("py:class", "ProcessBackend"),
+    ("py:class", "TorchBackend"),
+    ("py:class", "TorchCPUBackend"),
+    ("py:class", "TorchMPSBackend"),
+    ("py:class", "TorchCUDABackend"),
+    ("py:class", "mcframework.backends.ExecutionBackend"),
+    ("py:obj", "mcframework.backends.ExecutionBackend"),
+    ("py:obj", "mcframework.backends.SequentialBackend"),
+    ("py:obj", "mcframework.backends.ThreadBackend"),
+    ("py:obj", "mcframework.backends.ProcessBackend"),
+    ("py:obj", "mcframework.backends.TorchBackend"),
+    ("py:obj", "mcframework.backends.TorchCPUBackend"),
+    ("py:obj", "mcframework.backends.TorchMPSBackend"),
+    ("py:obj", "mcframework.backends.TorchCUDABackend"),
+    ("py:obj", "mcframework.backends.make_blocks"),
+    ("py:obj", "mcframework.backends.worker_run_chunk"),
+    ("py:obj", "mcframework.backends.is_windows_platform"),
+    ("py:obj", "mcframework.backends.validate_torch_device"),
+    ("py:obj", "mcframework.backends.make_torch_generator"),
+    ("py:obj", "mcframework.backends.is_mps_available"),
+    ("py:obj", "mcframework.backends.is_cuda_available"),
+    ("py:meth", "torch_batch"),
+    ("py:meth", "mcframework.simulation.MonteCarloSimulation.torch_batch"),
+    ("py:attr", "mcframework.simulation.MonteCarloSimulation.supports_batch"),
+    ("py:class", "np.random.SeedSequence"),
+    ("py:class", "np.ndarray"),
+    ("py:meth", "curand_batch"),
+    ("py:meth", "MonteCarloSimulation.single_simulation"),
+    ("py:data", "VALID_TORCH_DEVICES"),
 ]
 
 # Ignore attribute/method references to dataclass fields (slots don't expose as attrs)
@@ -119,7 +163,7 @@ nitpick_ignore_regex = [
     (r"py:meth", r"^alpha$"),
 ]
 
-templates_path = ['_templates']
+templates_path = ["_templates", sphinx_autosummary_accessors.templates_path]
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 
@@ -185,6 +229,7 @@ numpydoc_xref_aliases = {
     "Simulations": "mcframework.sims",
     "Utils": "mcframework.utils",
     "Core": "mcframework.core",
+    "Backends": "mcframework.backends",
     "StatsEngineModule": "mcframework.stats_engine",
     "SimulationResult": "mcframework.core.SimulationResult",
     "MonteCarloSimulation": "mcframework.core.MonteCarloSimulation",
@@ -197,10 +242,42 @@ numpydoc_xref_aliases = {
     "CIMethod": "mcframework.stats_engine.CIMethod",
     "NanPolicy": "mcframework.stats_engine.NanPolicy",
     "BootstrapMethod": "mcframework.stats_engine.BootstrapMethod",
+
+    # important mcframework methods and attributes
+    "supports_batch": "mcframework.simulation.MonteCarloSimulation.supports_batch",
+    "single_simulation": "mcframework.core.MonteCarloSimulation.single_simulation",
+    "torch_batch": "mcframework.core.MonteCarloSimulation.torch_batch",
+    "cupy_batch": "mcframework.core.MonteCarloSimulation.cupy_batch",
+    "set_seed": "mcframework.core.MonteCarloSimulation.set_seed",
+    "run": "mcframework.core.MonteCarloSimulation.run",
+
+    # Backend classes
+    "ExecutionBackend": "mcframework.backends.ExecutionBackend",
+    "SequentialBackend": "mcframework.backends.SequentialBackend",
+    "ThreadBackend": "mcframework.backends.ThreadBackend",
+    "ProcessBackend": "mcframework.backends.ProcessBackend",
+    "TorchBackend": "mcframework.backends.TorchBackend",
+    "TorchCPUBackend": "mcframework.backends.TorchCPUBackend",
+    "TorchMPSBackend": "mcframework.backends.TorchMPSBackend",
+    "TorchCUDABackend": "mcframework.backends.TorchCUDABackend",
     # NumPy types
     "ndarray": "numpy.ndarray",
     "Generator": "numpy.random.Generator",
     "SeedSequence": "numpy.random.SeedSequence",
+    "spawn": "numpy.random.SeedSequence.spawn",
+    # Torch types
+    "torch.cuda.device_count": "torch.cuda.device_count",
+    "torch.device": "torch.device",
+    "torch.Generator": "torch.Generator",
+    "torch.Generator.manual_seed": "torch.Generator.manual_seed",
+    "torch.Tensor": "torch.Tensor",
+    "torch.Tensor.float": "torch.Tensor.float",
+    "torch.Tensor.double": "torch.Tensor.double",
+    # CuPy types
+    "cupy.ndarray": "cupy.ndarray",
+    "cupy.random.RandomState": "cupy.random.RandomState",
+    "cupy.random.RandomState.seed": "cupy.random.RandomState.seed",
+    "cupy.random.RandomState.spawn": "cupy.random.RandomState.spawn",
     # Python builtins (via intersphinx)
     "int": ":py:class:`int`",
     "float": ":py:class:`float`",
@@ -210,6 +287,7 @@ numpydoc_xref_aliases = {
     "list": ":py:class:`list`",
     "tuple": ":py:class:`tuple`",
     "None": ":py:obj:`None`",
+    "Any": ":py:obj:`Any`",
 }
 
 # -- MyST (Markdown) ------------------------------------------------------------
@@ -226,7 +304,7 @@ myst_fence_as_directive = ["mermaid"]  # Render ```mermaid blocks as Mermaid dia
 # -- Mermaid configuration ------------------------------------------------------
 mermaid_version = "11.12"  # Use a recent stable version
 mermaid_params = ["-p", "puppeteer-config.json"]
-mermaid_d3_zoom = "true"  # sphinxcontrib-mermaid expects string, not bool
+mermaid_d3_zoom = True  # Enable d3 zoom for mermaid diagrams
 mermaid_include_elk = "0.1.4"  # ELK layout version (separate package from Mermaid)
 mermaid_fullscreen = True
 mermaid_include_mindmap = True
@@ -262,6 +340,8 @@ intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    "torch": ("https://docs.pytorch.org/docs/stable/", None),
+    "cupy": ("https://docs.cupy.dev/en/stable/", None),
 }
 
 # -- Copybutton (skip prompts in code blocks) -----------------------------------
@@ -282,6 +362,16 @@ from mcframework.core import (
     SimulationResult,
     MonteCarloFramework,
     make_blocks,
+)
+
+# Backends (non-Torch, always available)
+from mcframework.backends import (
+    ExecutionBackend,
+    SequentialBackend,
+    ThreadBackend,
+    ProcessBackend,
+    make_blocks,
+    is_windows_platform,
 )
 
 # Stats engine

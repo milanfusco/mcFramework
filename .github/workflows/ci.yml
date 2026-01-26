@@ -55,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[test]"
+          pip install -e ".[test,gpu]"
       
       - name: Run tests with coverage
         run: |
@@ -69,6 +69,27 @@ jobs:
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: false
+
+  test-gpu:
+    name: Test GPU Backends (MPS)
+    runs-on: macos-latest  # Apple Silicon M1/M2 - supports MPS
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies with GPU support
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test,gpu]"
+      
+      - name: Run Torch backend tests
+        run: |
+          pytest tests/test_torch_backend.py -v --tb=short
 
   test-multiplatform:
     name: Test on ${{ matrix.os }}
@@ -91,7 +112,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[test]"
+          pip install -e ".[test,gpu]"
       
       - name: Run tests
         run: |

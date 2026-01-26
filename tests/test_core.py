@@ -1,3 +1,10 @@
+"""
+Tests for the mcframework.core module.
+
+Fuctional requirements (FR), Non-functional requirements (NFR), and Usability requirements (USA)
+can be found at https://milanfusco.github.io/mcFramework/PROJECT_PLAN.html.
+"""
+
 import numpy as np
 import pytest
 
@@ -137,7 +144,7 @@ class TestMonteCarloSimulation:
         simple_simulation.set_seed(42)
         result = simple_simulation.run(
             100,
-            parallel=False,
+            backend="sequential",
             compute_stats=False,
         )
         assert result.n_simulations == 100
@@ -153,7 +160,7 @@ class TestMonteCarloSimulation:
 
         simple_simulation.run(
             50,
-            parallel=False,
+            backend="sequential",
             progress_callback=callback,
             compute_stats=False,
         )
@@ -165,7 +172,7 @@ class TestMonteCarloSimulation:
         """[FR-5, FR-10] Test custom percentiles are computed."""
         result = simple_simulation.run(
             100,
-            parallel=False,
+            backend="sequential",
             percentiles=[10, 90],
             compute_stats=False,
         )
@@ -176,7 +183,7 @@ class TestMonteCarloSimulation:
         """[FR-8, FR-9] Test running with stats engine computes mean and std."""
         result = simple_simulation.run(
             100,
-            parallel=False,
+            backend="sequential",
             compute_stats=True,
             confidence=0.95,
             eps=0.05,
@@ -192,7 +199,7 @@ class TestMonteCarloSimulation:
         simple_simulation.set_seed(42)
         result = simple_simulation.run(
             100,
-            parallel=True,
+            backend="auto",
             n_workers=2,
             compute_stats=False,
         )
@@ -202,10 +209,10 @@ class TestMonteCarloSimulation:
     def test_run_sequential_vs_parallel_reproducibility(self, simple_simulation):
         """[FR-4, NFR-3] Test sequential and parallel give same results with same seed."""
         simple_simulation.set_seed(42)
-        seq_result = simple_simulation.run(100, parallel=False, compute_stats=False)
+        seq_result = simple_simulation.run(100, backend="sequential", compute_stats=False)
 
         simple_simulation.set_seed(42)
-        par_result = simple_simulation.run(100, parallel=True, n_workers=2, compute_stats=False)
+        par_result = simple_simulation.run(100, backend="auto", n_workers=2, compute_stats=False)
 
         # Means should be very close
         assert pytest.approx(seq_result.mean, abs=0.5) == par_result.mean
@@ -232,7 +239,7 @@ class TestMonteCarloSimulation:
 
     def test_deterministic_results(self, deterministic_simulation):
         """[NFR-3] Test deterministic simulation produces expected sequence."""
-        result = deterministic_simulation.run(5, parallel=False, compute_stats=False)
+        result = deterministic_simulation.run(5, backend="sequential", compute_stats=False)
         expected = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
         np.testing.assert_array_equal(result.results, expected)
 
@@ -258,11 +265,76 @@ class TestMonteCarloSimulation:
         with pytest.raises(ValueError, match="ci_method must be one of"):
             simple_simulation.run(5, ci_method="invalid")
 
+    def test_run_rejects_invalid_backend(self, simple_simulation):
+        """[USA-4] Invalid backend should raise."""
+        with pytest.raises(ValueError, match="backend must be one of"):
+            simple_simulation.run(5, backend="invalid_backend")
+
+    def test_run_torch_backend_requires_supports_batch(self, simple_simulation):
+        """[GPU-1] Torch backend requires supports_batch=True and torch_batch implementation."""
+        # SimpleSim doesn't have supports_batch=True, so it should raise
+        with pytest.raises(ValueError, match="does not support Torch batch"):
+            simple_simulation.run(5, backend="torch")
+
+    def test_deprecated_parallel_parameter_warns(self, simple_simulation):
+        """[DEPRECATION] Using parallel= should emit DeprecationWarning."""
+        import warnings
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = simple_simulation.run(5, parallel=False, compute_stats=False)
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "parallel" in str(w[0].message)
+            assert result.n_simulations == 5
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = simple_simulation.run(5, parallel=True, compute_stats=False)
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert result.n_simulations == 5
+
+    def test_deprecated_parallel_with_explicit_backend_uses_backend(self, simple_simulation):
+        """[DEPRECATION] When both parallel and backend provided, backend wins."""
+        import warnings
+
+        # When user provides both, the explicit backend should be used
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            # parallel=True would normally map to "auto", but backend="sequential" is explicit
+            result = simple_simulation.run(
+                5,
+                parallel=True,
+                backend="sequential",
+                compute_stats=False
+            )
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            # Warning should mention that parallel is ignored
+            assert "ignored" in str(w[0].message).lower()
+            assert "backend='sequential'" in str(w[0].message)
+            assert result.n_simulations == 5
+
+        # Same for parallel=False with explicit backend="thread"
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = simple_simulation.run(
+                5,
+                parallel=False,
+                backend="thread",
+                compute_stats=False
+            )
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "ignored" in str(w[0].message).lower()
+            assert result.n_simulations == 5
+
     def test_run_handles_invalid_extra_context(self, simple_simulation):
         """[NFR-4] Extra context with invalid keys should fall back to defaults."""
         result = simple_simulation.run(
             10,
-            parallel=False,
+            backend="sequential",
             extra_context={"unexpected": "value"},
         )
         assert result.n_simulations == 10
@@ -270,7 +342,7 @@ class TestMonteCarloSimulation:
 
     def test_resolve_parallel_backend_unknown_value_defaults(self, simple_simulation):
         """[NFR-7] Unknown backend values should coerce to auto/thread."""
-        simple_simulation.parallel_backend = "unknown"
+        simple_simulation.backend = "unknown"
         backend = simple_simulation._resolve_parallel_backend()
         assert backend in {"thread", "process"}
 
@@ -344,7 +416,7 @@ class TestComputePercentilesBlock:
         def fake_pct(arr, ctx):
             return np.percentile(arr, list(ctx.requested_percentiles))
 
-        monkeypatch.setattr("mcframework.core.pct", fake_pct)
+        monkeypatch.setattr("mcframework.simulation.pct", fake_pct)
 
         block = MonteCarloSimulation._compute_percentiles_block(results, ctx)
 
@@ -360,7 +432,7 @@ class TestComputePercentilesBlock:
         def bad_pct(arr, ctx):  # pragma: no cover - failure path
             return [float(np.percentile(arr, 10))]
 
-        monkeypatch.setattr("mcframework.core.pct", bad_pct)
+        monkeypatch.setattr("mcframework.simulation.pct", bad_pct)
 
         with pytest.raises(ValueError, match="must return as many values"):
             MonteCarloSimulation._compute_percentiles_block(results, ctx)
@@ -387,7 +459,7 @@ class TestMonteCarloFramework:
     def test_run_simulation(self, framework, simple_simulation):
         """[FR-6] Test running registered simulation."""
         framework.register_simulation(simple_simulation)
-        result = framework.run_simulation("TestSim", 50, parallel=False)
+        result = framework.run_simulation("TestSim", 50, backend="sequential")
         assert result.n_simulations == 50
         assert "TestSim" in framework.results
 
@@ -404,8 +476,8 @@ class TestMonteCarloFramework:
         framework.register_simulation(sim1, "Sim1")
         framework.register_simulation(sim2, "Sim2")
 
-        framework.run_simulation("Sim1", 100, parallel=False, mean=5.0)
-        framework.run_simulation("Sim2", 100, parallel=False, mean=10.0)
+        framework.run_simulation("Sim1", 100, backend="sequential", mean=5.0)
+        framework.run_simulation("Sim2", 100, backend="sequential", mean=10.0)
 
         comparison = framework.compare_results(["Sim1", "Sim2"], metric="mean")
         assert "Sim1" in comparison
@@ -415,7 +487,7 @@ class TestMonteCarloFramework:
     def test_compare_results_std(self, framework, simple_simulation):
         """[FR-7] Test comparing results by std."""
         framework.register_simulation(simple_simulation)
-        framework.run_simulation("TestSim", 100, parallel=False)
+        framework.run_simulation("TestSim", 100, backend="sequential")
 
         comparison = framework.compare_results(["TestSim"], metric="std")
         assert "TestSim" in comparison
@@ -424,7 +496,7 @@ class TestMonteCarloFramework:
     def test_compare_results_percentile(self, framework, simple_simulation):
         """[FR-7] Test comparing results by percentile."""
         framework.register_simulation(simple_simulation)
-        framework.run_simulation("TestSim", 100, parallel=False, percentiles=[50])
+        framework.run_simulation("TestSim", 100, backend="sequential", percentiles=[50])
 
         comparison = framework.compare_results(["TestSim"], metric="p50")
         assert "TestSim" in comparison
@@ -437,7 +509,7 @@ class TestMonteCarloFramework:
     def test_compare_results_invalid_metric(self, framework, simple_simulation):
         """[FR-7, USA-4] Test error on invalid metric."""
         framework.register_simulation(simple_simulation)
-        framework.run_simulation("TestSim", 50, parallel=False)
+        framework.run_simulation("TestSim", 50, backend="sequential")
 
         with pytest.raises(ValueError, match="Unknown metric"):
             framework.compare_results(["TestSim"], metric="invalid")
@@ -455,7 +527,7 @@ class TestMonteCarloFramework:
             "TestSim",
             100,
             n_points=5000,
-            parallel=False,
+            backend="sequential",
             percentiles=[25, 75],
             compute_stats=False,
         )
@@ -484,7 +556,7 @@ class TestMonteCarloFramework:
             # Run with stats engine (which provides percentiles)
             result = sim.run(
                 100,
-                parallel=False,
+                backend="sequential",
                 n_points=5000,
                 percentiles=[5, 10, 50, 95],  # User requests 10
                 compute_stats=True,  # Engine adds 5, 25, 50, 75, 95
@@ -505,7 +577,7 @@ class TestMetadataFields:
 
         result = sim.run(
             100,
-            parallel=False,
+            backend="sequential",
             n_points=5000,
             percentiles=[10, 20, 30],
             compute_stats=False,
@@ -522,7 +594,7 @@ class TestMetadataFields:
 
         result = sim.run(
             100,
-            parallel=False,
+            backend="sequential",
             n_points=5000,
             percentiles=[10],
             compute_stats=True,  # Use engine
@@ -539,7 +611,7 @@ class TestMetadataFields:
 
         result = sim.run(
             100,
-            parallel=False,
+            backend="sequential",
             n_points=5000,
             percentiles=None,  # No percentiles
             compute_stats=False,
@@ -557,11 +629,10 @@ class TestParallelBackend:
         """[FR-3, NFR-7] Test explicit thread backend selection."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
-        sim.parallel_backend = "thread"  # Explicitly set to thread
 
         result = sim.run(
             25000,
-            parallel=True,
+            backend="thread",  # Explicitly set to thread
             n_workers=2,
             n_points=1000,
             compute_stats=False,
@@ -573,11 +644,10 @@ class TestParallelBackend:
         """[FR-3, NFR-7] Test explicit process backend selection."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
-        sim.parallel_backend = "process"  # Force process backend
 
         result = sim.run(
             25000,
-            parallel=True,
+            backend="process",  # Force process backend
             n_workers=2,
             n_points=1000,
             compute_stats=False,
@@ -589,11 +659,10 @@ class TestParallelBackend:
         """[FR-3, NFR-7] Test auto backend defaults to threads."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
-        sim.parallel_backend = "auto"  # Should use threads
 
         result = sim.run(
             25000,
-            parallel=True,
+            backend="auto",  # Should use threads
             n_workers=2,
             n_points=1000,
             compute_stats=False,
@@ -610,10 +679,10 @@ class TestParallelFallback:
         sim = PiEstimationSimulation()
         sim.set_seed(42)
 
-        # With n_simulations < 20,000, should use sequential even with parallel=True
+        # With n_simulations < 20,000, should use sequential even with backend="auto"
         result = sim.run(
             5000,  # Less than 20,000
-            parallel=True,
+            backend="auto",
             n_workers=4,
             n_points=1000,
             compute_stats=False,
@@ -629,7 +698,7 @@ class TestParallelFallback:
 
         result = sim.run(
             50000,  # Large enough but n_workers=1
-            parallel=True,
+            backend="auto",
             n_workers=1,
             n_points=1000,
             compute_stats=False,
@@ -642,22 +711,34 @@ class TestThreadBackendExecution:
     """[FR-3, NFR-7] Ensure thread backend is actually used in some tests."""
 
     def test_default_backend_is_auto(self):
-        """[USA-2, NFR-7] Test that default parallel_backend is 'auto'."""
+        """[USA-2, NFR-7] Test that default backend is 'auto'."""
         sim = PiEstimationSimulation()
 
         # Check default value
-        assert hasattr(sim, "parallel_backend")
-        assert sim.parallel_backend == "auto"
+        assert hasattr(sim, "backend")
+        assert sim.backend == "auto"
+
+    def test_parallel_backend_legacy_alias(self):
+        """[COMPAT] Test parallel_backend legacy alias works bidirectionally."""
+        sim = PiEstimationSimulation()
+
+        # Getter: parallel_backend should reflect backend
+        assert sim.parallel_backend == sim.backend == "auto"
+
+        # Setter: setting parallel_backend should update backend
+        sim.parallel_backend = "thread"
+        assert sim.backend == "thread"
+        assert sim.parallel_backend == "thread"
 
     def test_thread_backend_with_large_job(self):
         """[FR-3] Test thread backend with job large enough to avoid fallback."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
-        sim.parallel_backend = "thread"
+        sim.backend = "thread"
 
         result = sim.run(
             30000,  # Well above 20,000 the threshold
-            parallel=True,
+            backend="thread",
             n_workers=2,
             n_points=500,
             compute_stats=False,
@@ -676,7 +757,7 @@ class TestSeedSequenceGeneration:
 
         result = sim.run(
             25000,  # Must be >= 20,000 to avoid fallback
-            parallel=True,
+            backend="auto",
             n_workers=2,
             n_points=1000,
             compute_stats=False,
@@ -707,13 +788,12 @@ class TestKeyboardInterruptHandling:
 
         sim = InterruptingSimulation()
         sim.set_seed(42)
-        sim.parallel_backend = "thread"  # Use threads to avoid process issues
 
         # Should raise KeyboardInterrupt
         with pytest.raises(KeyboardInterrupt):
             sim.run(
                 50000,  # Large enough to ensure parallel execution
-                parallel=True,
+                backend="thread",  # Use threads to avoid process issues
                 n_workers=2,
                 compute_stats=False,
             )
@@ -729,7 +809,7 @@ class TestAdditionalEdgeCases:
 
         result = sim.run(
             50,
-            parallel=False,
+            backend="sequential",
             n_points=1000,
             percentiles=None,  # No percentiles requested
             compute_stats=False,  # No stats engine
@@ -746,7 +826,7 @@ class TestAdditionalEdgeCases:
 
         result = sim.run(
             50,
-            parallel=False,
+            backend="sequential",
             n_points=1000,
             percentiles=[],  # Explicit empty list
             compute_stats=False,
@@ -762,7 +842,7 @@ class TestAdditionalEdgeCases:
 
         result = sim.run(
             100000,  # Large number to test block creation
-            parallel=True,
+            backend="auto",
             n_workers=4,
             n_points=500,
             compute_stats=False,
@@ -778,7 +858,7 @@ class TestAdditionalEdgeCases:
 
         fw.register_simulation(sim)
         fw.run_simulation(
-            "Pi Estimation", 100, n_points=5000, parallel=False, percentiles=[50], compute_stats=True
+            "Pi Estimation", 100, n_points=5000, backend="sequential", percentiles=[50], compute_stats=True
         )
 
         # Test all metric types
@@ -812,7 +892,7 @@ def test_compute_stats_with_none_engine():
     sim.set_seed(42)
     
     # Patch DEFAULT_ENGINE to be None
-    with patch('mcframework.core.DEFAULT_ENGINE', None):
+    with patch('mcframework.simulation.DEFAULT_ENGINE', None):
         stats, percentiles = sim._compute_stats_with_engine(
             results=np.array([1.0, 2.0, 3.0]),
             n_simulations=3,
@@ -825,5 +905,99 @@ def test_compute_stats_with_none_engine():
         assert percentiles == {}
 
 
+def test_resolve_backend_type_explicit_thread():
+    """[NFR-7] Test _resolve_backend_type returns 'thread' when explicitly set."""
+    from mcframework.core import MonteCarloSimulation
+
+    class SimpleSim(MonteCarloSimulation):
+        def single_simulation(self, _rng=None):
+            return 1.0
+
+    sim = SimpleSim()
+    sim.backend = "thread"
+    # Explicit thread backend should return "thread" directly
+    assert sim._resolve_backend_type() == "thread"
+
+
+def test_resolve_backend_type_explicit_process():
+    """[NFR-7] Test _resolve_backend_type returns 'process' when explicitly set."""
+    from mcframework.core import MonteCarloSimulation
+
+    class SimpleSim(MonteCarloSimulation):
+        def single_simulation(self, _rng=None):
+            return 1.0
+
+    sim = SimpleSim()
+    sim.backend = "process"
+    # Explicit process backend should return "process" directly
+    assert sim._resolve_backend_type() == "process"
+
+
+def test_run_with_backend_auto_large_job():
+    """[NFR-7] Test that backend='auto' resolves to parallel for large jobs."""
+    from mcframework.core import MonteCarloSimulation
+
+    class SimpleSim(MonteCarloSimulation):
+        def single_simulation(self, _rng=None):
+            rng = self._rng(_rng, self.rng)
+            return float(rng.random())
+
+    sim = SimpleSim()
+    sim.set_seed(42)
+    # Run with enough simulations to exceed _PARALLEL_THRESHOLD (20,000)
+    result = sim.run(25000, backend="auto", n_workers=2, compute_stats=False)
+    assert result.n_simulations == 25000
+
+
+def test_resolve_backend_unknown_backend_warning():
+    """[NFR-7] Test _resolve_backend warns and defaults to auto for unknown backends."""
+    from mcframework.backends.parallel import ProcessBackend, ThreadBackend
+    from mcframework.core import MonteCarloSimulation
+
+    class SimpleSim(MonteCarloSimulation):
+        def single_simulation(self, _rng=None):
+            return 1.0
+
+    sim = SimpleSim()
+    sim.backend = "invalid_backend"  # Unknown backend
+
+    # Unknown backend should log a warning and default to auto (thread on non-Windows)
+    backend = sim._create_parallel_backend(n_workers=2)
+    # Should return either ThreadBackend or ProcessBackend (depending on platform)
+    assert isinstance(backend, (ThreadBackend, ProcessBackend))
+
+
+def test_resolve_backend_auto_on_windows(monkeypatch):
+    """[NFR-7] Test _resolve_backend returns ProcessBackend when auto on Windows."""
+    from mcframework.backends.parallel import ProcessBackend
+    from mcframework.core import MonteCarloSimulation
+
+    class SimpleSim(MonteCarloSimulation):
+        def single_simulation(self, _rng=None):
+            return 1.0
+
+    sim = SimpleSim()
+    sim.backend = "auto"
+
+    # Mock Windows platform
+    monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: True)
+
+    backend = sim._create_parallel_backend(n_workers=2)
+    assert isinstance(backend, ProcessBackend)
+
+
+def test_process_backend_prepare_blocks_without_seed():
+    """[NFR-7] Test ProcessBackend._prepare_blocks generates random seeds when seed_seq is None."""
+    from mcframework.backends.parallel import ProcessBackend
+
+    backend = ProcessBackend(n_workers=2)
+    blocks, child_seqs = backend._prepare_blocks(100, seed_seq=None)
+
+    # Should generate random seed sequences
+    assert len(blocks) > 0
+    assert len(child_seqs) == len(blocks)
+    # All should be SeedSequence instances
+    import numpy as np
+    assert all(isinstance(s, np.random.SeedSequence) for s in child_seqs)
 
 

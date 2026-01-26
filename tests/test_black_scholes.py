@@ -405,7 +405,7 @@ class TestCalculateGreeks:
             sigma=0.20,
             option_type="call",
             exercise_type="european",
-            parallel=True,
+            backend="auto",
         )
 
         assert all(isinstance(greeks[k], float) for k in greeks.keys())
@@ -542,7 +542,7 @@ class TestBlackScholesPathSimulation:
         sim = BlackScholesPathSimulation()
         sim.set_seed(42)
 
-        result = sim.run(10000, S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252, parallel=True)
+        result = sim.run(10000, S0=100.0, r=0.05, sigma=0.20, T=1.0, n_steps=252, backend="auto")
 
         assert result.n_simulations == 10000
         assert result.execution_time > 0

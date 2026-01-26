@@ -177,15 +177,15 @@ System Requirements
    * - SR-1
      - The system shall require Python ≥ 3.10, NumPy ≥ 1.24, SciPy ≥ 1.10
    * - SR-2
-     - The system shall use ``SeedSequence.spawn()`` to create independent RNG streams per worker
+     - The system shall use :meth:`~numpy.random.SeedSequence.spawn` to create independent RNG streams per worker
    * - SR-3
-     - The system shall use ``numpy.random.Philox`` as the bit generator for parallel reproducibility
+     - The system shall use :class:`~numpy.random.Philox` as the bit generator for parallel reproducibility
    * - SR-4
-     - The system shall select ``ThreadPoolExecutor`` on POSIX and ``ProcessPoolExecutor`` on Windows by default
+     - The system shall select :class:`~concurrent.futures.ThreadPoolExecutor` on POSIX and :class:`~concurrent.futures.ProcessPoolExecutor` on Windows by default
    * - SR-5
      - The system shall fall back to sequential execution for n < 20,000 simulations
    * - SR-6
-     - The system shall compute confidence intervals using ``scipy.stats.norm`` and ``scipy.stats.t``
+     - The system shall compute confidence intervals using :data:`scipy.stats.norm` and :data:`scipy.stats.t`
    * - SR-7
      - The system shall support bootstrap resampling with configurable ``n_bootstrap`` (default 10,000)
    * - SR-8
@@ -278,7 +278,7 @@ System Requirements
      - Execute simulations in parallel via ``_run_parallel()`` with thread/process backends
      - ``core.py``
    * - FR-4
-     - Spawn independent RNG streams per worker chunk using ``SeedSequence``
+     - Spawn independent RNG streams per worker chunk using :class:`~numpy.random.SeedSequence`
      - ``core.py``
    * - FR-5
      - Return results in ``SimulationResult`` dataclass with mean, std, percentiles, stats, metadata

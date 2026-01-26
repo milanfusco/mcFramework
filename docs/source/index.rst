@@ -11,23 +11,34 @@ mcframework
 
    .. grid-item-card:: Deterministic & Reproducible
       
-      Parallel execution with SeedSequence spawning ensures identical results 
-      regardless of worker scheduling or system load.
+      Parallel execution with :class:`~numpy.random.SeedSequence` spawning ensures 
+      identical results regardless of worker scheduling or system load.
 
    .. grid-item-card:: Parallel by Design
       
       Automatic backend selection (threads vs processes) optimized per platform.
       NumPy's GIL-releasing RNGs enable efficient thread-based parallelism.
 
+   .. grid-item-card:: GPU Accelerated
+      
+      Optional `PyTorch <https://docs.pytorch.org/docs>`_ backends for massive speedups: Torch CPU,
+      Apple `MPS <https://developer.apple.com/documentation/metalperformanceshaders>`_ (M1/M2/M3), and NVIDIA `CUDA <https://docs.nvidia.com/cuda/>`_ with adaptive batching.
+
    .. grid-item-card:: Rich Statistics Engine
       
-      Built-in metrics: mean, std, percentiles, skew, kurtosis, and multiple 
-      CI methods (z, t, bootstrap, Chebyshev).
+      Built-in metrics: :meth:`~mcframework.stats_engine.mean`, :meth:`~mcframework.stats_engine.std`, :meth:`~mcframework.stats_engine.percentiles`, :meth:`~mcframework.stats_engine.skew`, :meth:`~mcframework.stats_engine.kurtosis`, :meth:`~mcframework.stats_engine.ci_mean`, and multiple 
+      CI methods (:meth:`~mcframework.stats_engine.ci_mean`, :meth:`~mcframework.stats_engine.ci_mean_bootstrap`, :meth:`~mcframework.stats_engine.ci_mean_chebyshev`).
 
    .. grid-item-card:: Extensible Architecture
       
-      Simple base class design—just implement ``single_simulation()`` and 
-      the framework handles parallelism, statistics, and result management.
+      Simple base class design—implement :meth:`~mcframework.core.MonteCarloSimulation.single_simulation` for scalar execution
+      or :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` for hardware-accelerated vectorized tensor operations. The framework
+      handles execution, statistics, and result management.
+
+   .. grid-item-card:: Multiple Execution Backends
+      
+      Choose from :class:`~mcframework.backends.SequentialBackend`, :class:`~mcframework.backends.ThreadBackend`, :class:`~mcframework.backends.ProcessBackend`, or :class:`~mcframework.backends.TorchBackend` backends. Each backend
+      supports progress callbacks and respects reproducible seeding.
 
 Quick Example
 -------------
@@ -43,7 +54,7 @@ Quick Example
    # Register with framework and run
    fw = MonteCarloFramework()
    fw.register_simulation(sim)
-   result = fw.run_simulation("Pi Estimation", n_simulations=50_000, parallel=True)
+   result = fw.run_simulation("Pi Estimation", n_simulations=50_000, backend="thread")
 
    # Access results
    print(f"π ≈ {result.mean:.6f}")
@@ -54,6 +65,15 @@ Quick Example
 
    π ≈ 3.141592
    95% CI: [3.140821, 3.142363]
+
+**GPU-Accelerated Example (17,000x faster):**
+
+.. code-block:: python
+
+   # Same simulation, GPU backend
+   result = sim.run(1_000_000, backend="torch", torch_device="mps")  # Apple Silicon
+   # result = sim.run(1_000_000, backend="torch", torch_device="cuda")  # NVIDIA GPU
+   print(f"π ≈ {result.mean:.6f} (computed in {result.execution_time:.3f}s)")
 
 
 Installation
@@ -77,46 +97,17 @@ Installation
 
 .. code-block:: bash
 
-   # All dependencies (dev, test, docs, gui)
-   pip install -e ".[dev,test,docs,gui]"
+   # GPU acceleration (PyTorch)
+   pip install mcframework[gpu]
+
+   # All dependencies (dev, test, docs, gui, gpu)
+   pip install -e ".[dev,test,docs,gui,gpu]"
 
    # Just testing
    pip install -e ".[test]"
 
    # GUI application (PySide6)
    pip install -e ".[gui]"
-
-
-Architecture Overview
----------------------
-
-The framework is organized into four main components:
-
-.. code-block:: text
-
-   ┌─────────────────────────────────────────────────────────────┐
-   │                    MonteCarloFramework                      │
-   │         (Registry for managing multiple simulations)        │
-   └─────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-   ┌─────────────────────────────────────────────────────────────┐
-   │                   MonteCarloSimulation                      │
-   │   • single_simulation() - implement your logic here         │
-   │   • run() - sequential or parallel execution                │
-   │   • set_seed() - reproducible RNG via SeedSequence          │
-   └─────────────────────────────────────────────────────────────┘
-                                │
-              ┌─────────────────┴─────────────────┐
-              ▼                                   ▼
-   ┌─────────────────────┐            ┌─────────────────────────┐
-   │    StatsEngine      │            │    SimulationResult     │
-   │  • mean, std        │            │  • results array        │
-   │  • percentiles      │            │  • mean, std            │
-   │  • ci_mean (z/t)    │            │  • percentiles          │
-   │  • bootstrap CI     │            │  • stats dict           │
-   │  • Chebyshev CI     │            │  • metadata             │
-   └─────────────────────┘            └─────────────────────────┘
 
 
 Built-in Simulations
@@ -167,20 +158,41 @@ Creating your own simulation requires just one method:
    print(f"Expected sum of 3d6: {result.mean:.2f}")  # ~10.5
 
 
-Cross-Platform Parallelism
---------------------------
+Execution Backends
+------------------
 
-The ``parallel_backend`` setting controls execution strategy:
+The ``backend`` parameter controls execution strategy:
 
-- **"auto"** (default): Threads on POSIX (NumPy releases GIL), processes on Windows
-- **"thread"**: Force thread-based parallelism
-- **"process"**: Force process-based parallelism (uses spawn context)
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Backend
+     - Description
+   * - ``"auto"``
+     - Sequential for small jobs, parallel (thread/process) for large jobs
+   * - ``"sequential"``
+     - Single-threaded execution
+   * - ``"thread"``
+     - Thread-based parallelism (best when NumPy releases GIL)
+   * - ``"process"``
+     - Process-based parallelism (required on Windows for true parallelism)
+   * - ``"torch"``
+     - GPU-accelerated batch execution (requires ``supports_batch = True``)
 
 .. code-block:: python
 
    sim = PiEstimationSimulation()
-   sim.parallel_backend = "thread"  # Override default
-   result = sim.run(100_000, parallel=True, n_workers=8)
+   sim.set_seed(42)
+
+   # CPU backends
+   result = sim.run(100_000, backend="thread", n_workers=8)
+   result = sim.run(100_000, backend="process", n_workers=4)
+
+   # GPU backends (requires pip install mcframework[gpu])
+   result = sim.run(1_000_000, backend="torch", torch_device="cpu")   # Vectorized CPU
+   result = sim.run(1_000_000, backend="torch", torch_device="mps")   # Apple Silicon
+   result = sim.run(1_000_000, backend="torch", torch_device="cuda")  # NVIDIA GPU
 
 
 .. toctree::
@@ -201,6 +213,7 @@ The ``parallel_backend`` setting controls execution strategy:
    :caption: API Reference
 
    api/_modules/core
+   api/_modules/backends
    api/_modules/stats_engine
    api/_modules/sims
    api/_modules/utils

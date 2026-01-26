@@ -3,6 +3,7 @@ README.md
 pyproject.toml
 src/mcframework/__init__.py
 src/mcframework/core.py
+src/mcframework/simulation.py
 src/mcframework/stats_engine.py
 src/mcframework/utils.py
 src/mcframework.egg-info/PKG-INFO
@@ -10,6 +11,15 @@ src/mcframework.egg-info/SOURCES.txt
 src/mcframework.egg-info/dependency_links.txt
 src/mcframework.egg-info/requires.txt
 src/mcframework.egg-info/top_level.txt
+src/mcframework/backends/__init__.py
+src/mcframework/backends/base.py
+src/mcframework/backends/parallel.py
+src/mcframework/backends/sequential.py
+src/mcframework/backends/torch.py
+src/mcframework/backends/torch_base.py
+src/mcframework/backends/torch_cpu.py
+src/mcframework/backends/torch_cuda.py
+src/mcframework/backends/torch_mps.py
 src/mcframework/sims/__init__.py
 src/mcframework/sims/black_scholes.py
 src/mcframework/sims/pi.py
@@ -28,4 +38,5 @@ tests/test_regression.py
 tests/test_sims.py
 tests/test_stats_engine.py
 tests/test_stats_engine_edge_cases.py
+tests/test_torch_backend.py
 tests/test_utils.py

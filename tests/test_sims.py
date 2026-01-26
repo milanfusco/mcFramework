@@ -44,7 +44,7 @@ class TestPiEstimationSimulation:
         """[FR-20] Test full Pi estimation run."""
         sim = PiEstimationSimulation()
         sim.set_seed(42)
-        result = sim.run(100, parallel=False, n_points=5000, compute_stats=False)
+        result = sim.run(100, backend="sequential", n_points=5000, compute_stats=False)
 
         # Mean should be close to pi
         assert pytest.approx(result.mean, abs=0.1) == np.pi
@@ -76,7 +76,7 @@ class TestPortfolioSimulation:
         sim.set_seed(42)
         result = sim.run(
             1000,
-            parallel=False,
+            backend="sequential",
             initial_value=10000,
             annual_return=0.10,
             volatility=0.1,
@@ -105,7 +105,7 @@ class TestPortfolioSimulation:
         sim.set_seed(42)
         result = sim.run(
             10,
-            parallel=False,
+            backend="sequential",
             initial_value=10000,
             annual_return=0.05,
             volatility=0.0,

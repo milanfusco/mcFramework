@@ -18,7 +18,7 @@ class TestIntegration:
             "Pi Estimation",
             1000,
             n_points=10000,
-            parallel=False,
+            backend="sequential",
             confidence=0.95,
             extra_context={"target": float(np.pi), "eps": 0.01}
         )
@@ -47,7 +47,7 @@ class TestIntegration:
             annual_return=0.07,
             volatility=0.2,
             years=10,
-            parallel=False,
+            backend="sequential",
             percentiles=[5, 95],
             eps=0.05,
         )
@@ -72,9 +72,9 @@ class TestIntegration:
         fw.register_simulation(port_sim)
 
         # Run both
-        fw.run_simulation("Pi Estimation", 100, n_points=5000, parallel=False)
+        fw.run_simulation("Pi Estimation", 100, n_points=5000, backend="sequential")
         fw.run_simulation("Portfolio Simulation", 100,
-                          initial_value=10000, parallel=False)
+                          initial_value=10000, backend="sequential")
 
         # Compare means
         comparison = fw.compare_results(
@@ -93,7 +93,7 @@ class TestIntegration:
         results = []
         for _ in range(3):
             sim.set_seed(42)
-            result = sim.run(200, parallel=True, n_workers=2,
+            result = sim.run(200, backend="auto", n_workers=2,
                              n_points=5000, compute_stats=False)
             results.append(result.mean)
 
@@ -107,7 +107,7 @@ class TestIntegration:
 
         result = sim.run(
             10000,
-            parallel=True,
+            backend="auto",
             n_workers=2,
             n_points=1000,
             compute_stats=True,
@@ -135,7 +135,7 @@ class TestIntegration:
         sim.set_seed(42)
 
         fw.register_simulation(sim)
-        result = fw.run_simulation("Exponential", 1000, rate=2.0, parallel=False)
+        result = fw.run_simulation("Exponential", 1000, rate=2.0, backend="sequential")
 
         # Exponential with rate=2 has mean=0.5
         assert pytest.approx(result.mean, abs=0.1) == 0.5
@@ -146,8 +146,8 @@ class TestIntegration:
         sim.set_seed(42)
 
         # Test with different n_points
-        result1 = sim.run(50, n_points=100, parallel=False, compute_stats=False)
-        result2 = sim.run(50, n_points=100000, parallel=False, compute_stats=False)
+        result1 = sim.run(50, n_points=100, backend="sequential", compute_stats=False)
+        result2 = sim.run(50, n_points=100000, backend="sequential", compute_stats=False)
 
         # More points should give better estimate
         error1 = abs(result1.mean - np.pi)

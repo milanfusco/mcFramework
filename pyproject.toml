@@ -15,7 +15,7 @@ classifiers = [
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
-    "numpy>=1.24",
+    "numpy>=1.26",
     "matplotlib>=3.7",
     "scipy>=1.10",
 ]
@@ -30,9 +30,10 @@ dev = [
     "ruff>=0.6",
 ]
 docs = [
-    "sphinx>=7.2",
+    "sphinx>=7.2,<9.0",  # <9.0 for sphinx-autosummary-accessors compatibility
     "pydata-sphinx-theme>=0.15",
     "myst-parser>=2.0", # Markdown support
+    "sphinx-autosummary-accessors>=2025.3.1",
     "sphinx-autodoc-typehints>=2.0",
     "sphinx-copybutton>=0.5",
     "sphinx-design>=0.6",
@@ -46,9 +47,16 @@ test = [
     "pytest-cov>=4.0",
     "coverage>=7.2",
 ]
+gpu = [
+    "torch>=2.9.1",
+]
+cuda = [
+    "torch>=2.9.1",
+    "cupy-cuda12x>=12.0.0",  # CUDA 12.x support for cuRAND backend
+]
 gui = [
     "PySide6>=6.5",
-    "yfinance>=0.2",
+    "yfinance>=1.0",
 ]
 
 
