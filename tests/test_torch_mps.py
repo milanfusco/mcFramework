@@ -16,7 +16,6 @@ import torch
 from mcframework.core import MonteCarloSimulation
 from mcframework.sims import PiEstimationSimulation
 
-
 MPS_AVAILABLE = torch.backends.mps.is_available() and torch.backends.mps.is_built()
 
 

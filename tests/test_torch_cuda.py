@@ -19,7 +19,6 @@ import torch
 from mcframework.core import MonteCarloSimulation
 from mcframework.sims import PiEstimationSimulation
 
-
 CUDA_AVAILABLE = torch.cuda.is_available()
 
 
