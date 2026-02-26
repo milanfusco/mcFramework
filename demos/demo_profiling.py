@@ -58,9 +58,11 @@ def demo_custom_config():
     
     profiled_backend = ProfiledTorchBackend(base_backend, config=config)
     
+    # Note: Using 5M simulations to avoid OOM on typical machines.
+    # ProfiledTorchBackend concatenates all results into memory. 
     results = profiled_backend.run(
         sim,
-        n_simulations=500_000_000,  # Larger simulation
+        n_simulations=5_000_000,
         seed_seq=np.random.SeedSequence(123)
     )
     
@@ -82,7 +84,10 @@ def demo_compare_devices():
     
     sim = PiEstimationSimulation()
     sim.set_seed(42)
-    n_sims = 500_000_000
+    
+    # Note: Using 5M simulations to avoid OOM on typical machines.
+    # ProfiledTorchBackend concatenates all results into memory.
+    n_sims = 5_000_000
     
     # Profile CPU
     print("\nProfiling CPU backend...")
