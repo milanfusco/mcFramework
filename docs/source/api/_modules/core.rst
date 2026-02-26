@@ -27,10 +27,10 @@ Quick Start
 
    sim = DiceSim(name="2d6")
    sim.set_seed(42)
-   result = sim.run(50_000, parallel=True)
+   result = sim.run(50_000, backend="thread")
 
    print(f"Mean: {result.mean:.2f}")          # ~7.0
-   print(f"95% CI: {result.stats['ci_mean']}") 
+   print(f"95% CI: {result.stats['ci_mean']}")
 
 ----
 
@@ -105,6 +105,18 @@ Abstract base class for defining simulations. Subclass and implement
 
    MonteCarloSimulation
 
+**Key Attributes:**
+
+.. currentmodule:: mcframework.simulation
+
+.. autosummary::
+   :toctree: generated
+   :template: autosummary/accessor_attribute.rst
+
+   MonteCarloSimulation.supports_batch
+
+.. currentmodule:: mcframework.core
+
 **Key Methods:**
 
 .. list-table::
@@ -115,12 +127,16 @@ Abstract base class for defining simulations. Subclass and implement
      - Description
    * - ``single_simulation(**kwargs)``
      - **Abstract.** Implement to define your simulation logic. Return a ``float``.
-   * - ``run(n, parallel=False, ...)``
+   * - ``run(n, backend="auto", ...)``
      - Execute ``n`` simulations and return :class:`SimulationResult`.
    * - ``set_seed(seed)``
      - Initialize RNG with a seed for reproducibility.
    * - ``_rng(rng, default)``
      - Helper to select thread-local RNG inside ``single_simulation``.
+   * - ``torch_batch(n, device, generator)``
+     - **Optional.** Vectorized Torch implementation for GPU acceleration.
+   * - ``supports_batch``
+     - **Class attribute.** Set to ``True`` to enable Torch batch execution.
 
 **Example Implementation:**
 
@@ -140,7 +156,7 @@ Abstract base class for defining simulations. Subclass and implement
 
    sim = PiEstimator(name="Pi")
    sim.set_seed(42)
-   result = sim.run(1000, parallel=True)
+   result = sim.run(1000, backend="thread")
    print(f"π ≈ {result.mean:.6f}")
 
 
@@ -166,7 +182,7 @@ Registry and runner for managing multiple simulations.
    framework.register_simulation(sim2)
 
    # Run simulations
-   res1 = framework.run_simulation("Sim1", 10_000, parallel=True)
+   res1 = framework.run_simulation("Sim1", 10_000, backend="thread")
    res2 = framework.run_simulation("Sim2", 10_000)
 
    # Compare results
@@ -175,10 +191,10 @@ Registry and runner for managing multiple simulations.
 
 ----
 
-Parallel Execution
+Execution Backends
 ------------------
 
-The framework supports two parallel backends:
+The framework supports multiple execution backends via the ``backend`` parameter:
 
 .. list-table::
    :header-rows: 1
@@ -187,25 +203,37 @@ The framework supports two parallel backends:
    * - Backend
      - Description
      - Best For
+   * - **sequential**
+     - Single-threaded execution
+     - Debugging, small jobs (< 20K)
    * - **thread**
-     - ``ThreadPoolExecutor``
+     - :class:`~concurrent.futures.ThreadPoolExecutor`
      - NumPy-heavy code (releases GIL)
    * - **process**
-     - ``ProcessPoolExecutor`` with spawn
+     - :class:`~concurrent.futures.ProcessPoolExecutor` with spawn
      - Python-bound code, Windows
+   * - **torch**
+     - GPU-accelerated batch execution
+     - Large jobs (100K+), GPU available
 
 **Auto Selection:**
 
+- **Small jobs (< 20K):** Sequential execution
 - **POSIX (macOS/Linux):** Defaults to threads (NumPy releases GIL)
 - **Windows:** Defaults to processes (threads serialize under GIL)
 
 .. code-block:: python
 
-   sim.parallel_backend = "thread"   # Force threads
-   sim.parallel_backend = "process"  # Force processes  
-   sim.parallel_backend = "auto"     # Platform default
+   # Explicit backend selection
+   result = sim.run(100_000, backend="sequential")  # Single-threaded
+   result = sim.run(100_000, backend="thread", n_workers=8)
+   result = sim.run(100_000, backend="process", n_workers=4)
+   result = sim.run(100_000, backend="auto")  # Platform default
 
-   result = sim.run(100_000, parallel=True, n_workers=8)
+   # GPU backends (requires pip install mcframework[gpu])
+   result = sim.run(1_000_000, backend="torch", torch_device="cpu")
+   result = sim.run(1_000_000, backend="torch", torch_device="mps")   # Apple Silicon
+   result = sim.run(1_000_000, backend="torch", torch_device="cuda")  # NVIDIA GPU
 
 ----
 
@@ -217,15 +245,18 @@ Reproducible results via NumPy's :class:`~numpy.random.SeedSequence`:
 .. code-block:: python
 
    sim.set_seed(42)
-   result1 = sim.run(10_000, parallel=True)
+   result1 = sim.run(10_000, backend="thread")
 
    sim.set_seed(42)
-   result2 = sim.run(10_000, parallel=True)
+   result2 = sim.run(10_000, backend="thread")
 
    assert np.allclose(result1.results, result2.results)  # Identical!
 
-Each parallel worker receives an independent child sequence via ``SeedSequence.spawn()``,
+Each parallel worker receives an independent child sequence via :meth:`~numpy.random.SeedSequence.spawn`,
 ensuring deterministic streams regardless of scheduling order.
+
+For GPU backends, explicit :class:`~torch.Generator` objects are seeded from the same
+:class:`~numpy.random.SeedSequence`, preserving reproducibility across CPU and GPU execution.
 
 ----
 
@@ -252,6 +283,7 @@ Functions
 See Also
 --------
 
+- :doc:`backends` — Execution backends (sequential, parallel, GPU)
 - :doc:`stats_engine` — Statistical metrics and confidence intervals
 - :doc:`sims` — Built-in simulation implementations (Pi, Portfolio, Black-Scholes)
 - :doc:`utils` — Critical value utilities

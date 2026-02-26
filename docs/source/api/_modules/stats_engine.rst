@@ -98,7 +98,7 @@ See :class:`StatsContext` for full attribute documentation with examples.
      - Bootstrap method: "percentile" or "bca"
    * - ``rng``
      - None
-     - Seed or Generator for reproducibility
+     - Seed or :class:`~numpy.random.Generator` for reproducibility
 
 **Helper Properties:**
 

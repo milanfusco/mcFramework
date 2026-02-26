@@ -265,7 +265,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
         option_type: str = "call",
         exercise_type: str = "european",
         n_steps: int = 252,
-        parallel: bool = False,
+        backend: str = "sequential",
         bump_pct: float = 0.01,
         time_bump_days: float = 1.0,
     ) -> dict[str, float]:
@@ -285,7 +285,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
 
         self.set_seed(42)
         res_base = self.run(
-            n_simulations, S0=S0, parallel=parallel, compute_stats=False,
+            n_simulations, S0=S0, backend=backend, compute_stats=False,
             **sim_kwargs,  # type: ignore[arg-type]
         )
         V0 = res_base.mean
@@ -293,12 +293,12 @@ class BlackScholesSimulation(MonteCarloSimulation):
         dS = S0 * bump_pct
         self.set_seed(42)
         res_up = self.run(
-            n_simulations, S0=S0 + dS, parallel=parallel, compute_stats=False,
+            n_simulations, S0=S0 + dS, backend=backend, compute_stats=False,
             **sim_kwargs,  # type: ignore[arg-type]
         )
         self.set_seed(42)
         res_down = self.run(
-            n_simulations, S0=S0 - dS, parallel=parallel, compute_stats=False,
+            n_simulations, S0=S0 - dS, backend=backend, compute_stats=False,
             **sim_kwargs,  # type: ignore[arg-type]
         )
         delta = (res_up.mean - res_down.mean) / (2 * dS)
@@ -309,7 +309,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
         res_vol_up = self.run(
             n_simulations,
             S0=S0,
-            parallel=parallel,
+            backend=backend,
             compute_stats=False,
             sigma=sigma + dsigma,
             **{k: v for k, v in sim_kwargs.items() if k != "sigma"},  # type: ignore[arg-type]
@@ -318,7 +318,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
         res_vol_down = self.run(
             n_simulations,
             S0=S0,
-            parallel=parallel,
+            backend=backend,
             compute_stats=False,
             sigma=sigma - dsigma,
             **{k: v for k, v in sim_kwargs.items() if k != "sigma"},  # type: ignore[arg-type]
@@ -331,7 +331,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
             res_time = self.run(
                 n_simulations,
                 S0=S0,
-                parallel=parallel,
+                backend=backend,
                 compute_stats=False,
                 T=T - dT,
                 **{k: v for k, v in sim_kwargs.items() if k != "T"},  # type: ignore[arg-type]
@@ -345,7 +345,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
         res_rate_up = self.run(
             n_simulations,
             S0=S0,
-            parallel=parallel,
+            backend=backend,
             compute_stats=False,
             r=r + dr,
             **{k: v for k, v in sim_kwargs.items() if k != "r"},  # type: ignore[arg-type]
@@ -354,7 +354,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
         res_rate_down = self.run(
             n_simulations,
             S0=S0,
-            parallel=parallel,
+            backend=backend,
             compute_stats=False,
             r=r - dr,
             **{k: v for k, v in sim_kwargs.items() if k != "r"},  # type: ignore[arg-type]

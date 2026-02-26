@@ -12,7 +12,7 @@ class TestEdgeCases:
 
     def test_single_simulation_run(self, simple_simulation):
         """[NFR-4] Test running exactly one simulation."""
-        result = simple_simulation.run(1, parallel=False, compute_stats=False)
+        result = simple_simulation.run(1, backend="sequential", compute_stats=False)
         assert result.n_simulations == 1
         assert len(result.results) == 1
         assert result.std == 0.0  # Only one value
@@ -44,7 +44,7 @@ class TestEdgeCases:
             annual_return=-0.5,
             volatility=1.0,
             years=10,
-            parallel=False,
+            backend="sequential",
             compute_stats=False
         )
         # Mean should be much lower than initial
@@ -76,7 +76,7 @@ class TestEdgeCases:
         """[FR-10, NFR-4] Test running with no percentiles."""
         result = simple_simulation.run(
             100,
-            parallel=False,
+            backend="sequential",
             percentiles=[],
             compute_stats=False
         )
@@ -87,7 +87,7 @@ class TestEdgeCases:
         """[FR-10, NFR-4] Test duplicate percentiles are handled."""
         result = simple_simulation.run(
             100,
-            parallel=False,
+            backend="sequential",
             percentiles=[50, 50, 50],
             compute_stats=False
         )
@@ -116,7 +116,7 @@ class TestErrorHandling:
     def test_invalid_percentile_metric_comparison(self, framework, simple_simulation):
         """[FR-7, USA-4] Test requesting non-computed percentile."""
         framework.register_simulation(simple_simulation)
-        framework.run_simulation("TestSim", 100, percentiles=[25, 75], parallel=False)
+        framework.run_simulation("TestSim", 100, percentiles=[25, 75], backend="sequential")
 
         with pytest.raises(ValueError, match="Percentile .* not computed"):
             framework.compare_results(["TestSim"], metric="p50")
@@ -140,7 +140,7 @@ class TestErrorHandling:
         # Should not crash, falls back to baseline stats
         result = simple_simulation.run(
             100,
-            parallel=False,
+            backend="sequential",
             compute_stats=True,
             stats_engine=failing_engine
         )

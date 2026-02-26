@@ -57,3 +57,13 @@ class TestDistributionFreeMetrics:
         result = mse_to_target(data, ctx)
         assert result is not None
         assert result >= 0  # MSE is always non-negative
+
+    def test_bias_to_target_empty_data_after_cleaning(self):
+        """[NFR-4] Test bias_to_target raises InsufficientDataError with empty data after cleaning."""
+        from mcframework.stats_engine import InsufficientDataError, NanPolicy, StatsContext
+
+        # All NaN data with omit policy results in empty array
+        data = np.array([np.nan, np.nan, np.nan])
+        ctx = StatsContext(n=3, target=1.0, nan_policy=NanPolicy.omit)
+        with pytest.raises(InsufficientDataError, match="non-empty data"):
+            bias_to_target(data, ctx)

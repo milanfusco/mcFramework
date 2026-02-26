@@ -3,8 +3,6 @@ name: Release Drafter
 on:
   push:
     branches: [main]
-  pull_request:
-    types: [opened, reopened, synchronize, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -12,7 +10,6 @@ permissions:
 
 jobs:
   update_release_draft:
-    name: Update Release Draft
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -21,4 +18,3 @@ jobs:
       - uses: release-drafter/release-drafter@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

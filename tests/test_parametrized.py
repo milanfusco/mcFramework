@@ -10,7 +10,7 @@ class TestParametrized:
     @pytest.mark.parametrize("n_sims", [1, 10, 100, 1000])
     def test_various_simulation_sizes(self, simple_simulation, n_sims):
         """Test different simulation sizes"""
-        result = simple_simulation.run(n_sims, parallel=False, compute_stats=False)
+        result = simple_simulation.run(n_sims, backend="sequential", compute_stats=False)
         assert result.n_simulations == n_sims
         assert len(result.results) == n_sims
 
@@ -33,7 +33,7 @@ class TestParametrized:
         """Test different numbers of workers"""
         result = simple_simulation.run(
             200,
-            parallel=True,
+            backend="auto",
             n_workers=n_workers,
             compute_stats=False
         )

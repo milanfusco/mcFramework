@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 from numpy.random import Generator
 
 from ..core import MonteCarloSimulation
+
+if TYPE_CHECKING:
+    import torch
 
 __all__ = ["PiEstimationSimulation"]
 
@@ -31,7 +34,29 @@ class PiEstimationSimulation(MonteCarloSimulation):
     ----------
     name : str
         Human-readable label registered with :class:`~mcframework.core.MonteCarloFramework`.
+    supports_batch : bool
+        Whether this simulation supports Torch batch execution (``True``).
+
+    Notes
+    -----
+    This simulation supports both scalar (NumPy) and vectorized (Torch) execution:
+
+    - **NumPy path**: Uses :meth:`single_simulation` with optional antithetic sampling.
+    - **Torch path**: Uses :meth:`torch_batch` for GPU-accelerated batch execution.
+
+    Examples
+    --------
+    >>> sim = PiEstimationSimulation()
+    >>> sim.set_seed(42)
+    >>> result = sim.run(100_000, backend="torch")  # GPU-ready  # doctest: +SKIP
     """
+
+    supports_batch: bool = True
+    """
+    Set whether this simulation supports batch GPU execution.
+    Did you implement .torch_batch() or .cupy_batch()? If so, set to True.
+    """
+
 
     def __init__(self):
         super().__init__("Pi Estimation")
@@ -80,3 +105,62 @@ class PiEstimationSimulation(MonteCarloSimulation):
             pts = np.vstack([pts, rng.uniform(-1.0, 1.0, (1, 2))])
         inside = np.sum(np.sum(pts * pts, axis=1) <= 1.0)
         return float(4.0 * inside / n_points)
+
+    def torch_batch(
+        self,
+        n: int,
+        *,
+        device: "torch.device",
+        generator: "torch.Generator",
+    ) -> "torch.Tensor":
+        r"""
+        Vectorized Torch implementation for GPU-accelerated Pi estimation.
+
+        Each element of the returned tensor is an independent estimate of :math:`\pi`
+        using the standard Monte Carlo disk-in-square method. This is equivalent to
+        calling :meth:`single_simulation` with ``n_points=1`` for each draw.
+
+        Parameters
+        ----------
+        n : int
+            Number of :math:`\pi` estimates to generate.
+        device : torch.device
+            Device for computation (``"cpu"``, ``"mps"``, or ``"cuda"``).
+        generator : torch.Generator
+            Explicit Torch generator for reproducible random sampling. All random
+            operations must use this generator—never rely on global Torch RNG.
+
+        Returns
+        -------
+        torch.Tensor
+            A 1D tensor of length ``n`` where each element is ``4.0`` (inside disk)
+            or ``0.0`` (outside disk). Returns float32 for MPS compatibility;
+            the framework promotes to float64 after moving to CPU.
+
+        Notes
+        -----
+        Unlike :meth:`single_simulation`, this method does not support the
+        ``n_points`` parameter—each simulation is a single point evaluation.
+        For high-precision estimates, use many simulations and let the framework
+        compute the mean.
+
+        The expected value of each element is :math:`\pi`, so the sample mean
+        converges to :math:`\pi` as ``n → ∞``.
+
+        **MPS compatibility.** This method returns float32 tensors to support
+        Apple MPS backend (which doesn't support float64). The framework handles
+        promotion to float64 after moving results to CPU.
+        """
+        import torch as th  # pylint: disable=import-outside-toplevel
+
+        # Sample points uniformly in [-1, 1]^2 using explicit generator
+        x = th.rand(n, device=device, generator=generator) * 2.0 - 1.0
+        y = th.rand(n, device=device, generator=generator) * 2.0 - 1.0
+
+        # Check if inside unit disk
+        inside = (x * x + y * y) <= 1.0
+
+        # Return 4.0 * indicator (expected value = pi)
+        # Note: Use float32 on device (MPS doesn't support float64)
+        # The framework promotes to float64 after moving to CPU
+        return 4.0 * inside.float()

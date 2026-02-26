@@ -52,7 +52,7 @@ class TestMocking:
 
         simple_simulation.run(
             100,
-            parallel=False,
+            backend="sequential",
             progress_callback=callback,
             compute_stats=False
         )

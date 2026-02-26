@@ -1,5 +1,7 @@
 """mcframework package public API."""
 
+# Profiling submodule (imported as submodule, not exposed at top level)
+from . import profiling
 from .core import MonteCarloFramework, MonteCarloSimulation, SimulationResult
 from .sims import (
     BlackScholesPathSimulation,
@@ -25,6 +27,7 @@ __all__ = [
     "z_crit",
     "t_crit",
     "autocrit",
+    "profiling",
 ]
 
 __version__ = "0.1.0"
