@@ -14,6 +14,14 @@ from mcframework.sims import PiEstimationSimulation
 from mcframework.stats_engine import StatsContext
 
 
+# Module-level simulation class for Windows pickling compatibility
+class _SimpleSim(MonteCarloSimulation):
+    """Simple simulation for testing parallel backends on Windows."""
+    def single_simulation(self, _rng=None):
+        rng = self._rng(_rng, self.rng)
+        return float(rng.random())
+
+
 class TestMakeBlocks:
     """[FR-3] Test block creation for parallel processing."""
 
@@ -935,14 +943,7 @@ def test_resolve_backend_type_explicit_process():
 
 def test_run_with_backend_auto_large_job():
     """[NFR-7] Test that backend='auto' resolves to parallel for large jobs."""
-    from mcframework.core import MonteCarloSimulation
-
-    class SimpleSim(MonteCarloSimulation):
-        def single_simulation(self, _rng=None):
-            rng = self._rng(_rng, self.rng)
-            return float(rng.random())
-
-    sim = SimpleSim()
+    sim = _SimpleSim()
     sim.set_seed(42)
     # Run with enough simulations to exceed _PARALLEL_THRESHOLD (20,000)
     result = sim.run(25000, backend="auto", n_workers=2, compute_stats=False)
