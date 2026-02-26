@@ -130,6 +130,7 @@ def run_benchmark(
     n_workers: int | None = None,
     warmup: bool = False,
     device_id: int = 0,
+    cuda_use_curand: bool = False,
 ) -> BenchmarkResult | None:
     """
     Run a single benchmark with the specified backend.
@@ -150,6 +151,8 @@ def run_benchmark(
         If True, this is a warmup run (don't return results).
     device_id : int
         CUDA device ID to use.
+    cuda_use_curand : bool
+        If True, use cuRAND for CUDA backend (requires CuPy).
     
     Returns
     -------
@@ -169,6 +172,8 @@ def run_benchmark(
             n_simulations,
             backend=backend,
             torch_device=torch_device,
+            cuda_device_id=device_id,
+            cuda_use_curand=cuda_use_curand,
             n_workers=n_workers,
             compute_stats=False,  # Skip stats for pure timing
         )
@@ -181,8 +186,16 @@ def run_benchmark(
         if warmup:
             return None
         
+        # Format backend name
+        if backend != "torch":
+            backend_name = backend
+        elif torch_device == "cuda" and cuda_use_curand:
+            backend_name = "torch-cuda-curand"
+        else:
+            backend_name = f"torch-{torch_device}"
+        
         return BenchmarkResult(
-            backend=f"{backend}" if backend != "torch" else f"torch-{torch_device}",
+            backend=backend_name,
             n_simulations=n_simulations,
             execution_time=result.execution_time,
             mean_estimate=result.mean,
@@ -199,7 +212,7 @@ def run_benchmark_suite(
     sim,
     cpu_sizes: list[int],
     gpu_sizes: list[int],
-    backends: list[tuple[str, str]],  # (backend, torch_device)
+    backends: list[tuple[str, str, bool]],  # (backend, torch_device, cuda_use_curand)
     n_workers: int | None = None,
     device_id: int = 0,
 ) -> dict[str, list[BenchmarkResult]]:
@@ -207,7 +220,7 @@ def run_benchmark_suite(
     Run full benchmark suite across multiple simulation sizes and backends.
     
     CPU backends (sequential, thread, process) use smaller cpu_sizes to avoid long waits.
-    Torch backends (torch-cpu, torch-cuda) use full gpu_sizes range.
+    Torch backends (torch-cpu, torch-cuda, torch-cuda-curand) use full gpu_sizes range.
     
     Parameters
     ----------
@@ -217,8 +230,8 @@ def run_benchmark_suite(
         Simulation counts for pure CPU backends (smaller to avoid long waits).
     gpu_sizes : list[int]
         Simulation counts for Torch backends (can be much larger).
-    backends : list[tuple[str, str]]
-        List of (backend, torch_device) tuples.
+    backends : list[tuple[str, str, bool]]
+        List of (backend, torch_device, cuda_use_curand) tuples.
     n_workers : int, optional
         Number of workers for parallel backends.
     device_id : int
@@ -233,14 +246,21 @@ def run_benchmark_suite(
     
     # Warmup run for each backend
     print("Warming up backends...")
-    for backend, device in backends:
-        run_benchmark(sim, 1000, backend, device, n_workers, warmup=True, device_id=device_id)
+    for backend, device, use_curand in backends:
+        run_benchmark(sim, 1000, backend, device, n_workers, warmup=True, 
+                     device_id=device_id, cuda_use_curand=use_curand)
     print()
     
     # Determine which sizes each backend should use
     backend_sizes = {}
-    for backend, device in backends:
-        backend_name = f"{backend}" if backend != "torch" else f"torch-{device}"
+    for backend, device, use_curand in backends:
+        # Format backend name
+        if backend != "torch":
+            backend_name = backend
+        elif device == "cuda" and use_curand:
+            backend_name = "torch-cuda-curand"
+        else:
+            backend_name = f"torch-{device}"
         
         # Torch backends get full GPU range
         if backend == "torch":
@@ -259,9 +279,13 @@ def run_benchmark_suite(
     for n_sims in all_sizes:
         # Check which backends should run at this size
         backends_to_run = [
-            (backend, device, backend_name)
-            for backend, device in backends
-            for backend_name in [f"{backend}" if backend != "torch" else f"torch-{device}"]
+            (backend, device, use_curand, backend_name)
+            for backend, device, use_curand in backends
+            for backend_name in [
+                backend if backend != "torch" 
+                else "torch-cuda-curand" if device == "cuda" and use_curand 
+                else f"torch-{device}"
+            ]
             if n_sims in backend_sizes[backend_name]
         ]
         
@@ -270,10 +294,11 @@ def run_benchmark_suite(
         
         print(f"Running benchmarks for n={n_sims:,} simulations...")
         
-        for backend, device, backend_name in backends_to_run:
+        for backend, device, use_curand, backend_name in backends_to_run:
             current_run += 1
             
-            result = run_benchmark(sim, n_sims, backend, device, n_workers, device_id=device_id)
+            result = run_benchmark(sim, n_sims, backend, device, n_workers, 
+                                 device_id=device_id, cuda_use_curand=use_curand)
             
             if result:
                 if backend_name not in results:
@@ -282,7 +307,7 @@ def run_benchmark_suite(
                 
                 memory_str = f" [{result.peak_memory_mb:.0f} MB]" if result.peak_memory_mb > 0 else ""
                 print(
-                    f"  [{current_run}/{total_runs}] {backend_name:15s}: "
+                    f"  [{current_run}/{total_runs}] {backend_name:20s}: "
                     f"{result.execution_time:8.4f}s "
                     f"({result.throughput:,.0f} sims/sec){memory_str}"
                 )
@@ -346,11 +371,12 @@ def create_benchmark_visualizations(
     """
     # Define color palette - distinctive colors for each backend
     colors = {
-        "sequential": "#6B7280",    # Gray
-        "thread": "#3B82F6",        # Blue
-        "process": "#8B5CF6",       # Purple
-        "torch-cpu": "#F59E0B",     # Amber
-        "torch-cuda": "#10B981",    # Emerald (hero color for CUDA)
+        "sequential": "#6B7280",         # Gray
+        "thread": "#3B82F6",             # Blue
+        "process": "#8B5CF6",            # Purple
+        "torch-cpu": "#F59E0B",          # Amber
+        "torch-cuda": "#10B981",         # Emerald (hero color for CUDA)
+        "torch-cuda-curand": "#06B6D4",  # Cyan (cuRAND variant)
     }
     
     # Fallback for unknown backends
@@ -372,9 +398,15 @@ def create_benchmark_visualizations(
         color="#F8FAFC",
         y=0.98,
     )
+    # Check if cuRAND is being benchmarked
+    has_curand = any("curand" in backend for backend in results.keys())
+    subtitle = "CUDA (NVIDIA GPU) vs CPU Backends"
+    if has_curand:
+        subtitle += " — including cuRAND"
+    
     fig.text(
         0.5, 0.94,
-        "CUDA (NVIDIA GPU) vs CPU Backends",
+        subtitle,
         ha="center",
         fontsize=12,
         color="#94A3B8",
@@ -562,21 +594,21 @@ def create_summary_table(
     ))
     
     lines = []
-    lines.append("\n" + "=" * 100)
+    lines.append("\n" + "=" * 110)
     lines.append("BENCHMARK SUMMARY")
-    lines.append("=" * 100)
+    lines.append("=" * 110)
     
     # Header
-    header = f"{'Backend':<15}"
+    header = f"{'Backend':<20}"
     for n in all_sizes:
         header += f" | {n:>12,}"
     lines.append(header)
-    lines.append("-" * 100)
+    lines.append("-" * 110)
     
     # Execution times
     lines.append("Execution Time (seconds):")
     for backend, backend_results in results.items():
-        row = f"  {backend:<13}"
+        row = f"  {backend:<18}"
         # Create a map of size -> result
         size_to_result = {r.n_simulations: r for r in backend_results}
         for size in all_sizes:
@@ -595,7 +627,7 @@ def create_summary_table(
         
         lines.append("Speedup vs Sequential:")
         for backend, backend_results in results.items():
-            row = f"  {backend:<13}"
+            row = f"  {backend:<18}"
             size_to_result = {r.n_simulations: r for r in backend_results}
             
             for size in all_sizes:
@@ -613,7 +645,7 @@ def create_summary_table(
     if cuda_backends:
         lines.append("Peak GPU Memory (MB):")
         for backend in cuda_backends:
-            row = f"  {backend:<13}"
+            row = f"  {backend:<18}"
             size_to_result = {r.n_simulations: r for r in results[backend]}
             for size in all_sizes:
                 if size in size_to_result and size_to_result[size].peak_memory_mb > 0:
@@ -656,7 +688,7 @@ def create_summary_table(
             if best_result.peak_memory_mb > 0:
                 lines.append(f"   Peak GPU memory: {best_result.peak_memory_mb:.0f} MB")
     
-    lines.append("=" * 100)
+    lines.append("=" * 110)
     
     return "\n".join(lines)
 
@@ -701,20 +733,23 @@ def main():
     # Define backends to test
     # Note: Only torch backends will be tested (sequential/thread/process
     # included for comparison at smaller sizes only)
-    backends: list[tuple[str, str]] = []
+    backends: list[tuple[str, str, bool]] = []  # (backend, torch_device, cuda_use_curand)
     
     # Add CPU backends (will only test on cpu_sizes)
     backends.extend([
-        ("sequential", ""),
-        ("thread", ""),
-        ("process", ""),
+        ("sequential", "", False),
+        ("thread", "", False),
+        ("process", "", False),
     ])
     
     # Add torch backends (will test on full gpu_sizes)
     if torch_available:
-        backends.append(("torch", "cpu"))
+        backends.append(("torch", "cpu", False))
         if cuda_available:
-            backends.append(("torch", "cuda"))
+            backends.append(("torch", "cuda", False))
+            # Add cuRAND backend if CuPy is available
+            if cupy_available:
+                backends.append(("torch", "cuda", True))
     
     # Select GPU device
     device_id = 0
