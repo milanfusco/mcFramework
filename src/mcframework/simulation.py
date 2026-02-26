@@ -578,7 +578,7 @@ class MonteCarloSimulation(ABC):
         self._validate_run_params(n_simulations, n_workers, confidence, ci_method, backend)
 
         # Execute simulation using appropriate backend
-        t0 = time.time()
+        t0 = time.perf_counter()
         results = self._execute_with_backend(
             backend, n_simulations, n_workers, progress_callback,
             torch_device=torch_device,
@@ -589,7 +589,7 @@ class MonteCarloSimulation(ABC):
             **simulation_kwargs,
         )
 
-        exec_time = time.time() - t0
+        exec_time = time.perf_counter() - t0
 
         # Compute stats and percentiles
         stats: dict[str, Any] = {}
