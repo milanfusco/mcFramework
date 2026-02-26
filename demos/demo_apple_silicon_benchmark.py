@@ -223,7 +223,7 @@ def run_benchmark_suite(
 def calculate_speedups(
     results: dict[str, list[BenchmarkResult]],
     baseline: str = "sequential",
-) -> dict[str, list[float]]:
+) -> dict[str, list[tuple[int, float]]]:
     """
     Calculate speedup factors relative to a baseline backend.
     
@@ -236,6 +236,8 @@ def calculate_speedups(
     
     Returns
     -------
+    dict[str, list[tuple[int, float]]]
+        Speedup factors by backend name, as (n_simulations, speedup) tuples.
     dict[str, list[float]]
         Speedup factors by backend name. Each backend's speedups are aligned
         with its own results (may have different lengths if runs failed).
@@ -251,6 +253,9 @@ def calculate_speedups(
     }
     
     speedups: dict[str, list[float]] = {}
+    # Build a map of n_simulations -> execution_time for baseline
+    baseline_times = {r.n_simulations: r.execution_time for r in results[baseline]}
+    speedups: dict[str, list[tuple[int, float]]] = {}
     
     for backend, backend_results in results.items():
         # Calculate speedup only for matching simulation sizes
@@ -258,6 +263,9 @@ def calculate_speedups(
             baseline_map[r.n_simulations] / r.execution_time
             if r.n_simulations in baseline_map else 1.0
             for r in backend_results
+            (r.n_simulations, baseline_times[r.n_simulations] / r.execution_time)
+            for r in backend_results
+            if r.n_simulations in baseline_times
         ]
     
     return speedups
@@ -331,9 +339,11 @@ def create_benchmark_visualizations(
     for backend, backend_results in results.items():
         # Extract actual x-values from results (handles missing/failed runs)
         x_values = [r.n_simulations for r in backend_results]
+        sizes = [r.n_simulations for r in backend_results]
         times = [r.execution_time for r in backend_results]
         ax1.plot(
             x_values, times,
+            sizes, times,
             marker="o", markersize=8, linewidth=2.5,
             color=colors[backend], label=backend,
         )
@@ -358,9 +368,11 @@ def create_benchmark_visualizations(
     for backend, backend_results in results.items():
         # Extract actual x-values from results (handles missing/failed runs)
         x_values = [r.n_simulations for r in backend_results]
+        sizes = [r.n_simulations for r in backend_results]
         throughputs = [r.throughput for r in backend_results]
         ax2.plot(
             x_values, throughputs,
+            sizes, throughputs,
             marker="s", markersize=8, linewidth=2.5,
             color=colors[backend], label=backend,
         )
@@ -433,6 +445,53 @@ def create_benchmark_visualizations(
         )
         ax3.legend(loc="upper right", facecolor="#334155", edgecolor="#475569",
                    labelcolor="#E2E8F0", fontsize=9)
+        # Use largest common simulation size for the comparison
+        # Find backends with speedup data and get their largest size
+        backends_list = []
+        speedup_values = []
+        bar_colors = []
+        largest_size = 0
+        
+        for backend in results.keys():
+            if backend == "sequential" or backend not in speedups:
+                continue
+            if not speedups[backend]:
+                continue
+            # Get the speedup for the largest size this backend has
+            backend_speedups = speedups[backend]
+            if backend_speedups:
+                n_sims, speedup = backend_speedups[-1]
+                backends_list.append(backend)
+                speedup_values.append(speedup)
+                bar_colors.append(colors[backend])
+                largest_size = max(largest_size, n_sims)
+        
+        if backends_list:
+            x_pos = np.arange(len(backends_list))
+            bars = ax3.bar(x_pos, speedup_values, color=bar_colors, 
+                           edgecolor="#1E293B", linewidth=1.5, alpha=0.9)
+            
+            # Add value labels on bars
+            for bar, val in zip(bars, speedup_values):
+                height = bar.get_height()
+                ax3.text(
+                    bar.get_x() + bar.get_width() / 2., height + 0.1,
+                    f"{val:.1f}×",
+                    ha="center", va="bottom",
+                    fontsize=12, fontweight="bold", color="#F8FAFC",
+                )
+            
+            ax3.axhline(1.0, color="#EF4444", linestyle="--", linewidth=2,
+                        label="Sequential baseline")
+            ax3.set_xticks(x_pos)
+            ax3.set_xticklabels(backends_list, fontsize=10, color="#E2E8F0")
+            ax3.set_ylabel("Speedup Factor", fontsize=11, color="#E2E8F0")
+            ax3.set_title(
+                f"Speedup vs Sequential (n={largest_size:,})",
+                fontsize=13, fontweight="bold", color="#F8FAFC", pad=10,
+            )
+            ax3.legend(loc="upper right", facecolor="#334155", edgecolor="#475569",
+                       labelcolor="#E2E8F0", fontsize=9)
     
     ax3.grid(True, alpha=0.3, color="#475569", axis="y")
     ax3.tick_params(colors="#94A3B8")
@@ -445,8 +504,11 @@ def create_benchmark_visualizations(
     
     # Show how speedup changes with problem size
     if speedups:
+    if speedups:
         for backend in results.keys():
-            if backend == "sequential":
+            if backend == "sequential" or backend not in speedups:
+                continue
+            if not speedups[backend]:
                 continue
             # Extract actual x-values from results (handles missing/failed runs)
             backend_results = results[backend]
@@ -454,6 +516,14 @@ def create_benchmark_visualizations(
                 x_values = [r.n_simulations for r in backend_results]
                 ax4.plot(
                     x_values, speedups[backend],
+                    marker="^", markersize=8, linewidth=2.5,
+                    color=colors[backend], label=backend,
+                )
+            sizes = [s[0] for s in speedups[backend]]
+            vals = [s[1] for s in speedups[backend]]
+            if len(sizes) > 1:
+                ax4.plot(
+                    sizes, vals,
                     marker="^", markersize=8, linewidth=2.5,
                     color=colors[backend], label=backend,
                 )
@@ -511,9 +581,17 @@ def create_summary_table(
     lines.append("BENCHMARK SUMMARY")
     lines.append("=" * 80)
     
+    # Get all unique sizes actually tested across all backends
+    all_sizes = sorted(set(
+        r.n_simulations
+        for backend_results in results.values()
+        for r in backend_results
+    ))
+    
     # Header
     header = f"{'Backend':<15}"
     for n in all_n_sims:
+    for n in all_sizes:
         header += f" | {n:>12,}"
     lines.append(header)
     lines.append("-" * 80)
@@ -530,6 +608,12 @@ def create_summary_table(
                 row += f" | {result_map[n].execution_time:>12.4f}"
             else:
                 row += f" | {'N/A':>12}"
+        size_to_result = {r.n_simulations: r for r in backend_results}
+        for size in all_sizes:
+            if size in size_to_result:
+                row += f" | {size_to_result[size].execution_time:>12.4f}"
+            else:
+                row += f" | {'—':>12}"
         lines.append(row)
     
     lines.append("")
@@ -551,6 +635,16 @@ def create_summary_table(
                     row += f" | {speedup_map[n]:>11.2f}×"
                 else:
                     row += f" | {'N/A':>12}"
+            if backend not in speedups:
+                for _ in all_sizes:
+                    row += f" | {'—':>12}"
+            else:
+                size_to_speedup = {n_sims: s for n_sims, s in speedups[backend]}
+                for size in all_sizes:
+                    if size in size_to_speedup:
+                        row += f" | {size_to_speedup[size]:>11.2f}×"
+                    else:
+                        row += f" | {'—':>12}"
             lines.append(row)
     
     lines.append("")
@@ -588,6 +682,28 @@ def create_summary_table(
                     if r.n_simulations == largest_n
                 )
                 lines.append(f"   Speedup: {speedups[best_backend][result_idx]:.1f}× faster than sequential")
+    if results and all_sizes:
+        largest_size = all_sizes[-1]
+        # Find backends that have results at the largest size
+        backends_at_largest = {
+            backend: next((r for r in backend_results if r.n_simulations == largest_size), None)
+            for backend, backend_results in results.items()
+        }
+        backends_at_largest = {k: v for k, v in backends_at_largest.items() if v is not None}
+        
+        if backends_at_largest:
+            best_backend = min(backends_at_largest.keys(),
+                              key=lambda b: backends_at_largest[b].execution_time)
+            best_result = backends_at_largest[best_backend]
+            
+            lines.append(f"🏆 Best performer (n={largest_size:,}): {best_backend}")
+            lines.append(f"   Execution time: {best_result.execution_time:.4f}s")
+            lines.append(f"   Throughput: {best_result.throughput:,.0f} simulations/sec")
+            
+            if best_backend in speedups:
+                size_to_speedup = {n_sims: s for n_sims, s in speedups[best_backend]}
+                if largest_size in size_to_speedup:
+                    lines.append(f"   Speedup: {size_to_speedup[largest_size]:.1f}× faster than sequential")
     
     lines.append("=" * 80)
     

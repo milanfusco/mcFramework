@@ -176,6 +176,7 @@ def run_benchmark(
             cuda_use_curand=cuda_use_curand,
             n_workers=n_workers,
             compute_stats=False,  # Skip stats for pure timing
+            cuda_device_id=device_id,
         )
         
         # Capture peak memory usage for CUDA

@@ -89,7 +89,7 @@ jobs:
       
       - name: Run Torch backend tests
         run: |
-          pytest tests/test_torch_mps.py tests/test_torch_cpu.py -v --tb=short
+          pytest tests/test_torch_cpu.py tests/test_torch_mps.py tests/test_torch_utils.py -v --tb=short
 
   test-multiplatform:
     name: Test on ${{ matrix.os }}
