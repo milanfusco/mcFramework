@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add WIP Features section to README
 
 ### Maintenance
+- Update CHANGELOG.md and cliff.toml for improved changelog generation
 - Update CHANGELOG.md and add cliff.toml for changelog generation
 - Enhance benchmarking calculations and visualizations
 - Improve timing accuracy in Monte Carlo simulation
