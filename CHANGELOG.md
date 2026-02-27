@@ -8,12 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Bug Fixes
+- Fix CI workflow and benchmark script bugs
 - Reduce simulation count to prevent OOM errors in profiling demo
 - Add missing newline in demo.py for code style consistency
 
 ### Documentation
+- Update README.md
 - Enhance documentation for execution backends and GPU support
 - Clarify Torch backend imports in __init__.py
+- Update release-drafter.yml to remove pull_request triggers
 - Add CUDA and MPS backends for Monte Carlo simulations
 - Update dtype policy in Monte Carlo simulation for device-specific handling
 - Added legacy directory for outdated docs
@@ -29,8 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add Apple Silicon performance benchmark demo
 - Enhance Monte Carlo simulation with Torch backend support
 - Implement Torch backend support for Monte Carlo simulations
+- Add Safety CLI scan workflow for vulnerability checks
+- Add WIP Features section to README
 
 ### Maintenance
+- Update CHANGELOG.md and add cliff.toml for changelog generation
 - Enhance benchmarking calculations and visualizations
 - Improve timing accuracy in Monte Carlo simulation
 - Remove unnecessary blank lines in Torch backend test files
@@ -51,13 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extract backends module and evolve to backend= API
 - **deps**: Bump actions/download-artifact from 5 to 7
 
-### Other
-- Fix CI workflow and benchmark script bugs
-- Update README.md
+### Performance
 - Add MPS benchmark image
-- Update release-drafter.yml to remove pull_request triggers
-- Add Safety CLI scan workflow for vulnerability checks
-- Add WIP Features section to README
 
 ### Testing
 - Introduce a simple simulation class for Windows compatibility
@@ -73,106 +74,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migrate tests to backend= API and add coverage
 
 ## [0.1.1] – 2026-01-13
-### Maintenance
-- **deps**: Bump actions/upload-artifact from 5 to 6
-- **deps**: Bump actions/stale from 9 to 10
-- **deps**: Bump github/codeql-action from 3 to 4
-- **deps**: Bump actions/checkout from 5 to 6
-- **deps**: Bump actions/upload-artifact from 4 to 5
+### Bug Fixes
+- Fix documentation link case sensitivity
+- Fix formatting of links in README.md
+- Fix documentation link for mcFramework
+- Fix state comparison in RNG tests for Black-Scholes simulations
+- Fix Sphinx documentation build command in CI workflow by removing unnecessary warning flag
 
-### Other
+### Documentation
 - Revise project plan and table formatting
 - Update SYSTEM_DESIGN.rst
 - Update README
 - Update documentation for clarity and structure
-- Add installation instructions to getting-started.md
 - Update CHANGELOG.md for initial public release of mcframework (0.1.0)
-- Fix documentation link case sensitivity
-- Fix formatting of links in README.md
-- Refactor links formatting in README
-- Add badges to README for project status
 - Update Docs badge link in README.md
-- Fix documentation link for mcFramework
 - Update README to improve documentation structure and add links
-- Improve test files by adding missing newlines for consistency
-- Refactor demo scripts and improve imports
-- Refactor README by removing outdated sections
+- Revise Monte Carlo framework class diagram
+- Update CHANGELOG for version 0.5.0 and add UML diagrams for mcframework
+- Update doctest configuration in conf.py to improve testing setup
+- Update .gitignore to include additional generated documentation files and images
+- Update documentation and improve API references
+- Update .gitignore to include additional Sphinx build directories for generated API documentation
+- Update .gitignore to exclude all build artifacts from documentation
+- Update documentation and improve .gitignore for better project organization
+- Update URL in README
+- Revise README for improved description and clarity
+- Update src/mcframework/stats_engine.py
+- Update CI workflows for documentation deployment and validation
+- Update CI workflow for coverage reporting and modify performance test assertions
+- Update CI workflow to use latest GitHub actions versions for improved reliability
+- Update README and CI workflows; enhance parallel execution handling
+- Update .gitignore to exclude coverage files and remove obsolete coverage reports
+- Update CI badges in QUICK_REFERENCE.md
+- Update .gitignore and McFramework.iml to exclude IDE files
+
+### Features
+- Add installation instructions to getting-started.md
+- Add badges to README for project status
 - Enhance project metadata and documentation
 - Enhance README with detailed documentation and installation instructions
 - Add project plan and system design to documentation for McFramework
-- Refactor SYSTEM_DESIGN.md for clarity and conciseness
 - Add project plan and system design documentation for McFramework
-- Revise Monte Carlo framework class diagram
-- Update CHANGELOG for version 0.5.0 and add UML diagrams for mcframework
-- Revert "Adding a Neutron Transport simulation model and demo "
-- Update doctest configuration in conf.py to improve testing setup
-- Refactor Pylint configuration and enhance type annotations in mcframework
 - Enhance documentation and examples for doctests in mcframework
 - Enhance documentation and configuration for mcframework
 - Enhance Black-Scholes GUI with statistical analysis features
 - Enhance Black-Scholes GUI with option pricing features and layout improvements
 - Enhance CandlestickChart with crosshair and tooltip features
 - Enhance Black-Scholes GUI with new features and layout improvements
-- Refactor Black-Scholes GUI components and enhance styling
 - Enhance Black-Scholes GUI with new features and UI improvements
 - Add GUI application for Black-Scholes Monte Carlo simulations
-- Fix state comparison in RNG tests for Black-Scholes simulations
 - Add test to ensure RNG state is preserved in calculate_greeks
-- Refactor and reorganize simulation modules in mcframework
 - Enhance Sphinx documentation configuration
-- Update .gitignore to include additional generated documentation files and images
-- Remove obsolete autosummary documentation for unused functions in mcframework.utils
-- Update documentation and improve API references
-- Update .gitignore to include additional Sphinx build directories for generated API documentation
-- Update .gitignore to exclude all build artifacts from documentation
-- Update documentation and improve .gitignore for better project organization
-- Update URL in README
-- Refactor Monte Carlo simulation percentile computation and enhance tests
 - Enhance mcframework with Black-Scholes simulations and tests
 - Add ticker-based Black-Scholes analysis demo and visualizations
 - Add comprehensive tests for Black-Scholes sim
 - Add Black-Scholes simulation demo and enhance demo files
-- Refactor imports in test files for improved clarity
 - Enhance error handling and testing in core and stats engine
-- Refactor Monte Carlo simulation and stats engine for improved clarity and functionality
 - Enhance stats engine with ComputeResult class and improve validation
-- Refactor Monte Carlo simulation and enhance stats handling
 - Enhance stats_engine.py with new CIResult class and update tests
-- Revise README for improved description and clarity
 - Add documentation deployment badge to README
-- Update src/mcframework/stats_engine.py
-- Update CI workflows for documentation deployment and validation
-- Refactor CI workflows for documentation handling
 - Enhance CI workflow and update documentation deployment
 - Enhance statistical context and testing in stats_engine.py and test files
+- Enhance test coverage and readability in test_core.py
+- Enhance statistical functions and improve context handling in Monte Carlo simulations
+- Add GitHub Actions workflows for CI/CD pipeline
+- Enhance .gitignore and improve error handling in stats_engine
+- Add CHANGELOG.md and CONTRIBUTING.md; update README.md with installation instructions and dependencies
+- Add `eps` parameter and improve statistic engine handling
+- Add StatsContext and enhance statistical metrics with new features
+
+### Maintenance
+- **deps**: Bump actions/upload-artifact from 5 to 6
+- **deps**: Bump actions/stale from 9 to 10
+- **deps**: Bump github/codeql-action from 3 to 4
+- **deps**: Bump actions/checkout from 5 to 6
+- Refactor links formatting in README
+- Improve test files by adding missing newlines for consistency
+- Refactor demo scripts and improve imports
+- Refactor README by removing outdated sections
+- Refactor SYSTEM_DESIGN.md for clarity and conciseness
+- Revert "Adding a Neutron Transport simulation model and demo "
+- Refactor Pylint configuration and enhance type annotations in mcframework
+- Refactor Black-Scholes GUI components and enhance styling
+- Refactor and reorganize simulation modules in mcframework
+- **deps**: Bump actions/upload-artifact from 4 to 5
+- Remove obsolete autosummary documentation for unused functions in mcframework.utils
+- Refactor Monte Carlo simulation percentile computation and enhance tests
+- Refactor imports in test files for improved clarity
+- Refactor Monte Carlo simulation and stats engine for improved clarity and functionality
+- Refactor Monte Carlo simulation and enhance stats handling
+- Refactor CI workflows for documentation handling
 - Remove unused import of the time module in test_performance_and_concurrency.py to improve code cleanliness.
 - Remove unused import of the math module in test_core.py to enhance code cleanliness.
-- Enhance test coverage and readability in test_core.py
 - Comment out performance test for parallel execution speed due to environment-dependent variance
-- Update CI workflow for coverage reporting and modify performance test assertions
-- Update CI workflow to use latest GitHub actions versions for improved reliability
-- Update README and CI workflows; enhance parallel execution handling
 - Delete .DS_Store
-- Fix Sphinx documentation build command in CI workflow by removing unnecessary warning flag
-- Enhance statistical functions and improve context handling in Monte Carlo simulations
 - Refactor StatsEngine context handling and enhance statistical functions
 - Remove unnecessary blank line in test_integration.py for improved code cleanliness.
 - Refactor imports and improve code readability
-- Update .gitignore to exclude coverage files and remove obsolete coverage reports
 - Delete GITHUB_ACTIONS_SETUP_COMPLETE.md
-- Update CI badges in QUICK_REFERENCE.md
-- Add GitHub Actions workflows for CI/CD pipeline
 - Rename LICENSE  to LICENSE
-- Enhance .gitignore and improve error handling in stats_engine
 - Delete .idea directory
 - Delete trace
-- Update .gitignore and McFramework.iml to exclude IDE files
-- Add CHANGELOG.md and CONTRIBUTING.md; update README.md with installation instructions and dependencies
 - Delete build directory
 - Refactor confidence interval handling and enhance percentile assertions in tests
-- Add `eps` parameter and improve statistic engine handling
-- Add StatsContext and enhance statistical metrics with new features
-- Initial Commit
+- Initial commit
 ---
 
 ## Development History

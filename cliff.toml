@@ -232,6 +232,20 @@ ignore_tags = "^[0-9]"
 sort_commits = "newest"
 commit_preprocessors = [
     { pattern = "\n.*", replace = "" },
+    { pattern = "^Fix ", replace = "fix: fix " },
+    { pattern = "^Add ", replace = "feat: add " },
+    { pattern = "^Update ", replace = "docs: update " },
+    { pattern = "^Enhance ", replace = "feat: enhance " },
+    { pattern = "^Refactor ", replace = "refactor: refactor " },
+    { pattern = "^Delete ", replace = "chore: delete " },
+    { pattern = "^Remove ", replace = "chore: remove " },
+    { pattern = "^Revert ", replace = "revert: revert " },
+    { pattern = "^Rename ", replace = "chore: rename " },
+    { pattern = "^Revise ", replace = "docs: revise " },
+    { pattern = "^Improve ", replace = "refactor: improve " },
+    { pattern = "^Comment out ", replace = "chore: comment out " },
+    { pattern = "^Migrate ", replace = "refactor: migrate " },
+    { pattern = "^Initial Commit", replace = "chore: initial commit" },
 ]
 
 commit_parsers = [
@@ -242,7 +256,9 @@ commit_parsers = [
     { message = "^fix", group = "Bug Fixes" },
     { message = "^doc", group = "Documentation" },
     { message = "^perf", group = "Performance" },
+    { message = "^bench", group = "Performance" },
     { message = "^refactor", group = "Maintenance" },
+    { message = "^revert", group = "Maintenance" },
     { message = "^style", group = "Maintenance" },
     { message = "^test", group = "Testing" },
     { message = "^chore\\(deps\\)", group = "Dependencies" },
