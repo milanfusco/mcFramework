@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [Unreleased]
+### Maintenance
+- Bump version to 0.2.0 in pyproject.toml
+
+## [0.2.0] – 2026-02-27
 ### Bug Fixes
 - Fix CI workflow and benchmark script bugs
 - Reduce simulation count to prevent OOM errors in profiling demo
