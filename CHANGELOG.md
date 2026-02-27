@@ -5,93 +5,174 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
 ## [Unreleased]
+### Bug Fixes
+- Reduce simulation count to prevent OOM errors in profiling demo
+- Add missing newline in demo.py for code style consistency
 
-## [0.1.0] – First PyPI Release
+### Documentation
+- Enhance documentation for execution backends and GPU support
+- Clarify Torch backend imports in __init__.py
+- Add CUDA and MPS backends for Monte Carlo simulations
+- Update dtype policy in Monte Carlo simulation for device-specific handling
+- Added legacy directory for outdated docs
 
-Initial public release of mcframework, a lightweight, reproducible, and deterministic Monte Carlo simulation framework.
+### Features
+- Add cuRAND support for CUDA backend in benchmarking
+- Add PyTorch profiler integration for performance analysis
+- Enhance Monte Carlo simulation for GPU support
+- Add CUDA performance benchmark demo
+- Enhance package metadata and dependencies for GPU support
+- Enhance Torch CUDA backend with adaptive batching and cuRAND support
+- Introduce seperate Torch backends for GPU-accelerated Monte Carlo simulations
+- Add Apple Silicon performance benchmark demo
+- Enhance Monte Carlo simulation with Torch backend support
+- Implement Torch backend support for Monte Carlo simulations
 
-### Added
+### Maintenance
+- Enhance benchmarking calculations and visualizations
+- Improve timing accuracy in Monte Carlo simulation
+- Remove unnecessary blank lines in Torch backend test files
+- Remove egg-info files for mcframework
+- Add GPU support to CI workflow
+- Refine Sphinx dependencies in pyproject.toml
+- Update sphinx-autosummary-accessors dependency in documentation
+- Add sphinx-autosummary-accessors dependency for documentation generation
+- Remove obsolete generated API documentation files
+- Remove obsolete documentation build artifacts
+- Standardize simulation kwargs naming across Torch backends
+- Clean up imports and remove unnecessary whitespace in simulation.py
+- Remove duplicate dead code
+- Streamline Torch backend integration in Monte Carlo simulation
+- Reorganize Torch dependency in pyproject.toml
+- Add .safety-project.ini and update dependencies in pyproject.toml
+- Add torch dependency to pyproject.toml
+- Extract backends module and evolve to backend= API
+- **deps**: Bump actions/download-artifact from 5 to 7
 
-#### Core Framework
+### Other
+- Fix CI workflow and benchmark script bugs
+- Update README.md
+- Add MPS benchmark image
+- Update release-drafter.yml to remove pull_request triggers
+- Add Safety CLI scan workflow for vulnerability checks
+- Add WIP Features section to README
 
-- Core Monte Carlo simulation framework with abstract base class (`MonteCarloSimulation`)
-- Comprehensive statistics engine (`StatsEngine`) with multiple metrics
-- Support for parallel execution using threads and processes
-- Reproducible RNG seeding with `SeedSequence`
-- Flexible confidence interval methods (z, t, bootstrap, Chebyshev)
-- Framework for registering and comparing multiple simulations
-- `ComputeResult` class to encapsulate results from stats engine
-- `StatsContext` for statistical configuration with cross-field validation
-- `_CIResult` dataclass for confidence interval representation
-- Class constants `_PARALLEL_THRESHOLD` and `_CHUNKS_PER_WORKER`
+### Testing
+- Introduce a simple simulation class for Windows compatibility
+- Update CI workflow to run Torch tests for MPS and CPU backends
+- Migrate Torch backend tests to separate files for better organization
+- Adjust simulation count in Torch backend test for performance
+- Enhance Torch backend tests for unused kwargs handling
+- Update tests for Torch backend utilities and device validation
+- Add comprehensive CUDA backend tests for performance and error handling
+- Replace internal generator method with backend utility in tests
+- Add deprecation tests for explicit backend usage in Monte Carlo simulation
+- Enhance Torch backend tests and update simulation error handling
+- Migrate tests to backend= API and add coverage
 
-#### Simulations
+## [0.1.1] – 2026-01-13
+### Maintenance
+- **deps**: Bump actions/upload-artifact from 5 to 6
+- **deps**: Bump actions/stale from 9 to 10
+- **deps**: Bump github/codeql-action from 3 to 4
+- **deps**: Bump actions/checkout from 5 to 6
+- **deps**: Bump actions/upload-artifact from 4 to 5
 
-- Built-in simulations: Pi estimation (`PiEstimation`) and Portfolio simulation (`PortfolioSimulation`)
-- `BlackScholesSimulation` class for European option pricing via Monte Carlo
-- `BlackScholesPathSimulation` class for path-dependent option analysis
-- Greeks calculation methods (`delta`, `gamma`, `theta`, `vega`, `rho`)
-- Organized simulation modules: `sims/black_scholes.py`, `sims/pi.py`, `sims/portfolio.py`
-
-#### GUI Application
-
-- PySide6-based GUI application for interactive Black-Scholes Monte Carlo simulations
-- Market data tab with live candlestick charts, crosshair, and tooltip features
-- Option pricing calculator with Greeks visualization
-- Monte Carlo simulation controls with real-time path visualization
-- 3D option price surfaces for volatility and time sensitivity analysis
-- Dark theme stylesheet for improved visual aesthetics
-- Toast notification system for user feedback
-- Empty state widgets for enhanced UX when no data is available
-- Recent tickers functionality in sidebar for quick access
-- `StatsConfig` class for encapsulating statistical settings
-- Optional GUI dependencies in `pyproject.toml` (`mcframework[gui]`)
-
-#### CI/CD & Automation
-
-- Comprehensive CI/CD pipeline with multiple workflows:
-  - `ci.yml` for linting (Ruff, Pylint), testing (Python 3.10–3.12), type checking (mypy), and building
-  - `publish.yml` for PyPI publishing using trusted publishing (OIDC)
-  - `codeql.yml` for automated security scanning
-  - `release-drafter.yml` for automated release note generation
-  - `stale.yml` for automated issue/PR cleanup
-  - `docs-deploy.yml` for GitHub Pages deployment
-  - `docs-validate.yml` for documentation validation on PRs
-- Cross-platform CI testing (macOS, Windows) for Python 3.12
-- Dependabot configuration for automated dependency updates
-- Release drafter configuration for automated changelog generation
-
-#### Documentation
-
-- Sphinx documentation with pydata theme
-- `PROJECT_PLAN.md` with detailed project roadmap and feature planning
-- `SYSTEM_DESIGN.md` with architecture documentation and design decisions
-- Mermaid architecture diagrams for design patterns and system views:
-  - Class diagrams for core and stats modules
-  - Sequence diagrams for simulation and bootstrap flows
-  - Component and layered architecture diagrams
-  - Design pattern diagrams (Adapter, Strategy, Template Method, Registry)
-  - State lifecycle and execution flow diagrams
-- "Getting Started" guide for user onboarding
-- Autosummary templates for enhanced class documentation
-- GitHub icon link in Sphinx HTML theme
-- PyPI version, CI, coverage, and documentation badges in README
-- `CHANGELOG.md` for version tracking
-- `CONTRIBUTING.md` with development guidelines
-- Demo files: `demo.py`, `demoBlackScholes.py`, `demoTickerBlackScholes.py`
-- `TICKER_DEMO_README.md` with usage instructions
-
-#### Testing
-
-- Comprehensive test suite with pytest
-- Test coverage reporting with pytest-cov and Codecov integration
-- Edge case tests (`test_stats_engine_edge_cases.py`)
-- Comprehensive test suite for Black-Scholes simulations (`test_black_scholes.py`)
-- Tests for RNG state preservation in `calculate_greeks` method
-- Tests for `ComputeResult` representation and error handling
-- Tests ensuring statistical outputs are plain Python floats
-
+### Other
+- Revise project plan and table formatting
+- Update SYSTEM_DESIGN.rst
+- Update README
+- Update documentation for clarity and structure
+- Add installation instructions to getting-started.md
+- Update CHANGELOG.md for initial public release of mcframework (0.1.0)
+- Fix documentation link case sensitivity
+- Fix formatting of links in README.md
+- Refactor links formatting in README
+- Add badges to README for project status
+- Update Docs badge link in README.md
+- Fix documentation link for mcFramework
+- Update README to improve documentation structure and add links
+- Improve test files by adding missing newlines for consistency
+- Refactor demo scripts and improve imports
+- Refactor README by removing outdated sections
+- Enhance project metadata and documentation
+- Enhance README with detailed documentation and installation instructions
+- Add project plan and system design to documentation for McFramework
+- Refactor SYSTEM_DESIGN.md for clarity and conciseness
+- Add project plan and system design documentation for McFramework
+- Revise Monte Carlo framework class diagram
+- Update CHANGELOG for version 0.5.0 and add UML diagrams for mcframework
+- Revert "Adding a Neutron Transport simulation model and demo "
+- Update doctest configuration in conf.py to improve testing setup
+- Refactor Pylint configuration and enhance type annotations in mcframework
+- Enhance documentation and examples for doctests in mcframework
+- Enhance documentation and configuration for mcframework
+- Enhance Black-Scholes GUI with statistical analysis features
+- Enhance Black-Scholes GUI with option pricing features and layout improvements
+- Enhance CandlestickChart with crosshair and tooltip features
+- Enhance Black-Scholes GUI with new features and layout improvements
+- Refactor Black-Scholes GUI components and enhance styling
+- Enhance Black-Scholes GUI with new features and UI improvements
+- Add GUI application for Black-Scholes Monte Carlo simulations
+- Fix state comparison in RNG tests for Black-Scholes simulations
+- Add test to ensure RNG state is preserved in calculate_greeks
+- Refactor and reorganize simulation modules in mcframework
+- Enhance Sphinx documentation configuration
+- Update .gitignore to include additional generated documentation files and images
+- Remove obsolete autosummary documentation for unused functions in mcframework.utils
+- Update documentation and improve API references
+- Update .gitignore to include additional Sphinx build directories for generated API documentation
+- Update .gitignore to exclude all build artifacts from documentation
+- Update documentation and improve .gitignore for better project organization
+- Update URL in README
+- Refactor Monte Carlo simulation percentile computation and enhance tests
+- Enhance mcframework with Black-Scholes simulations and tests
+- Add ticker-based Black-Scholes analysis demo and visualizations
+- Add comprehensive tests for Black-Scholes sim
+- Add Black-Scholes simulation demo and enhance demo files
+- Refactor imports in test files for improved clarity
+- Enhance error handling and testing in core and stats engine
+- Refactor Monte Carlo simulation and stats engine for improved clarity and functionality
+- Enhance stats engine with ComputeResult class and improve validation
+- Refactor Monte Carlo simulation and enhance stats handling
+- Enhance stats_engine.py with new CIResult class and update tests
+- Revise README for improved description and clarity
+- Add documentation deployment badge to README
+- Update src/mcframework/stats_engine.py
+- Update CI workflows for documentation deployment and validation
+- Refactor CI workflows for documentation handling
+- Enhance CI workflow and update documentation deployment
+- Enhance statistical context and testing in stats_engine.py and test files
+- Remove unused import of the time module in test_performance_and_concurrency.py to improve code cleanliness.
+- Remove unused import of the math module in test_core.py to enhance code cleanliness.
+- Enhance test coverage and readability in test_core.py
+- Comment out performance test for parallel execution speed due to environment-dependent variance
+- Update CI workflow for coverage reporting and modify performance test assertions
+- Update CI workflow to use latest GitHub actions versions for improved reliability
+- Update README and CI workflows; enhance parallel execution handling
+- Delete .DS_Store
+- Fix Sphinx documentation build command in CI workflow by removing unnecessary warning flag
+- Enhance statistical functions and improve context handling in Monte Carlo simulations
+- Refactor StatsEngine context handling and enhance statistical functions
+- Remove unnecessary blank line in test_integration.py for improved code cleanliness.
+- Refactor imports and improve code readability
+- Update .gitignore to exclude coverage files and remove obsolete coverage reports
+- Delete GITHUB_ACTIONS_SETUP_COMPLETE.md
+- Update CI badges in QUICK_REFERENCE.md
+- Add GitHub Actions workflows for CI/CD pipeline
+- Rename LICENSE  to LICENSE
+- Enhance .gitignore and improve error handling in stats_engine
+- Delete .idea directory
+- Delete trace
+- Update .gitignore and McFramework.iml to exclude IDE files
+- Add CHANGELOG.md and CONTRIBUTING.md; update README.md with installation instructions and dependencies
+- Delete build directory
+- Refactor confidence interval handling and enhance percentile assertions in tests
+- Add `eps` parameter and improve statistic engine handling
+- Add StatsContext and enhance statistical metrics with new features
+- Initial Commit
 ---
 
 ## Development History
@@ -142,9 +223,9 @@ The following sections document the incremental development history leading to v
 
 #### Changed
 - Reorganized simulation modules: distributed `sims.py` into dedicated modules
-  - `sims/black_scholes.py` - Black-Scholes simulations
-  - `sims/pi.py` - Pi estimation simulation
-  - `sims/portfolio.py` - Portfolio simulation
+- `sims/black_scholes.py` - Black-Scholes simulations
+- `sims/pi.py` - Pi estimation simulation
+- `sims/portfolio.py` - Portfolio simulation
 - Introduced new `sims/__init__.py` for streamlined imports
 - Updated public API to reflect new module organization
 - Enhanced Black-Scholes simulation classes to support ticker-based analysis
@@ -258,7 +339,7 @@ The following sections document the incremental development history leading to v
 #### Changed
 - Standardized type hints to PEP 585 (`dict`, `tuple`)
 - Refactored percentile tracking to use method parameters
-- Renamed `todo` → `metrics_to_compute` in `StatsEngine`
+- Renamed `todo` to `metrics_to_compute` in `StatsEngine`
 - Updated `ci_mean` and `ci_mean_bootstrap` to use `_CIResult`
 - `_clean` refactored to return normalized `StatsContext`
 - Improved statistical functions to use new context system
