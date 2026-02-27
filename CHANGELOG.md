@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Implement Torch backend support for Monte Carlo simulations
 
 ### Maintenance
+- Update CHANGELOG.md and add cliff.toml for changelog generation
 - Enhance benchmarking calculations and visualizations
 - Improve timing accuracy in Monte Carlo simulation
 - Remove unnecessary blank lines in Torch backend test files
