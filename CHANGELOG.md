@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [Unreleased]
+### Maintenance
+- Enhance cliff.toml for improved commit message processing
+- Update changelog workflow to support multiple branches
+
+## [0.2.0] – 2026-02-27
 ### Bug Fixes
 - CI workflow and benchmark script bugs
 - Reduce simulation count to prevent OOM errors in profiling demo
@@ -35,8 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WIP Features section to README
 
 ### Maintenance
-- Enhance cliff.toml for improved commit message processing
-- Update changelog workflow to support multiple branches
 - Bump version to 0.2.0 in pyproject.toml
 - Update CHANGELOG.md and cliff.toml for improved changelog generation
 - Update CHANGELOG.md and add cliff.toml for changelog generation
