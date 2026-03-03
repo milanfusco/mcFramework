@@ -34,7 +34,7 @@ class SequentialBackend:
         self,
         sim: "MonteCarloSimulation",
         n_simulations: int,
-        _seed_seq: np.random.SeedSequence | None,
+        seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None,
         **simulation_kwargs: Any,
     ) -> np.ndarray:
@@ -47,6 +47,11 @@ class SequentialBackend:
             The simulation instance to run.
         n_simulations : int
             Number of simulation draws to perform.
+        seed_seq : SeedSequence or None
+            Seed sequence for creating a deterministic RNG stream.
+            When provided, a dedicated RNG is spawned and passed to each
+            ``single_simulation`` call via the ``_rng`` keyword, matching
+            the reproducibility semantics of parallel backends.
         progress_callback : callable or None
             Optional callback ``f(completed, total)`` for progress reporting.
         **simulation_kwargs : Any
@@ -58,12 +63,19 @@ class SequentialBackend:
             Array of simulation results with shape ``(n_simulations,)``.
         """
         results = np.empty(n_simulations, dtype=float)
-        # Report progress every 1% of simulations
         step = max(1, n_simulations // 100)
 
-        for i in range(n_simulations):
-            results[i] = float(sim.single_simulation(**simulation_kwargs))
-            if progress_callback and (((i + 1) % step == 0) or (i + 1 == n_simulations)):
-                progress_callback(i + 1, n_simulations)
+        if seed_seq is not None:
+            child_seq = seed_seq.spawn(1)[0]
+            local_rng = np.random.Generator(np.random.Philox(child_seq))
+            for i in range(n_simulations):
+                results[i] = float(sim.single_simulation(_rng=local_rng, **simulation_kwargs))
+                if progress_callback and (((i + 1) % step == 0) or (i + 1 == n_simulations)):
+                    progress_callback(i + 1, n_simulations)
+        else:
+            for i in range(n_simulations):
+                results[i] = float(sim.single_simulation(**simulation_kwargs))
+                if progress_callback and (((i + 1) % step == 0) or (i + 1 == n_simulations)):
+                    progress_callback(i + 1, n_simulations)
 
         return results

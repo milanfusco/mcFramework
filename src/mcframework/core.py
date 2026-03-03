@@ -65,7 +65,6 @@ __all__ = [
     "MonteCarloSimulation",
     "MonteCarloFramework",
     "make_blocks",
-    "_worker_run_chunk",
 ]
 
 
@@ -85,7 +84,7 @@ class SimulationResult:
     mean : float
         Sample mean :math:`\bar X`.
     std : float
-        Sample standard deviation with ``ddof=1`` (default for NumPy's :func:`numpy.std`).
+        Sample standard deviation with ``ddof=1`` (Bessel correction).
     percentiles : dict[int, float]
         Dictionary of computed percentiles, e.g. ``{5: 0.05, 50: 0.50, 95: 0.95}``.
     stats : dict
@@ -136,7 +135,7 @@ class SimulationResult:
 
         where :math:`c` is either a z or t critical value depending on ``method``.
         """
-        print("=" * 20 + " SIM RESULTS " + "=" * 20)
+        header = "=" * 20 + " SIM RESULTS " + "=" * 20
         if simulation_name := self.metadata.get("simulation_name"):
             title = f"Results for simulation '{simulation_name}':"
         else:
@@ -147,6 +146,7 @@ class SimulationResult:
         lo = self.mean - crit * se
         hi = self.mean + crit * se
         lines = [
+            header,
             title,
             f"  Number of simulations: {self.n_simulations}",
             f"  Execution time: {self.execution_time:.2f} seconds",
