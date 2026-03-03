@@ -316,40 +316,7 @@ class MonteCarloSimulation(ABC):
         cupy.ndarray
             A 1D array of length ``n`` containing simulation results.
         """
-        legacy_impl = type(self).cupy_batch
-        if legacy_impl is not MonteCarloSimulation.cupy_batch:
-            warnings.warn(
-                "cupy_batch() is deprecated; implement curand_batch(n, device_id, rng) "
-                "instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            try:
-                import torch
-                device = torch.device(f"cuda:{device_id}")
-            except ImportError:
-                device = device_id
-            return self.cupy_batch(n, device=device, rng=rng)
         raise NotImplementedError
-
-    def cupy_batch(
-        self, n: int, *, device: torch.device, rng: cupy.random.RandomState
-    ) -> cupy.ndarray:
-        """Deprecated compatibility shim for legacy cuRAND simulations."""
-        warnings.warn(
-            "cupy_batch() is deprecated; rename to curand_batch(n, device_id, rng).",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if isinstance(device, str):
-            device_id = int(device.split(":")[-1]) if ":" in device else 0
-        elif isinstance(device, int):
-            device_id = device
-        elif hasattr(device, "index") and device.index is not None:
-            device_id = int(device.index)
-        else:
-            device_id = 0
-        return self.curand_batch(n, device_id, rng)
 
     def set_seed(self, seed: int | None) -> None:
         r"""
