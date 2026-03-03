@@ -13,10 +13,9 @@ import numpy as np
 import pytest
 import torch
 
+from mcframework.backends.torch_mps import is_mps_available, validate_mps_device
 from mcframework.core import MonteCarloSimulation
 from mcframework.sims import PiEstimationSimulation
-
-from mcframework.backends.torch_mps import is_mps_available, validate_mps_device
 
 MPS_AVAILABLE = torch.backends.mps.is_available() and torch.backends.mps.is_built()
 

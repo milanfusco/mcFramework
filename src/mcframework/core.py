@@ -48,7 +48,7 @@ import numpy as np
 
 # Re-export backend utilities for backward compatibility
 from .backends import is_windows_platform, make_blocks
-from .backends.base import worker_run_chunk as _worker_run_chunk
+from .backends.base import worker_run_chunk as _worker_run_chunk  # noqa: F401
 
 # Re-export MonteCarloSimulation from simulation module for backward compatibility
 from .simulation import MonteCarloSimulation
