@@ -1002,3 +1002,39 @@ def test_process_backend_prepare_blocks_without_seed():
     assert all(isinstance(s, np.random.SeedSequence) for s in child_seqs)
 
 
+def test_supports_batch_setter():
+    """Setting supports_batch via the property stores the value on the instance."""
+    class Dummy(MonteCarloSimulation):
+        def single_simulation(self, **kw):
+            return 0.0
+
+    sim = Dummy(name="d")
+    assert not sim.supports_batch
+    sim.supports_batch = True
+    assert sim.supports_batch
+    sim.supports_batch = False
+    assert not sim.supports_batch
+
+
+def test_create_backend_torch_raises():
+    """_create_backend('torch') must raise RuntimeError (torch uses a separate path)."""
+    class Dummy(MonteCarloSimulation):
+        def single_simulation(self, **kw):
+            return 0.0
+
+    sim = Dummy(name="d")
+    with pytest.raises(RuntimeError, match="Torch backend should be dispatched"):
+        sim._create_backend("torch", n_workers=2)
+
+
+def test_thread_backend_prepare_blocks_instance_wrapper():
+    """ThreadBackend._prepare_blocks instance wrapper partitions work correctly."""
+    from mcframework.backends.parallel import ThreadBackend
+
+    backend = ThreadBackend(n_workers=2)
+    blocks, seeds = backend._prepare_blocks(100, np.random.SeedSequence(0))
+    assert sum(end - start for start, end in blocks) == 100
+    assert len(seeds) == len(blocks)
+    assert all(isinstance(s, np.random.SeedSequence) for s in seeds)
+
+

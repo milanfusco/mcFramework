@@ -301,3 +301,14 @@ class TestTorchDeviceValidation:
         with pytest.raises(RuntimeError, match="CUDA device requested but not available"):
             sim.run(100, backend="torch", torch_device="cuda")
 
+
+def test_torch_backend_raises_when_torch_missing(monkeypatch):
+    """TorchBackend.__init__ raises ImportError when PyTorch is not installed."""
+    import importlib.util as ilu
+
+    from mcframework.backends.torch import TorchBackend
+
+    monkeypatch.setattr(ilu, "find_spec", lambda _name: None)
+    with pytest.raises(ImportError, match="Torch backend requires PyTorch"):
+        TorchBackend(device="cpu")
+

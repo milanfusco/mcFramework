@@ -24,7 +24,8 @@ class DeterministicSim(MonteCarloSimulation):
 
 @pytest.fixture(autouse=True)
 def _stable_seed():
-    # Keep global state stable for any legacy code that still touches np.random.*
+    np.random.seed(42)
+    yield
     np.random.seed(42)
 
 @pytest.fixture(scope="session", autouse=True)
@@ -36,9 +37,9 @@ def _set_spawn_start_method():
 
 @pytest.fixture
 def sample_data():
-    """Fixture providing sample data for testing"""
-    np.random.seed(42)
-    return np.random.normal(5.0, 2.0, 1000)
+    """Fixture providing sample data for testing."""
+    rng = np.random.default_rng(42)
+    return rng.normal(5.0, 2.0, 1000)
 
 
 @pytest.fixture

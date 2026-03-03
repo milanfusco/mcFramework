@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from mcframework.core import _worker_run_chunk
+from mcframework.backends.base import worker_run_chunk
 
 
 class TestPerformance:
@@ -53,6 +53,6 @@ class TestPerformance:
     def test_worker_run_chunk(self, simple_simulation):
         """[FR-3] Test worker function directly."""
         seed_seq = np.random.SeedSequence(42)
-        results = _worker_run_chunk(simple_simulation, 100, seed_seq, {})
+        results = worker_run_chunk(simple_simulation, 100, seed_seq, {})
         assert len(results) == 100
         assert all(isinstance(r, float) for r in results)

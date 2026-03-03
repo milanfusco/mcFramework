@@ -70,3 +70,9 @@ class TestCriticalValues:
         """[FR-19, USA-4] Test autocrit raises error for invalid method."""
         with pytest.raises(ValueError, match="method must be"):
             autocrit(0.95, 100, "invalid")
+
+    def test_autocrit_bootstrap_falls_back_to_auto(self):
+        """[FR-19] method='bootstrap' is remapped to 'auto'; small n resolves to t."""
+        crit, method = autocrit(0.95, 10, "bootstrap")
+        assert method == "t"
+        assert crit > 1.96
