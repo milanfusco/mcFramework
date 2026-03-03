@@ -133,8 +133,8 @@ class TorchBackend:
     Notes
     -----
     **Delegation model.** This class delegates all execution to the
-    device-specific backend. It exists to provide a unified interface
-    and for backward compatibility.
+    device-specific backend. It provides a unified dispatch interface
+    across CPU, MPS, and CUDA devices.
 
     **Device selection.** The backend is selected at construction time
     based on the ``device`` parameter. Device availability is validated

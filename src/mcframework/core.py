@@ -148,7 +148,9 @@ class SimulationResult:
         for p in sorted(self.percentiles):
             lines.append(f"    {p}th: {self.percentiles[p]:.5f}")
         ci = self.stats.get("ci_mean")
-        if isinstance(ci, (tuple, list)) and len(ci) == 2 and all(isinstance(x, (int, float)) for x in ci):
+        if isinstance(ci, dict) and "low" in ci and "high" in ci:
+            lines.append(f"  (engine) CI: [{ci['low']:.5f}, {ci['high']:.5f}]")
+        elif isinstance(ci, (tuple, list)) and len(ci) == 2 and all(isinstance(x, (int, float)) for x in ci):
             lines.append(f"  (engine) CI: [{ci[0]:.5f}, {ci[1]:.5f}]")
         if self.stats:
             lines.append("Additional Stats:")

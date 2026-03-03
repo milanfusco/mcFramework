@@ -19,12 +19,8 @@ def test_curand_batch_raises_not_implemented():
             return 0.0
 
     sim = Dummy(name="dummy")
-    try:
+    with pytest.raises(NotImplementedError):
         sim.curand_batch(10, 0, None)
-    except NotImplementedError:
-        pass
-    else:
-        raise AssertionError("curand_batch should raise NotImplementedError by default")
 
 
 def test_rng_null_guard_raises():

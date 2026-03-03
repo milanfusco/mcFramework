@@ -92,7 +92,7 @@ class PiEstimationSimulation(MonteCarloSimulation):
             the unit disk.
         """
         rng = self._rng(_rng, self.rng)
-        if not antithetic:  # pragma: no cover
+        if not antithetic:
             pts = rng.uniform(-1.0, 1.0, (n_points, 2))
             inside = np.sum(np.sum(pts * pts, axis=1) <= 1.0)
             return float(4.0 * inside / n_points)

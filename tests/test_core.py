@@ -123,6 +123,22 @@ class TestSimulationResult:
         assert "custom_metric" in summary
         assert "note" in summary
 
+    def test_result_to_string_with_dict_ci_mean(self):
+        """result_to_string handles ci_mean as a dict (engine output format)."""
+        results = np.array([2.0, 4.0, 6.0, 8.0])
+        stats = {"ci_mean": {"low": 3.0, "high": 7.0, "confidence": 0.95, "method": "z"}}
+        result = SimulationResult(
+            results=results,
+            n_simulations=len(results),
+            execution_time=0.5,
+            mean=float(np.mean(results)),
+            std=float(np.std(results, ddof=1)),
+            percentiles={},
+            stats=stats,
+        )
+        summary = result.result_to_string()
+        assert "(engine) CI: [3.00000, 7.00000]" in summary
+
 
 class TestMonteCarloSimulation:
     """[FR-1] Test MonteCarloSimulation abstract base class."""
@@ -878,6 +894,26 @@ def test_run_with_backend_auto_large_job():
     assert result.n_simulations == 25000
 
 
+def test_resolve_backend_type_warns_on_invalid(caplog):
+    """[NFR-7] _resolve_backend_type warns and falls back for an unknown backend value."""
+    import logging
+
+    from mcframework.core import MonteCarloSimulation
+
+    class SimpleSim(MonteCarloSimulation):
+        def single_simulation(self, _rng=None):
+            return 1.0
+
+    sim = SimpleSim()
+    sim.backend = "bogus"
+
+    with caplog.at_level(logging.WARNING, logger="mcframework.simulation"):
+        resolved = sim._resolve_backend_type()
+
+    assert resolved in ("thread", "process")
+    assert "Defaulting to 'auto'" in caplog.text
+
+
 def test_resolve_backend_unknown_backend_warning():
     """[NFR-7] Test _resolve_backend warns and defaults to auto for unknown backends."""
     from mcframework.backends.parallel import ProcessBackend, ThreadBackend
@@ -957,5 +993,19 @@ def test_prepare_blocks_with_seed():
     assert sum(end - start for start, end in blocks) == 100
     assert len(seeds) == len(blocks)
     assert all(isinstance(s, np.random.SeedSequence) for s in seeds)
+
+
+def test_version_fallback_when_package_not_found():
+    """__version__ falls back to '0.0.0+unknown' when metadata is missing."""
+    import importlib
+    from importlib.metadata import PackageNotFoundError
+    from unittest.mock import patch
+
+    with patch("importlib.metadata.version", side_effect=PackageNotFoundError("mcframework")):
+        import mcframework
+        importlib.reload(mcframework)
+        assert mcframework.__version__ == "0.0.0+unknown"
+
+    importlib.reload(mcframework)
 
 

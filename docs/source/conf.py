@@ -245,11 +245,11 @@ numpydoc_xref_aliases = {
 
     # important mcframework methods and attributes
     "supports_batch": "mcframework.simulation.MonteCarloSimulation.supports_batch",
-    "single_simulation": "mcframework.core.MonteCarloSimulation.single_simulation",
-    "torch_batch": "mcframework.core.MonteCarloSimulation.torch_batch",
-    "curand_batch": "mcframework.core.MonteCarloSimulation.curand_batch",
-    "set_seed": "mcframework.core.MonteCarloSimulation.set_seed",
-    "run": "mcframework.core.MonteCarloSimulation.run",
+    "single_simulation": "mcframework.simulation.MonteCarloSimulation.single_simulation",
+    "torch_batch": "mcframework.simulation.MonteCarloSimulation.torch_batch",
+    "curand_batch": "mcframework.simulation.MonteCarloSimulation.curand_batch",
+    "set_seed": "mcframework.simulation.MonteCarloSimulation.set_seed",
+    "run": "mcframework.simulation.MonteCarloSimulation.run",
 
     # Backend classes
     "ExecutionBackend": "mcframework.backends.ExecutionBackend",
@@ -370,7 +370,6 @@ from mcframework.backends import (
     SequentialBackend,
     ThreadBackend,
     ProcessBackend,
-    make_blocks,
     is_windows_platform,
 )
 
