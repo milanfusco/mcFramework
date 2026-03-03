@@ -19,6 +19,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import multiprocessing as mp
 import platform
 import sys
@@ -31,6 +32,8 @@ import numpy as np
 IS_APPLE_SILICON = (
     platform.system() == "Darwin" and platform.machine() == "arm64"
 )
+_TIME_EPS = 1e-12
+_DEFAULT_MAX_SEQUENTIAL_SIZE = 1_000_000
 
 
 @dataclass
@@ -41,11 +44,6 @@ class BenchmarkResult:
     execution_time: float
     mean_estimate: float
     throughput: float  # simulations per second
-
-    @property
-    def speedup_vs(self) -> float:
-        """Placeholder for relative speedup calculation."""
-        return 1.0
 
 
 def check_torch_availability() -> tuple[bool, bool]:
@@ -165,6 +163,8 @@ def run_benchmark_suite(
     simulation_sizes: list[int],
     backends: list[tuple[str, str]],  # (backend, torch_device)
     n_workers: int | None = None,
+    quick: bool = False,
+    max_sequential_size: int = _DEFAULT_MAX_SEQUENTIAL_SIZE,
 ) -> dict[str, list[BenchmarkResult]]:
     """
     Run full benchmark suite across multiple simulation sizes and backends.
@@ -179,6 +179,10 @@ def run_benchmark_suite(
         List of (backend, torch_device) tuples.
     n_workers : int, optional
         Number of workers for parallel backends.
+    quick : bool, default False
+        If True, skip high-volume sequential runs above ``max_sequential_size``.
+    max_sequential_size : int, default 1_000_000
+        Maximum simulation size allowed for sequential backend when ``quick`` is enabled.
     
     Returns
     -------
@@ -193,13 +197,24 @@ def run_benchmark_suite(
         run_benchmark(sim, 1000, backend, device, n_workers, warmup=True)
     print()
     
-    total_runs = len(simulation_sizes) * len(backends)
+    total_runs = sum(
+        1
+        for n_sims in simulation_sizes
+        for backend, _ in backends
+        if not (quick and backend == "sequential" and n_sims > max_sequential_size)
+    )
     current_run = 0
     
     for n_sims in simulation_sizes:
         print(f"Running benchmarks for n={n_sims:,} simulations...")
         
         for backend, device in backends:
+            if quick and backend == "sequential" and n_sims > max_sequential_size:
+                print(
+                    "  [skip] sequential above max size: "
+                    f"n={n_sims:,} > max_sequential_size={max_sequential_size:,}"
+                )
+                continue
             current_run += 1
             backend_name = f"{backend}" if backend != "torch" else f"torch-{device}"
             
@@ -220,54 +235,68 @@ def run_benchmark_suite(
     return results
 
 
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI arguments for benchmark runtime controls."""
+    parser = argparse.ArgumentParser(description="Run Apple Silicon backend benchmark demo.")
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help=(
+            "Skip sequential runs above --max-sequential-size to reduce wait time "
+            "for high-volume benchmarks."
+        ),
+    )
+    parser.add_argument(
+        "--max-sequential-size",
+        type=int,
+        default=_DEFAULT_MAX_SEQUENTIAL_SIZE,
+        help=(
+            "Maximum sequential simulation size used when --quick is enabled "
+            f"(default: {_DEFAULT_MAX_SEQUENTIAL_SIZE:,})."
+        ),
+    )
+    args = parser.parse_args(argv)
+    if args.max_sequential_size <= 0:
+        parser.error("--max-sequential-size must be a positive integer")
+    return args
+
+
 def calculate_speedups(
     results: dict[str, list[BenchmarkResult]],
     baseline: str = "sequential",
 ) -> dict[str, list[tuple[int, float]]]:
     """
     Calculate speedup factors relative to a baseline backend.
-    
+
     Parameters
     ----------
     results : dict[str, list[BenchmarkResult]]
         Benchmark results by backend name.
     baseline : str
         Backend name to use as baseline (speedup = 1.0).
-    
+
     Returns
     -------
     dict[str, list[tuple[int, float]]]
         Speedup factors by backend name, as (n_simulations, speedup) tuples.
-    dict[str, list[float]]
-        Speedup factors by backend name. Each backend's speedups are aligned
-        with its own results (may have different lengths if runs failed).
     """
     if baseline not in results:
         print(f"Warning: Baseline '{baseline}' not found in results.")
         return {}
-    
-    # Create mapping of n_simulations -> execution_time for baseline
-    baseline_map = {
-        r.n_simulations: r.execution_time 
-        for r in results[baseline]
+
+    baseline_times = {
+        r.n_simulations: r.execution_time
+        for r in sorted(results[baseline], key=lambda x: x.n_simulations)
+        if r.execution_time > _TIME_EPS
     }
-    
-    speedups: dict[str, list[float]] = {}
-    # Build a map of n_simulations -> execution_time for baseline
-    baseline_times = {r.n_simulations: r.execution_time for r in results[baseline]}
     speedups: dict[str, list[tuple[int, float]]] = {}
-    
+
     for backend, backend_results in results.items():
-        # Calculate speedup only for matching simulation sizes
         speedups[backend] = [
-            baseline_map[r.n_simulations] / r.execution_time
-            if r.n_simulations in baseline_map else 1.0
-            for r in backend_results
             (r.n_simulations, baseline_times[r.n_simulations] / r.execution_time)
-            for r in backend_results
-            if r.n_simulations in baseline_times
+            for r in sorted(backend_results, key=lambda x: x.n_simulations)
+            if r.n_simulations in baseline_times and r.execution_time > _TIME_EPS
         ]
-    
     return speedups
 
 
@@ -337,13 +366,10 @@ def create_benchmark_visualizations(
     ax1.set_facecolor("#1E293B")
     
     for backend, backend_results in results.items():
-        # Extract actual x-values from results (handles missing/failed runs)
         x_values = [r.n_simulations for r in backend_results]
-        sizes = [r.n_simulations for r in backend_results]
         times = [r.execution_time for r in backend_results]
         ax1.plot(
             x_values, times,
-            sizes, times,
             marker="o", markersize=8, linewidth=2.5,
             color=colors[backend], label=backend,
         )
@@ -366,13 +392,10 @@ def create_benchmark_visualizations(
     ax2.set_facecolor("#1E293B")
     
     for backend, backend_results in results.items():
-        # Extract actual x-values from results (handles missing/failed runs)
         x_values = [r.n_simulations for r in backend_results]
-        sizes = [r.n_simulations for r in backend_results]
         throughputs = [r.throughput for r in backend_results]
         ax2.plot(
             x_values, throughputs,
-            sizes, throughputs,
             marker="s", markersize=8, linewidth=2.5,
             color=colors[backend], label=backend,
         )
@@ -397,74 +420,32 @@ def create_benchmark_visualizations(
     speedups = calculate_speedups(results, baseline="sequential")
     
     if speedups:
-        # Use largest simulation size for the comparison
-        # Find the largest n_simulations across all backends
-        largest_n = max(
-            r.n_simulations 
-            for backend_results in results.values() 
-            for r in backend_results
-        )
-        
-        backends_list = [b for b in results.keys() if b != "sequential"]
-        speedup_values = []
-        
-        # Get speedup for the largest run of each backend
-        for backend in backends_list:
-            backend_results = results[backend]
-            # Find the index of the largest simulation size for this backend
-            largest_idx = max(
-                range(len(backend_results)),
-                key=lambda i: backend_results[i].n_simulations
-            )
-            speedup_values.append(speedups[backend][largest_idx])
-        
-        bar_colors = [colors[b] for b in backends_list]
-        
-        x_pos = np.arange(len(backends_list))
-        bars = ax3.bar(x_pos, speedup_values, color=bar_colors, 
-                       edgecolor="#1E293B", linewidth=1.5, alpha=0.9)
-        
-        # Add value labels on bars
-        for bar, val in zip(bars, speedup_values):
-            height = bar.get_height()
-            ax3.text(
-                bar.get_x() + bar.get_width() / 2., height + 0.1,
-                f"{val:.1f}×",
-                ha="center", va="bottom",
-                fontsize=12, fontweight="bold", color="#F8FAFC",
-            )
-        
-        ax3.axhline(1.0, color="#EF4444", linestyle="--", linewidth=2,
-                    label="Sequential baseline")
-        ax3.set_xticks(x_pos)
-        ax3.set_xticklabels(backends_list, fontsize=10, color="#E2E8F0")
-        ax3.set_ylabel("Speedup Factor", fontsize=11, color="#E2E8F0")
-        ax3.set_title(
-            f"Speedup vs Sequential (n={largest_n:,})",
-            fontsize=13, fontweight="bold", color="#F8FAFC", pad=10,
-        )
-        ax3.legend(loc="upper right", facecolor="#334155", edgecolor="#475569",
-                   labelcolor="#E2E8F0", fontsize=9)
-        # Use largest common simulation size for the comparison
-        # Find backends with speedup data and get their largest size
         backends_list = []
         speedup_values = []
         bar_colors = []
-        largest_size = 0
-        
+        size_to_speedup: dict[str, dict[int, float]] = {}
+
         for backend in results.keys():
-            if backend == "sequential" or backend not in speedups:
+            if backend == "sequential" or backend not in speedups or not speedups[backend]:
                 continue
-            if not speedups[backend]:
-                continue
-            # Get the speedup for the largest size this backend has
-            backend_speedups = speedups[backend]
-            if backend_speedups:
-                n_sims, speedup = backend_speedups[-1]
-                backends_list.append(backend)
-                speedup_values.append(speedup)
-                bar_colors.append(colors[backend])
-                largest_size = max(largest_size, n_sims)
+            backends_list.append(backend)
+            bar_colors.append(colors[backend])
+            size_to_speedup[backend] = {n_sims: s for n_sims, s in speedups[backend]}
+
+        common_sizes: set[int] = set()
+        if backends_list:
+            common_sizes = set(size_to_speedup[backends_list[0]].keys())
+            for backend in backends_list[1:]:
+                common_sizes &= set(size_to_speedup[backend].keys())
+
+        largest_size = max(common_sizes) if common_sizes else 0
+        if largest_size > 0:
+            speedup_values = [size_to_speedup[backend][largest_size] for backend in backends_list]
+        else:
+            speedup_values = [
+                max(speedups[backend], key=lambda t: t[0])[1]
+                for backend in backends_list
+            ]
         
         if backends_list:
             x_pos = np.arange(len(backends_list))
@@ -486,10 +467,16 @@ def create_benchmark_visualizations(
             ax3.set_xticks(x_pos)
             ax3.set_xticklabels(backends_list, fontsize=10, color="#E2E8F0")
             ax3.set_ylabel("Speedup Factor", fontsize=11, color="#E2E8F0")
-            ax3.set_title(
-                f"Speedup vs Sequential (n={largest_size:,})",
-                fontsize=13, fontweight="bold", color="#F8FAFC", pad=10,
-            )
+            if largest_size > 0:
+                ax3.set_title(
+                    f"Speedup vs Sequential (n={largest_size:,})",
+                    fontsize=13, fontweight="bold", color="#F8FAFC", pad=10,
+                )
+            else:
+                ax3.set_title(
+                    "Speedup vs Sequential (largest available per backend)",
+                    fontsize=13, fontweight="bold", color="#F8FAFC", pad=10,
+                )
             ax3.legend(loc="upper right", facecolor="#334155", edgecolor="#475569",
                        labelcolor="#E2E8F0", fontsize=9)
     
@@ -504,21 +491,11 @@ def create_benchmark_visualizations(
     
     # Show how speedup changes with problem size
     if speedups:
-    if speedups:
         for backend in results.keys():
             if backend == "sequential" or backend not in speedups:
                 continue
             if not speedups[backend]:
                 continue
-            # Extract actual x-values from results (handles missing/failed runs)
-            backend_results = results[backend]
-            if len(backend_results) > 1:
-                x_values = [r.n_simulations for r in backend_results]
-                ax4.plot(
-                    x_values, speedups[backend],
-                    marker="^", markersize=8, linewidth=2.5,
-                    color=colors[backend], label=backend,
-                )
             sizes = [s[0] for s in speedups[backend]]
             vals = [s[1] for s in speedups[backend]]
             if len(sizes) > 1:
@@ -569,10 +546,9 @@ def create_summary_table(
     """
     speedups = calculate_speedups(results, baseline="sequential")
     
-    # Collect all unique simulation sizes that were actually run
-    all_n_sims = sorted(set(
-        r.n_simulations 
-        for backend_results in results.values() 
+    all_sizes = sorted(set(
+        r.n_simulations
+        for backend_results in results.values()
         for r in backend_results
     ))
     
@@ -581,18 +557,10 @@ def create_summary_table(
     lines.append("BENCHMARK SUMMARY")
     lines.append("=" * 80)
     
-    # Get all unique sizes actually tested across all backends
-    all_sizes = sorted(set(
-        r.n_simulations
-        for backend_results in results.values()
-        for r in backend_results
-    ))
-    
     # Header
     header = f"{'Backend':<15}"
-    for n in all_n_sims:
-    for n in all_sizes:
-        header += f" | {n:>12,}"
+    for size in all_sizes:
+        header += f" | {size:>12,}"
     lines.append(header)
     lines.append("-" * 80)
     
@@ -603,17 +571,11 @@ def create_summary_table(
         result_map = {r.n_simulations: r for r in backend_results}
         
         row = f"  {backend:<13}"
-        for n in all_n_sims:
-            if n in result_map:
-                row += f" | {result_map[n].execution_time:>12.4f}"
+        for size in all_sizes:
+            if size in result_map:
+                row += f" | {result_map[size].execution_time:>12.4f}"
             else:
                 row += f" | {'N/A':>12}"
-        size_to_result = {r.n_simulations: r for r in backend_results}
-        for size in all_sizes:
-            if size in size_to_result:
-                row += f" | {size_to_result[size].execution_time:>12.4f}"
-            else:
-                row += f" | {'—':>12}"
         lines.append(row)
     
     lines.append("")
@@ -622,66 +584,22 @@ def create_summary_table(
     if speedups:
         lines.append("Speedup vs Sequential:")
         for backend in results.keys():
-            backend_results = results[backend]
-            # Create mapping of n_simulations -> speedup
-            speedup_map = {
-                backend_results[i].n_simulations: speedups[backend][i]
-                for i in range(len(backend_results))
-            }
-            
             row = f"  {backend:<13}"
-            for n in all_n_sims:
-                if n in speedup_map:
-                    row += f" | {speedup_map[n]:>11.2f}×"
-                else:
-                    row += f" | {'N/A':>12}"
             if backend not in speedups:
                 for _ in all_sizes:
-                    row += f" | {'—':>12}"
+                    row += f" | {'N/A':>12}"
             else:
                 size_to_speedup = {n_sims: s for n_sims, s in speedups[backend]}
                 for size in all_sizes:
                     if size in size_to_speedup:
                         row += f" | {size_to_speedup[size]:>11.2f}×"
                     else:
-                        row += f" | {'—':>12}"
+                        row += f" | {'N/A':>12}"
             lines.append(row)
     
     lines.append("")
     
     # Best performer for largest size
-    if results:
-        # Find the largest n_simulations that was actually run
-        largest_n = max(all_n_sims)
-        
-        # Find best backend for that size
-        candidates = {
-            backend: next(
-                (r for r in backend_results if r.n_simulations == largest_n),
-                None
-            )
-            for backend, backend_results in results.items()
-        }
-        # Filter out backends that didn't run the largest size
-        candidates = {k: v for k, v in candidates.items() if v is not None}
-        
-        if candidates:
-            best_backend = min(candidates.keys(), 
-                              key=lambda b: candidates[b].execution_time)
-            best_result = candidates[best_backend]
-            
-            lines.append(f"🏆 Best performer (n={largest_n:,}): {best_backend}")
-            lines.append(f"   Execution time: {best_result.execution_time:.4f}s")
-            lines.append(f"   Throughput: {best_result.throughput:,.0f} simulations/sec")
-            
-            if best_backend in speedups:
-                # Find speedup for this specific n_simulations
-                backend_results = results[best_backend]
-                result_idx = next(
-                    i for i, r in enumerate(backend_results) 
-                    if r.n_simulations == largest_n
-                )
-                lines.append(f"   Speedup: {speedups[best_backend][result_idx]:.1f}× faster than sequential")
     if results and all_sizes:
         largest_size = all_sizes[-1]
         # Find backends that have results at the largest size
@@ -710,8 +628,10 @@ def create_summary_table(
     return "\n".join(lines)
 
 
-def main():
+def main(argv: list[str] | None = None):
     """Run the Apple Silicon benchmark demo."""
+    args = parse_args(argv)
+
     # Print system info and check capabilities
     torch_available, mps_available = print_system_info()
     
@@ -760,12 +680,19 @@ def main():
     
     n_workers = mp.cpu_count()
     print(f"Using {n_workers} workers for parallel backends\n")
+    if args.quick:
+        print(
+            "Quick mode enabled: skipping sequential runs above "
+            f"{args.max_sequential_size:,} simulations.\n"
+        )
     
     results = run_benchmark_suite(
         sim,
         simulation_sizes,
         backends,
         n_workers=n_workers,
+        quick=args.quick,
+        max_sequential_size=args.max_sequential_size,
     )
     
     if not results:
