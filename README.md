@@ -33,7 +33,7 @@ pip install -e .
 | Python | ≥ 3.10 | Runtime |
 | NumPy | ≥ 1.26 | Arrays, RNG |
 | SciPy | ≥ 1.10 | Statistics |
-| Matplotlib | ≥ 3.7 | Visualization |
+| Matplotlib | ≥ 3.7 | Visualization (optional) |
 | PyTorch | ≥ 2.9.1 | GPU acceleration (optional) |
 | CuPy | ≥ 12.0.0 | cuRAND backend (optional) |
 
@@ -41,9 +41,10 @@ pip install -e .
 
 ```bash
 # All extras
-pip install -e ".[dev,test,docs,gui,gpu,cuda]"
+pip install -e ".[viz,dev,test,docs,gui,gpu,cuda]"
 
 # Individual extras
+pip install -e ".[viz]"   # Visualization (Matplotlib)
 pip install -e ".[dev]"   # Linting (ruff, pylint)
 pip install -e ".[test]"  # Testing (pytest, coverage)
 pip install -e ".[docs]"  # Documentation (Sphinx, themes)

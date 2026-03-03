@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77.0.3", "wheel"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "mcframework"
@@ -11,6 +11,15 @@ requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
+]
+keywords = [
+    "monte-carlo",
+    "simulation",
+    "finance",
+    "statistics",
+    "pytorch",
+    "apple-silicon",
+    "gpu",
 ]
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
@@ -66,6 +75,9 @@ gui = [
 [tool.setuptools]
 package-dir = { "" = "src" }
 
+[tool.setuptools.package-data]
+mcframework = ["py.typed"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -119,7 +131,7 @@ good-names = ["i", "j", "k", "x", "y", "n", "df", "ps", "B", "K", "T", "S", "Z",
 
 [tool.ruff]
 line-length = 110
-target-version = "py312"
+target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]     # pycodestyle/pyflakes/imports
+select = ["E", "F", "I", "UP", "B", "SIM"]
