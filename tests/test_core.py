@@ -906,23 +906,20 @@ def test_resolve_backend_auto_on_windows(monkeypatch):
     sim = SimpleSim()
     sim.backend = "auto"
 
-    monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: True)
+    monkeypatch.setattr("mcframework.simulation.is_windows_platform", lambda: True)
 
     backend = sim._create_backend("auto", n_workers=2)
     assert isinstance(backend, ProcessBackend)
 
 
-def test_process_backend_prepare_blocks_without_seed():
-    """[NFR-7] Test ProcessBackend._prepare_blocks generates random seeds when seed_seq is None."""
-    from mcframework.backends.parallel import ProcessBackend
+def test_prepare_blocks_without_seed():
+    """[NFR-7] Module-level _prepare_blocks generates random seeds when seed_seq is None."""
+    from mcframework.backends.parallel import _prepare_blocks
 
-    backend = ProcessBackend(n_workers=2)
-    blocks, child_seqs = backend._prepare_blocks(100, seed_seq=None)
+    blocks, child_seqs = _prepare_blocks(100, n_workers=2, chunks_per_worker=8, seed_seq=None)
 
-    # Should generate random seed sequences
     assert len(blocks) > 0
     assert len(child_seqs) == len(blocks)
-    # All should be SeedSequence instances
     import numpy as np
     assert all(isinstance(s, np.random.SeedSequence) for s in child_seqs)
 
@@ -952,12 +949,11 @@ def test_create_backend_torch_raises():
         sim._create_backend("torch", n_workers=2)
 
 
-def test_thread_backend_prepare_blocks_instance_wrapper():
-    """ThreadBackend._prepare_blocks instance wrapper partitions work correctly."""
-    from mcframework.backends.parallel import ThreadBackend
+def test_prepare_blocks_with_seed():
+    """Module-level _prepare_blocks partitions work and spawns deterministic seeds."""
+    from mcframework.backends.parallel import _prepare_blocks
 
-    backend = ThreadBackend(n_workers=2)
-    blocks, seeds = backend._prepare_blocks(100, np.random.SeedSequence(0))
+    blocks, seeds = _prepare_blocks(100, n_workers=2, chunks_per_worker=8, seed_seq=np.random.SeedSequence(0))
     assert sum(end - start for start, end in blocks) == 100
     assert len(seeds) == len(blocks)
     assert all(isinstance(s, np.random.SeedSequence) for s in seeds)

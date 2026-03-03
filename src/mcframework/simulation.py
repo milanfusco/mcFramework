@@ -36,14 +36,13 @@ from __future__ import annotations
 import logging
 import multiprocessing as mp
 import time
-import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .backends import ProcessBackend, SequentialBackend, ThreadBackend
+from .backends import ProcessBackend, SequentialBackend, ThreadBackend, is_windows_platform
 from .stats_engine import (
     _PCTS as _ENGINE_PCTS,
 )
@@ -606,10 +605,6 @@ class MonteCarloSimulation(ABC):
         * ``"process"`` on Windows where threads tend to serialize under the GIL.
         Invalid values fall back to ``"auto"`` and are then resolved.
         """
-        # Import from core for backward compatibility with tests that monkeypatch
-        # mcframework.core._is_windows_platform
-        from . import core as _core  # pylint: disable=import-outside-toplevel
-
         backend = requested or self.backend
         if backend not in self._VALID_BACKENDS:
             logger.warning(
@@ -620,7 +615,7 @@ class MonteCarloSimulation(ABC):
             backend = "auto"
 
         if backend == "auto":
-            on_windows = _core._is_windows_platform()  # pylint: disable=protected-access
+            on_windows = is_windows_platform()
             resolved = "process" if on_windows else "thread"
             if on_windows:
                 logger.info("Parallel backend 'auto' resolved to 'process' on Windows platform.")

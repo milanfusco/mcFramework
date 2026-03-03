@@ -130,12 +130,6 @@ class ThreadBackend:
 
         return results
 
-    def _prepare_blocks(
-        self, n_simulations: int, seed_seq: np.random.SeedSequence | None,
-    ) -> tuple[list[tuple[int, int]], list[np.random.SeedSequence]]:
-        """Backward-compatible instance wrapper around module-level helper."""
-        return _prepare_blocks(n_simulations, self.n_workers, self.chunks_per_worker, seed_seq)
-
 
 class ProcessBackend:
     r"""
@@ -224,9 +218,3 @@ class ProcessBackend:
                 raise
 
         return results
-
-    def _prepare_blocks(
-        self, n_simulations: int, seed_seq: np.random.SeedSequence | None,
-    ) -> tuple[list[tuple[int, int]], list[np.random.SeedSequence]]:
-        """Backward-compatible instance wrapper around module-level helper."""
-        return _prepare_blocks(n_simulations, self.n_workers, self.chunks_per_worker, seed_seq)

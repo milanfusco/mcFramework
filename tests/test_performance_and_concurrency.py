@@ -32,10 +32,10 @@ class TestPerformance:
         """[NFR-7] Auto backend should prefer processes on Windows, threads elsewhere."""
         simple_simulation.backend = "auto"
 
-        monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: True)
+        monkeypatch.setattr("mcframework.simulation.is_windows_platform", lambda: True)
         assert simple_simulation._resolve_backend_type() == "process"
 
-        monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: False)
+        monkeypatch.setattr("mcframework.simulation.is_windows_platform", lambda: False)
         assert simple_simulation._resolve_backend_type() == "thread"
 
 
