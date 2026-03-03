@@ -107,6 +107,7 @@ def autocrit(confidence: float, n: int, method: str = "auto") -> tuple[float, st
     * ``method="z"`` – always use normal criticals.
     * ``method="t"`` – always use Student t with ``\mathrm{df} = \max(1, n-1)``.
     * ``method="auto"`` – use z if ``n \ge 30``, else t.
+    * ``method="bootstrap"`` – treated as ``"auto"`` (parametric fallback).
 
     Parameters
     ----------
@@ -114,8 +115,10 @@ def autocrit(confidence: float, n: int, method: str = "auto") -> tuple[float, st
         Confidence level in ``(0, 1)``.
     n : int
         Sample size used to choose the rule-of-thumb cutoff for ``"auto"``.
-    method : {"auto", "z", "t"}, default "auto"
-        Selection policy.
+    method : {"auto", "z", "t", "bootstrap"}, default "auto"
+        Selection policy.  ``"bootstrap"`` is accepted for compatibility
+        with :class:`~mcframework.stats_engine.CIMethod` and falls back
+        to ``"auto"`` for the parametric critical value.
 
     Returns
     -------
@@ -127,7 +130,7 @@ def autocrit(confidence: float, n: int, method: str = "auto") -> tuple[float, st
     ------
     ValueError
         If ``confidence`` is invalid or ``method`` is not one of
-        ``{"auto","z","t"}``.
+        ``{"auto", "z", "t", "bootstrap"}``.
 
     Notes
     -----
@@ -158,8 +161,10 @@ def autocrit(confidence: float, n: int, method: str = "auto") -> tuple[float, st
     1.96
     """
     _validate_confidence(confidence)
-    if method not in ("auto", "z", "t"):
-        raise ValueError("method must be 'auto', 'z', or 't'")
+    if method not in ("auto", "z", "t", "bootstrap"):
+        raise ValueError("method must be 'auto', 'z', 't', or 'bootstrap'")
+    if method == "bootstrap":
+        method = "auto"
     if method == "z" or (method == "auto" and n >= 30):
         return z_crit(confidence), "z"
     return t_crit(confidence, max(1, n - 1)), "t"

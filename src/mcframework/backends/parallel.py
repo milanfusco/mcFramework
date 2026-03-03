@@ -29,8 +29,25 @@ __all__ = [
     "ProcessBackend",
 ]
 
-# Default configuration constants
-_CHUNKS_PER_WORKER = 8  # Number of chunks per worker for load balancing
+_CHUNKS_PER_WORKER = 8
+
+
+def _prepare_blocks(
+    n_simulations: int,
+    n_workers: int,
+    chunks_per_worker: int,
+    seed_seq: np.random.SeedSequence | None,
+) -> tuple[list[tuple[int, int]], list[np.random.SeedSequence]]:
+    """Partition work into blocks and spawn independent random seeds."""
+    block_size = max(1, n_simulations // (n_workers * chunks_per_worker))
+    blocks = make_blocks(n_simulations, block_size)
+
+    if seed_seq is not None:
+        child_seqs = seed_seq.spawn(len(blocks))
+    else:
+        child_seqs = [np.random.SeedSequence() for _ in range(len(blocks))]
+
+    return blocks, child_seqs
 
 
 class ThreadBackend:
@@ -86,7 +103,9 @@ class ThreadBackend:
         np.ndarray
             Array of simulation results with shape ``(n_simulations,)``.
         """
-        blocks, child_seqs = self._prepare_blocks(n_simulations, seed_seq)
+        blocks, child_seqs = _prepare_blocks(
+            n_simulations, self.n_workers, self.chunks_per_worker, seed_seq,
+        )
         results = np.empty(n_simulations, dtype=float)
         completed = 0
         max_workers = min(self.n_workers, len(blocks))
@@ -111,18 +130,10 @@ class ThreadBackend:
         return results
 
     def _prepare_blocks(
-        self, n_simulations: int, seed_seq: np.random.SeedSequence | None
+        self, n_simulations: int, seed_seq: np.random.SeedSequence | None,
     ) -> tuple[list[tuple[int, int]], list[np.random.SeedSequence]]:
-        """Prepare work blocks and independent random seeds."""
-        block_size = max(1, n_simulations // (self.n_workers * self.chunks_per_worker))
-        blocks = make_blocks(n_simulations, block_size)
-
-        if seed_seq is not None:
-            child_seqs = seed_seq.spawn(len(blocks))
-        else:
-            child_seqs = [np.random.SeedSequence() for _ in range(len(blocks))]
-
-        return blocks, child_seqs
+        """Backward-compatible instance wrapper around module-level helper."""
+        return _prepare_blocks(n_simulations, self.n_workers, self.chunks_per_worker, seed_seq)
 
 
 class ProcessBackend:
@@ -182,7 +193,9 @@ class ProcessBackend:
         np.ndarray
             Array of simulation results with shape ``(n_simulations,)``.
         """
-        blocks, child_seqs = self._prepare_blocks(n_simulations, seed_seq)
+        blocks, child_seqs = _prepare_blocks(
+            n_simulations, self.n_workers, self.chunks_per_worker, seed_seq,
+        )
         results = np.empty(n_simulations, dtype=float)
         completed = 0
         max_workers = min(self.n_workers, len(blocks))
@@ -212,15 +225,7 @@ class ProcessBackend:
         return results
 
     def _prepare_blocks(
-        self, n_simulations: int, seed_seq: np.random.SeedSequence | None
+        self, n_simulations: int, seed_seq: np.random.SeedSequence | None,
     ) -> tuple[list[tuple[int, int]], list[np.random.SeedSequence]]:
-        """Prepare work blocks and independent random seeds."""
-        block_size = max(1, n_simulations // (self.n_workers * self.chunks_per_worker))
-        blocks = make_blocks(n_simulations, block_size)
-
-        if seed_seq is not None:
-            child_seqs = seed_seq.spawn(len(blocks))
-        else:
-            child_seqs = [np.random.SeedSequence() for _ in range(len(blocks))]
-
-        return blocks, child_seqs
+        """Backward-compatible instance wrapper around module-level helper."""
+        return _prepare_blocks(n_simulations, self.n_workers, self.chunks_per_worker, seed_seq)

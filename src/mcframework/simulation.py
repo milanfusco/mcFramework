@@ -44,6 +44,9 @@ import numpy as np
 
 from .backends import ProcessBackend, SequentialBackend, ThreadBackend
 from .stats_engine import (
+    _PCTS as _ENGINE_PCTS,
+)
+from .stats_engine import (
     DEFAULT_ENGINE,
     CIMethod,
     StatsContext,
@@ -99,8 +102,7 @@ class MonteCarloSimulation(ABC):
     ``result.metadata["requested_percentiles"]`` and enforced by
     :meth:`MonteCarloFramework.compare_results` for percentile metrics.
     """
-    # Default percentiles for stats engine
-    _PCTS = (5, 25, 50, 75, 95)
+    _PCTS = _ENGINE_PCTS
     # Minimum simulations to use parallel execution (soft limit)
     _PARALLEL_THRESHOLD = 20_000
     # Number of chunks per worker for load balancing (ensures dynamic work distribution)
@@ -115,8 +117,8 @@ class MonteCarloSimulation(ABC):
         """
         Whether this simulation supports batch GPU execution.
 
-        Subclasses that implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` 
-        or :meth:`~mcframework.core.MonteCarloSimulation.cupy_batch`  should set this to 
+        Subclasses that implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch`
+        or :meth:`~mcframework.core.MonteCarloSimulation.curand_batch` should set this to
         ``True`` either as a class attribute or by setting ``self.supports_batch = True``.
 
         Returns
@@ -166,7 +168,14 @@ class MonteCarloSimulation(ABC):
         ...     rng = self._rng(_rng, self.rng)
         ...     return float(rng.normal())
         """
-        return rng if rng is not None else default  # type: ignore[return-value]
+        if rng is not None:
+            return rng
+        if default is not None:
+            return default
+        raise ValueError(
+            "No RNG available: both the per-worker generator and the "
+            "simulation-level fallback are None. Call set_seed() first."
+        )
 
     def __init__(self, name: str = "Simulation"):
         self.name = name
@@ -282,21 +291,22 @@ class MonteCarloSimulation(ABC):
         """
         raise NotImplementedError
 
-    def cupy_batch(
-        self, n: int, *, device: "torch.device", rng: cupy.random.RandomState) -> "cupy.ndarray":
+    def curand_batch(
+        self, n: int, device_id: int, rng: "cupy.random.RandomState") -> "cupy.ndarray":
         """
         Optional vectorized cuRAND implementation using CuPy.
 
-        Override this method in subclasses to enable GPU-accelerated batch execution.
-        When implemented alongside ``supports_batch = True``, the framework will use
-        this method instead of repeated ``single_simulation`` calls.
+        Override this method in subclasses to enable GPU-accelerated batch execution
+        via cuRAND. When implemented alongside ``supports_batch = True`` and
+        ``use_curand=True``, the CUDA backend will call this method instead of
+        :meth:`torch_batch`.
 
         Parameters
         ----------
         n : int
             Number of simulation draws.
-        device : torch.device
-            Device to use for the simulation (``"cuda"``).
+        device_id : int
+            CUDA device index.
         rng : cupy.random.RandomState
             cuRAND generator for reproducible random sampling.
 
@@ -305,7 +315,40 @@ class MonteCarloSimulation(ABC):
         cupy.ndarray
             A 1D array of length ``n`` containing simulation results.
         """
+        legacy_impl = type(self).cupy_batch
+        if legacy_impl is not MonteCarloSimulation.cupy_batch:
+            warnings.warn(
+                "cupy_batch() is deprecated; implement curand_batch(n, device_id, rng) "
+                "instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            try:
+                import torch
+                device = torch.device(f"cuda:{device_id}")
+            except ImportError:
+                device = device_id
+            return self.cupy_batch(n, device=device, rng=rng)
         raise NotImplementedError
+
+    def cupy_batch(
+        self, n: int, *, device: "torch.device", rng: "cupy.random.RandomState"
+    ) -> "cupy.ndarray":
+        """Deprecated compatibility shim for legacy cuRAND simulations."""
+        warnings.warn(
+            "cupy_batch() is deprecated; rename to curand_batch(n, device_id, rng).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if isinstance(device, str):
+            device_id = int(device.split(":")[-1]) if ":" in device else 0
+        elif isinstance(device, int):
+            device_id = device
+        elif hasattr(device, "index") and device.index is not None:
+            device_id = int(device.index)
+        else:
+            device_id = 0
+        return self.curand_batch(n, device_id, rng)
 
     def set_seed(self, seed: int | None) -> None:
         r"""
@@ -393,12 +436,10 @@ class MonteCarloSimulation(ABC):
                 ci_method=ci_method_enum,
             )
 
-        # Compute stats
         try:
             result = eng.compute(results, ctx)
-            # Extract metrics from ComputeResult
             stats = result.metrics if hasattr(result, "metrics") else {}
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except (ValueError, TypeError, ArithmeticError, RuntimeError) as e:
             logger.error("Stats engine failed: %s", e)
             stats = {}
 
@@ -795,13 +836,22 @@ class MonteCarloSimulation(ABC):
             self, n_simulations, self.seed_seq, progress_callback, **simulation_kwargs
         )
 
-    # Backward compatibility aliases
     def _resolve_parallel_backend(self, requested: str | None = None) -> str:
         """Deprecated: Use _resolve_backend_type instead."""
+        warnings.warn(
+            "_resolve_parallel_backend is deprecated; use _resolve_backend_type",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self._resolve_backend_type(requested)
 
     def _create_parallel_backend(self, n_workers: int) -> ThreadBackend | ProcessBackend:
         """Deprecated: Use _create_backend instead."""
+        warnings.warn(
+            "_create_parallel_backend is deprecated; use _create_backend",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         backend_type = self._resolve_backend_type()
         if backend_type == "thread":
             return ThreadBackend(n_workers=n_workers)

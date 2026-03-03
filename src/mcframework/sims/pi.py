@@ -54,7 +54,7 @@ class PiEstimationSimulation(MonteCarloSimulation):
     supports_batch: bool = True
     """
     Set whether this simulation supports batch GPU execution.
-    Did you implement .torch_batch() or .cupy_batch()? If so, set to True.
+    Did you implement .torch_batch() or .curand_batch()? If so, set to True.
     """
 
 

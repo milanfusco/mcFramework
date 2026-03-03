@@ -247,6 +247,7 @@ numpydoc_xref_aliases = {
     "supports_batch": "mcframework.simulation.MonteCarloSimulation.supports_batch",
     "single_simulation": "mcframework.core.MonteCarloSimulation.single_simulation",
     "torch_batch": "mcframework.core.MonteCarloSimulation.torch_batch",
+    "curand_batch": "mcframework.core.MonteCarloSimulation.curand_batch",
     "cupy_batch": "mcframework.core.MonteCarloSimulation.cupy_batch",
     "set_seed": "mcframework.core.MonteCarloSimulation.set_seed",
     "run": "mcframework.core.MonteCarloSimulation.run",

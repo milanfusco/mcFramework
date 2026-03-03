@@ -141,8 +141,7 @@ class TorchMPSBackend:
     - GPU kernel execution order
 
     Statistical properties (mean, variance, CI coverage) remain correct
-    despite potential bitwise differences between runs. (see ``TestMPSDeterminism`` 
-    in ``tests/test_torch_backend.py`` for actual tests)
+    despite potential bitwise differences between runs (see ``tests/test_torch_mps.py``)
 
     Examples
     --------
@@ -159,9 +158,18 @@ class TorchMPSBackend:
 
     device_type: str = "mps"
 
-    def __init__(self):
+    _MAX_BATCH: int = 10_000_000
+
+    def __init__(self, max_batch_size: int | None = None):
         """
         Initialize Torch MPS backend.
+
+        Parameters
+        ----------
+        max_batch_size : int or None, default None
+            Maximum number of simulations per batch.  If *None* the
+            class default ``_MAX_BATCH`` (10 M) is used.  Workloads larger
+            than this are split into batches to keep GPU memory bounded.
 
         Raises
         ------
@@ -173,6 +181,19 @@ class TorchMPSBackend:
         validate_mps_device()
         th = import_torch()
         self.device = th.device("mps")
+        if max_batch_size is None:
+            self._max_batch = self._MAX_BATCH
+        elif max_batch_size <= 0:
+            raise ValueError("max_batch_size must be a positive integer")
+        else:
+            self._max_batch = max_batch_size
+
+    def _run_batch(self, sim, n, seed_seq):
+        """Execute a single batch, returning a float64 NumPy array."""
+        th = import_torch()
+        generator = make_torch_generator(self.device, seed_seq)
+        samples = sim.torch_batch(n, device=self.device, generator=generator)
+        return samples.detach().cpu().to(th.float64).numpy()
 
     def run(
         self,
@@ -188,7 +209,7 @@ class TorchMPSBackend:
         Parameters
         ----------
         sim : MonteCarloSimulation
-            The simulation instance to run. Must have 
+            The simulation instance to run. Must have
             :attr:`~mcframework.simulation.MonteCarloSimulation.supports_batch` = ``True``
             and implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch`.
         n_simulations : int
@@ -211,49 +232,34 @@ class TorchMPSBackend:
         ValueError
             If the simulation does not support batch execution.
         NotImplementedError
-            If the simulation does not implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch`.
-
-        Notes
-        -----
-        The dtype conversion flow is:
-
-        1. :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` returns :meth:`~torch.Tensor.float` (float32) on MPS device.
-        2. :class:`~torch.Tensor` moved to CPU via :meth:`~torch.Tensor.detach` and :meth:`~torch.Tensor.cpu`
-        3. Promoted to :meth:`~torch.Tensor.double` (float64) via :meth:`~torch.Tensor.to`
-        4. Converted to :class:`~numpy.ndarray` of :class:`~numpy.double` (float64) via :meth:`~torch.Tensor.numpy`
-
-        This ensures stats engine precision while maximizing MPS performance.
-        """# noqa: E501 pylint: disable=line-too-long
-        th = import_torch()
-
-        # Validate simulation supports batch execution
+            If the simulation does not implement
+            :meth:`~mcframework.core.MonteCarloSimulation.torch_batch`.
+        """
         if not getattr(sim, "supports_batch", False):
             raise ValueError(
                 f"Simulation '{sim.name}' does not support Torch batch execution. "
                 "Set supports_batch = True and implement torch_batch()."
             )
 
-        # Create explicit generator from SeedSequence (never use global RNG)
-        generator = make_torch_generator(self.device, seed_seq)
-
         logger.info(
             "Computing %d simulations using Torch MPS (Apple Silicon GPU)...",
-            n_simulations
+            n_simulations,
         )
 
-        # Execute the vectorized batch with explicit generator
-        # torch_batch should return float32 for MPS compatibility
-        samples = sim.torch_batch(n_simulations, device=self.device, generator=generator)
+        if n_simulations <= self._max_batch:
+            result = self._run_batch(sim, n_simulations, seed_seq)
+            if progress_callback:
+                progress_callback(n_simulations, n_simulations)
+            return result
 
-        # Move to CPU first (required before float64 conversion for MPS)
-        samples = samples.detach().cpu()
-
-        # Promote to float64 for stats engine precision
-        samples = samples.to(th.float64)
-
-        # Report completion (batch execution is atomic)
-        if progress_callback:
-            progress_callback(n_simulations, n_simulations)
-
-        # Convert to NumPy for stats engine compatibility
-        return samples.numpy()
+        n_batches = (n_simulations + self._max_batch - 1) // self._max_batch
+        batch_seeds = seed_seq.spawn(n_batches) if seed_seq else [None] * n_batches
+        parts: list[np.ndarray] = []
+        completed = 0
+        for bs in batch_seeds:
+            batch_n = min(self._max_batch, n_simulations - completed)
+            parts.append(self._run_batch(sim, batch_n, bs))
+            completed += batch_n
+            if progress_callback:
+                progress_callback(completed, n_simulations)
+        return np.concatenate(parts)

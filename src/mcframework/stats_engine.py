@@ -79,14 +79,7 @@ from scipy.stats import skew as sp_skew  # type: ignore[import-untyped]
 
 from .utils import autocrit
 
-# Create local logger to avoid circular import with core
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
 
 
 _PCTS = (5, 25, 50, 75, 95)  # default percentiles
@@ -734,9 +727,9 @@ def _clean(x: np.ndarray, ctx: Any) -> tuple[np.ndarray, np.ndarray]:
     arr = np.asarray(x, dtype=float)
     finite = np.isfinite(arr)
 
-    if ctx.nan_policy == "omit":
+    if ctx.nan_policy == NanPolicy.omit:
         arr = arr[finite]
-    elif ctx.nan_policy not in ("omit", "propagate", "raise"):
+    elif ctx.nan_policy != NanPolicy.propagate:
         raise ValueError(f"Unknown nan_policy: {ctx.nan_policy}")
 
     return arr, finite
@@ -937,7 +930,7 @@ def kurtosis(x: np.ndarray, ctx: StatsContext) -> float:
     return float(sp_kurtosis(arr, fisher=True, bias=False)) if arr.size > 3 else 0.0  # type: ignore[arg-type]
 
 
-def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
+def ci_mean(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str]:
     r"""
     Parametric CI for :math:`\mathbb{E}[X]` using z/t critical values.
 
@@ -1016,6 +1009,9 @@ def ci_mean(x: np.ndarray, ctx) -> dict[str, float | str]:
     ).as_dict()
 
 
+_BOOTSTRAP_CHUNK_LIMIT = 50_000_000
+
+
 def _bootstrap_means(
     arr: np.ndarray, n_resamples: int, rng: np.random.Generator
 ) -> np.ndarray:
@@ -1035,10 +1031,28 @@ def _bootstrap_means(
     -------
     ndarray
         Array of length ``n_resamples`` containing :math:`\{\bar X_b^*\}`.
+
+    Notes
+    -----
+    When the full index matrix ``(n_resamples, n)`` would exceed
+    ``_BOOTSTRAP_CHUNK_LIMIT`` elements (~400 MB), the resampling is
+    performed in chunks to keep peak memory bounded.
     """
     n = arr.size
-    idx = rng.integers(0, n, size=(n_resamples, n), endpoint=False)
-    return arr[idx].mean(axis=1)
+    total_elements = n_resamples * n
+    if total_elements <= _BOOTSTRAP_CHUNK_LIMIT:
+        idx = rng.integers(0, n, size=(n_resamples, n), endpoint=False)
+        return arr[idx].mean(axis=1)
+
+    chunk_rows = max(1, _BOOTSTRAP_CHUNK_LIMIT // n)
+    means = np.empty(n_resamples, dtype=float)
+    done = 0
+    while done < n_resamples:
+        batch = min(chunk_rows, n_resamples - done)
+        idx = rng.integers(0, n, size=(batch, n), endpoint=False)
+        means[done:done + batch] = arr[idx].mean(axis=1)
+        done += batch
+    return means
 
 
 def _bca_bias_correction(arr: np.ndarray, bootstrap_means: np.ndarray) -> float:

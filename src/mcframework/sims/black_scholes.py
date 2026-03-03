@@ -186,10 +186,11 @@ def _american_exercise_lsm(
         exercise_times[early_exercise_indices] = t
         cash_flows[early_exercise_indices, t] = intrinsic[early_exercise_indices, t]
 
-    option_values = np.zeros(n_paths)
-    for i in range(n_paths):
-        t_ex = exercise_times[i]
-        option_values[i] = cash_flows[i, t_ex] * np.exp(-r * dt * t_ex)
+    path_indices = np.arange(n_paths)
+    option_values = (
+        cash_flows[path_indices, exercise_times]
+        * np.exp(-r * dt * exercise_times)
+    )
     return float(np.mean(option_values))
 
 
@@ -412,7 +413,12 @@ class BlackScholesPathSimulation(MonteCarloSimulation):
         r"""
         Generate :math:`n_{\text{paths}}` independent GBM paths.
         """
-        paths = np.zeros((n_paths, n_steps + 1))
-        for i in range(n_paths):
-            paths[i] = _simulate_gbm_path(S0, r, sigma, T, n_steps, self.rng)
-        return paths
+        dt = T / n_steps
+        Z = self.rng.standard_normal((n_paths, n_steps))
+        log_returns = (r - 0.5 * sigma * sigma) * dt + sigma * np.sqrt(dt) * Z
+        log_S0 = np.log(S0)
+        log_paths = np.concatenate(
+            [np.full((n_paths, 1), log_S0), log_S0 + np.cumsum(log_returns, axis=1)],
+            axis=1,
+        )
+        return np.exp(log_paths)
