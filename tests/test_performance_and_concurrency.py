@@ -30,13 +30,13 @@ class TestPerformance:
 
     def test_auto_backend_resolves_per_platform(self, simple_simulation, monkeypatch):
         """[NFR-7] Auto backend should prefer processes on Windows, threads elsewhere."""
-        simple_simulation.parallel_backend = "auto"
+        simple_simulation.backend = "auto"
 
         monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: True)
-        assert simple_simulation._resolve_parallel_backend() == "process"
+        assert simple_simulation._resolve_backend_type() == "process"
 
         monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: False)
-        assert simple_simulation._resolve_parallel_backend() == "thread"
+        assert simple_simulation._resolve_backend_type() == "thread"
 
 
     def test_memory_efficiency_streaming(self, simple_simulation):

@@ -550,7 +550,7 @@ def calculate_greeks(sim: BlackScholesSimulation) -> dict[str, float]:
         n_simulations=N_SIMULATIONS_GREEKS,
         S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
         option_type="call", exercise_type="european",
-        parallel=True
+        backend="auto"
     )
 
 

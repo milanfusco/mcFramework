@@ -184,16 +184,6 @@ class MonteCarloSimulation(ABC):
         self.rng = np.random.default_rng()
         self.backend: str = "auto"
 
-    @property
-    def parallel_backend(self) -> str:
-        """Legacy alias for :attr:`backend` (deprecated)."""
-        return self.backend
-
-    @parallel_backend.setter
-    def parallel_backend(self, value: str) -> None:
-        """Legacy alias for :attr:`backend` (deprecated)."""
-        self.backend = value
-
     def __getstate__(self):
         """Avoid pickling the RNG (not pickleable)."""
         state = self.__dict__.copy()
@@ -470,7 +460,6 @@ class MonteCarloSimulation(ABC):
         cuda_use_curand: bool = False,
         cuda_batch_size: int | None = None,
         cuda_use_streams: bool = True,
-        parallel: bool | None = None,  # Deprecated, use backend instead
         n_workers: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
         percentiles: Iterable[int] | None = None,
@@ -515,10 +504,6 @@ class MonteCarloSimulation(ABC):
             estimates optimal batch size based on available GPU memory.
         cuda_use_streams : bool, default True
             Use CUDA streams for overlapped execution. Recommended for performance.
-        parallel : bool, optional
-            **Deprecated.** Use ``backend`` instead. If provided, ``parallel=True`` maps to
-            ``backend="auto"`` with parallel preference, ``parallel=False`` maps to
-            ``backend="sequential"``.
         n_workers : int, optional
             Worker count for parallel backends. Defaults to CPU count.
         progress_callback : callable, optional
@@ -557,28 +542,6 @@ class MonteCarloSimulation(ABC):
         --------
         :meth:`~mcframework.core.MonteCarloFramework.run_simulation` : Run a registered simulation by name.
         """
-        # Handle deprecated parallel parameter
-        if parallel is not None:
-            # Check if user also explicitly provided backend (not using default)
-            if backend != "auto":
-                # User provided both - warn and ignore the deprecated parameter
-                warnings.warn(
-                    f"Both 'parallel' and 'backend' parameters provided. "
-                    f"The deprecated 'parallel={parallel}' is ignored; using backend='{backend}'.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-            else:
-                # Only parallel provided - apply deprecated behavior with warning
-                warnings.warn(
-                    "The 'parallel' parameter is deprecated. Use 'backend' instead: "
-                    "backend='sequential' for parallel=False, "
-                    "backend='thread' or 'process' for parallel=True.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                backend = "auto" if parallel else "sequential"
-
         # Validate parameters
         self._validate_run_params(n_simulations, n_workers, confidence, ci_method, backend)
 
@@ -799,27 +762,6 @@ class MonteCarloSimulation(ABC):
         return backend_instance.run(
             self, n_simulations, self.seed_seq, progress_callback, **simulation_kwargs
         )
-
-    def _resolve_parallel_backend(self, requested: str | None = None) -> str:
-        """Deprecated: Use _resolve_backend_type instead."""
-        warnings.warn(
-            "_resolve_parallel_backend is deprecated; use _resolve_backend_type",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._resolve_backend_type(requested)
-
-    def _create_parallel_backend(self, n_workers: int) -> ThreadBackend | ProcessBackend:
-        """Deprecated: Use _create_backend instead."""
-        warnings.warn(
-            "_create_parallel_backend is deprecated; use _create_backend",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        backend_type = self._resolve_backend_type()
-        if backend_type == "thread":
-            return ThreadBackend(n_workers=n_workers)
-        return ProcessBackend(n_workers=n_workers)
 
     @staticmethod
     def _percentiles(arr: np.ndarray, ps: Iterable[int]) -> dict[int, float]:

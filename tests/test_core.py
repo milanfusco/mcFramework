@@ -284,60 +284,6 @@ class TestMonteCarloSimulation:
         with pytest.raises(ValueError, match="does not support Torch batch"):
             simple_simulation.run(5, backend="torch")
 
-    def test_deprecated_parallel_parameter_warns(self, simple_simulation):
-        """[DEPRECATION] Using parallel= should emit DeprecationWarning."""
-        import warnings
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = simple_simulation.run(5, parallel=False, compute_stats=False)
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "parallel" in str(w[0].message)
-            assert result.n_simulations == 5
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = simple_simulation.run(5, parallel=True, compute_stats=False)
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert result.n_simulations == 5
-
-    def test_deprecated_parallel_with_explicit_backend_uses_backend(self, simple_simulation):
-        """[DEPRECATION] When both parallel and backend provided, backend wins."""
-        import warnings
-
-        # When user provides both, the explicit backend should be used
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            # parallel=True would normally map to "auto", but backend="sequential" is explicit
-            result = simple_simulation.run(
-                5,
-                parallel=True,
-                backend="sequential",
-                compute_stats=False
-            )
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            # Warning should mention that parallel is ignored
-            assert "ignored" in str(w[0].message).lower()
-            assert "backend='sequential'" in str(w[0].message)
-            assert result.n_simulations == 5
-
-        # Same for parallel=False with explicit backend="thread"
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = simple_simulation.run(
-                5,
-                parallel=False,
-                backend="thread",
-                compute_stats=False
-            )
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "ignored" in str(w[0].message).lower()
-            assert result.n_simulations == 5
-
     def test_run_handles_invalid_extra_context(self, simple_simulation):
         """[NFR-4] Extra context with invalid keys should fall back to defaults."""
         result = simple_simulation.run(
@@ -347,12 +293,6 @@ class TestMonteCarloSimulation:
         )
         assert result.n_simulations == 10
         assert result.stats
-
-    def test_resolve_parallel_backend_unknown_value_defaults(self, simple_simulation):
-        """[NFR-7] Unknown backend values should coerce to auto/thread."""
-        simple_simulation.backend = "unknown"
-        backend = simple_simulation._resolve_parallel_backend()
-        assert backend in {"thread", "process"}
 
     def test_compute_stats_block_handles_empty_array(self):
         """[NFR-4] _compute_stats_block should return NaNs for empty input."""
@@ -726,18 +666,6 @@ class TestThreadBackendExecution:
         assert hasattr(sim, "backend")
         assert sim.backend == "auto"
 
-    def test_parallel_backend_legacy_alias(self):
-        """[COMPAT] Test parallel_backend legacy alias works bidirectionally."""
-        sim = PiEstimationSimulation()
-
-        # Getter: parallel_backend should reflect backend
-        assert sim.parallel_backend == sim.backend == "auto"
-
-        # Setter: setting parallel_backend should update backend
-        sim.parallel_backend = "thread"
-        assert sim.backend == "thread"
-        assert sim.parallel_backend == "thread"
-
     def test_thread_backend_with_large_job(self):
         """[FR-3] Test thread backend with job large enough to avoid fallback."""
         sim = PiEstimationSimulation()
@@ -962,9 +890,7 @@ def test_resolve_backend_unknown_backend_warning():
     sim = SimpleSim()
     sim.backend = "invalid_backend"  # Unknown backend
 
-    # Unknown backend should log a warning and default to auto (thread on non-Windows)
-    backend = sim._create_parallel_backend(n_workers=2)
-    # Should return either ThreadBackend or ProcessBackend (depending on platform)
+    backend = sim._create_backend("auto", n_workers=2)
     assert isinstance(backend, (ThreadBackend, ProcessBackend))
 
 
@@ -980,10 +906,9 @@ def test_resolve_backend_auto_on_windows(monkeypatch):
     sim = SimpleSim()
     sim.backend = "auto"
 
-    # Mock Windows platform
     monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: True)
 
-    backend = sim._create_parallel_backend(n_workers=2)
+    backend = sim._create_backend("auto", n_workers=2)
     assert isinstance(backend, ProcessBackend)
 
 

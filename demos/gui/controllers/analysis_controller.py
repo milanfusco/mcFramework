@@ -560,7 +560,7 @@ class TickerAnalysisController(QObject):
                 sigma=params.volatility,
                 option_type="call",
                 exercise_type="european",
-                parallel=True,
+                backend="auto",
             )
             
             # Calculate put Greeks
@@ -573,7 +573,7 @@ class TickerAnalysisController(QObject):
                 sigma=params.volatility,
                 option_type="put",
                 exercise_type="european",
-                parallel=True,
+                backend="auto",
             )
             
             call_greeks = GreeksResult.from_dict(call_greeks_dict)

@@ -854,7 +854,7 @@ def analyze_ticker(
         n_simulations=n_simulations,
         S0=S0, K=K, T=T_option, r=RISK_FREE_RATE, sigma=sigma,
         option_type="call", exercise_type="european",
-        parallel=True
+        backend="auto"
     )
     
     print(f"  Delta: {greeks['delta']:.4f}")
