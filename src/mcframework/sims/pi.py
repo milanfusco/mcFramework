@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.random import Generator
@@ -65,7 +65,7 @@ class PiEstimationSimulation(MonteCarloSimulation):
         self,
         n_points: int = 10_000,
         antithetic: bool = False,
-        _rng: Optional[Generator] = None,
+        _rng: Generator | None = None,
         **kwargs,
     ) -> float:
         r"""
@@ -110,9 +110,9 @@ class PiEstimationSimulation(MonteCarloSimulation):
         self,
         n: int,
         *,
-        device: "torch.device",
-        generator: "torch.Generator",
-    ) -> "torch.Tensor":
+        device: torch.device,
+        generator: torch.Generator,
+    ) -> torch.Tensor:
         r"""
         Vectorized Torch implementation for GPU-accelerated Pi estimation.
 

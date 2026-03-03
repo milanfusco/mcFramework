@@ -408,7 +408,7 @@ class TestCalculateGreeks:
             backend="auto",
         )
 
-        assert all(isinstance(greeks[k], float) for k in greeks.keys())
+        assert all(isinstance(greeks[k], float) for k in greeks)
 
     def test_calculate_greeks_near_expiry(self):
         """[FR-24] Test Greeks calculation near expiry."""
@@ -453,7 +453,9 @@ class TestCalculateGreeks:
             if isinstance(left, np.ndarray):
                 return np.array_equal(left, right)
             if isinstance(left, (list, tuple)):
-                return all(_states_equal(left_val, right_val) for left_val, right_val in zip(left, right))
+                return all(
+                    _states_equal(lv, rv) for lv, rv in zip(left, right, strict=True)
+                )
             return left == right
 
         assert _states_equal(state_before, sim.rng.bit_generator.state)

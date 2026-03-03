@@ -1,3 +1,4 @@
+import contextlib
 import multiprocessing as mp
 
 import numpy as np
@@ -30,10 +31,8 @@ def _stable_seed():
 
 @pytest.fixture(scope="session", autouse=True)
 def _set_spawn_start_method():
-    try:
+    with contextlib.suppress(RuntimeError):
         mp.set_start_method("spawn")
-    except RuntimeError:
-        pass  # already set
 
 @pytest.fixture
 def sample_data():

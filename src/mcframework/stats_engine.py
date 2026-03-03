@@ -56,16 +56,13 @@ mcframework.core.MonteCarloSimulation
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import (
     Any,
-    Callable,
     Generic,
-    Iterable,
-    Mapping,
     Protocol,
-    Sequence,
     SupportsFloat,
     TypeAlias,
     TypeVar,
@@ -237,7 +234,7 @@ class StatsContext:
     bootstrap: BootstrapMethod = BootstrapMethod.percentile
 
     # ergonomics
-    def with_overrides(self, **changes) -> "StatsContext":
+    def with_overrides(self, **changes) -> StatsContext:
         r"""
         Return a shallow copy with selected fields replaced.
 
@@ -856,7 +853,7 @@ def percentiles(x: np.ndarray, ctx: StatsContext) -> dict[int, float]:
     if arr.size == 0:
         return {p: float("nan") for p in ctx.percentiles}
     pct_values = np.percentile(arr, ctx.percentiles)
-    return dict(zip(ctx.percentiles, map(float, pct_values)))
+    return dict(zip(ctx.percentiles, map(float, pct_values), strict=True))
 
 
 def skew(x: np.ndarray, ctx: StatsContext) -> float:
@@ -992,11 +989,7 @@ def ci_mean(x: np.ndarray, ctx: StatsContext) -> dict[str, float | str]:
     mu = float(np.mean(arr))
 
     s = float(np.std(arr, ddof=getattr(ctx, "ddof", 1)))
-    if s == 0.0:
-        # degenerate data -> zero SE -> CI collapses to point
-        se = 0.0
-    else:
-        se = s / np.sqrt(n_eff)
+    se = 0.0 if s == 0.0 else s / np.sqrt(n_eff)
 
     crit, method = autocrit(ctx.confidence, n_eff, ctx.ci_method)
 

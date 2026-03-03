@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import logging
 import multiprocessing as mp
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -76,7 +77,7 @@ class ThreadBackend:
 
     def run(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None,
@@ -119,7 +120,7 @@ class ThreadBackend:
             return (a, b), out
 
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futs = [ex.submit(_work, (blk, ss)) for blk, ss in zip(blocks, child_seqs)]
+            futs = [ex.submit(_work, (blk, ss)) for blk, ss in zip(blocks, child_seqs, strict=True)]
             for f in as_completed(futs):
                 (i, j), arr = f.result()
                 results[i:j] = arr
@@ -166,7 +167,7 @@ class ProcessBackend:
 
     def run(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None,
@@ -205,7 +206,7 @@ class ProcessBackend:
             mp_context=mp.get_context("spawn"),
         ) as ex:
             futs = []
-            for (i, j), ss in zip(blocks, child_seqs):
+            for (i, j), ss in zip(blocks, child_seqs, strict=True):
                 f = ex.submit(worker_run_chunk, sim, j - i, ss, dict(simulation_kwargs))
                 f.blk = (i, j)  # type: ignore[attr-defined]
                 futs.append(f)

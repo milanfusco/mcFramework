@@ -114,7 +114,7 @@ class TestIntegration:
             confidence=0.95,
             extra_context={"target": float(np.pi), "eps": 0.01}
         )
-        ci = getattr(result, "stats")["ci_mean"]
+        ci = result.stats["ci_mean"]
         low, high = ci["low"], ci["high"]
         ci_width = high - low
 

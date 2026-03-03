@@ -17,7 +17,8 @@ Helpers
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Callable, Protocol
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 
@@ -68,7 +69,7 @@ def make_blocks(n: int, block_size: int = 10_000) -> list[tuple[int, int]]:
 
 
 def worker_run_chunk(
-    sim: "MonteCarloSimulation",
+    sim: MonteCarloSimulation,
     chunk_size: int,
     seed_seq: np.random.SeedSequence,
     simulation_kwargs: dict[str, Any],
@@ -114,7 +115,7 @@ class ExecutionBackend(Protocol):
 
     def run(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None,

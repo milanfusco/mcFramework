@@ -111,7 +111,7 @@ class SimulationResult:
         r"""
          Pretty, human-readable summary of the result.
 
-        Prints the dictionary attributes in a readable format.
+        Format result attributes as a human-readable string.
 
         Parameters
         ----------

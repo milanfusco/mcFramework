@@ -197,8 +197,8 @@ class TestMonteCarloSimulation:
             eps=0.05,
         )
 
-        mean = getattr(result, "mean")
-        std = getattr(result, "std")
+        mean = result.mean
+        std = result.std
         assert mean is not None
         assert std is not None
 

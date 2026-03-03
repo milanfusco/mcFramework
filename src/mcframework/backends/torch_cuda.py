@@ -54,7 +54,8 @@ Examples
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -273,7 +274,7 @@ class TorchCUDABackend:
 
     def _validate_simulation_compatible(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
     ) -> None:
         """
         Validate that simulation supports batch execution with required methods.
@@ -318,7 +319,7 @@ class TorchCUDABackend:
         # Check 3: Required batch method exists and is overridden
         if self.use_curand:
             # cuRAND mode requires curand_batch method
-            if not hasattr(sim, 'curand_batch') or not callable(getattr(sim, 'curand_batch')):
+            if not hasattr(sim, 'curand_batch') or not callable(sim.curand_batch):
                 raise NotImplementedError(
                     f"Simulation '{sim.__class__.__name__}' requested cuRAND mode "
                     f"but does not implement curand_batch() method. "
@@ -357,7 +358,7 @@ class TorchCUDABackend:
 
     def _estimate_batch_size(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
     ) -> int:
@@ -444,10 +445,10 @@ class TorchCUDABackend:
 
     def _run_single_batch(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         batch_size: int,
         seed_seq: np.random.SeedSequence | None,
-    ) -> "torch.Tensor":
+    ) -> torch.Tensor:
         """
         Execute a single batch of simulations.
 
@@ -521,7 +522,7 @@ class TorchCUDABackend:
 
     def run(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None = None,

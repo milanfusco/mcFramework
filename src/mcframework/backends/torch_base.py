@@ -77,9 +77,9 @@ def validate_torch_available() -> None:
 
 
 def make_torch_generator(
-    device: "torch.device",
+    device: torch.device,
     seed_seq: np.random.SeedSequence | None,
-) -> "torch.Generator":
+) -> torch.Generator:
     r"""
     Create an explicit Torch generator seeded from a SeedSequence.
 

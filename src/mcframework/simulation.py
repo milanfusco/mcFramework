@@ -38,7 +38,8 @@ import multiprocessing as mp
 import time
 import warnings
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -227,9 +228,9 @@ class MonteCarloSimulation(ABC):
         self,
         n: int,
         *,
-        device: "torch.device",
-        generator: "torch.Generator",
-    ) -> "torch.Tensor":
+        device: torch.device,
+        generator: torch.Generator,
+    ) -> torch.Tensor:
         """
         Optional vectorized Torch implementation.
 
@@ -292,7 +293,7 @@ class MonteCarloSimulation(ABC):
         raise NotImplementedError
 
     def curand_batch(
-        self, n: int, device_id: int, rng: "cupy.random.RandomState") -> "cupy.ndarray":
+        self, n: int, device_id: int, rng: cupy.random.RandomState) -> cupy.ndarray:
         """
         Optional vectorized cuRAND implementation using CuPy.
 
@@ -332,8 +333,8 @@ class MonteCarloSimulation(ABC):
         raise NotImplementedError
 
     def cupy_batch(
-        self, n: int, *, device: "torch.device", rng: "cupy.random.RandomState"
-    ) -> "cupy.ndarray":
+        self, n: int, *, device: torch.device, rng: cupy.random.RandomState
+    ) -> cupy.ndarray:
         """Deprecated compatibility shim for legacy cuRAND simulations."""
         warnings.warn(
             "cupy_batch() is deprecated; rename to curand_batch(n, device_id, rng).",
@@ -512,7 +513,7 @@ class MonteCarloSimulation(ABC):
         ci_method: str = "auto",
         extra_context: Mapping[str, Any] | None = None,
         **simulation_kwargs: Any,
-    ) -> "SimulationResult":
+    ) -> SimulationResult:
         r"""
         Run the Monte Carlo simulation.
 
@@ -609,11 +610,7 @@ class MonteCarloSimulation(ABC):
                     DeprecationWarning,
                     stacklevel=2,
                 )
-                if parallel:
-                    # parallel=True -> let auto-resolution handle small-job fallback
-                    backend = "auto"
-                else:
-                    backend = "sequential"
+                backend = "auto" if parallel else "sequential"
 
         # Validate parameters
         self._validate_run_params(n_simulations, n_workers, confidence, ci_method, backend)
@@ -908,7 +905,7 @@ class MonteCarloSimulation(ABC):
         if vals_arr.size != len(req):
             msg = "pct() must return as many values as requested percentiles"
             raise ValueError(msg)
-        return {float(q): float(v) for q, v in zip(req, vals_arr)}
+        return {float(q): float(v) for q, v in zip(req, vals_arr, strict=True)}
 
     def _create_result(
         self,
@@ -919,7 +916,7 @@ class MonteCarloSimulation(ABC):
         stats: dict[str, Any],
         requested_percentiles: list[int],
         engine_defaults_used: bool,
-    ) -> "SimulationResult":
+    ) -> SimulationResult:
         r"""
         Assemble a :class:`SimulationResult` and merge any stats-engine percentiles.
 

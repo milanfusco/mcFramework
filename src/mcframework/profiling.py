@@ -7,11 +7,13 @@ modifying the core simulation logic.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+from collections.abc import Callable
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -176,8 +178,10 @@ class ProfiledTorchBackend:  # pragma: no cover
         try:
             import torch
             import torch.profiler
-        except ImportError:
-            raise ImportError("PyTorch profiler requires PyTorch. Install with: pip install mcframework[gpu]")
+        except ImportError as err:
+            raise ImportError(
+                "PyTorch profiler requires PyTorch. Install with: pip install mcframework[gpu]"
+            ) from err
 
         self._backend = backend
         self._config = config or TorchProfilerConfig()
@@ -273,7 +277,7 @@ class ProfiledTorchBackend:  # pragma: no cover
 
     def run(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None = None,
@@ -314,24 +318,19 @@ class ProfiledTorchBackend:  # pragma: no cover
 
         if self._config.output_dir.exists():
             for f in self._config.output_dir.glob("trace_*.json"):
-                try:
+                with contextlib.suppress(OSError):
                     f.unlink()
-                except OSError:
-                    pass
             for f in self._config.output_dir.glob("trace_*.json.tmp"):
-                try:
+                with contextlib.suppress(OSError):
                     f.unlink()
-                except OSError:
-                    pass
 
         if not self._enable_chunking:
             # Simple mode: run once, step once
-            with mps_ctx:
-                with self._create_profiler() as prof:
-                    results = self._backend.run(
-                        sim, n_simulations, seed_seq, progress_callback, **simulation_kwargs
-                    )
-                    prof.step()
+            with mps_ctx, self._create_profiler() as prof:
+                results = self._backend.run(
+                    sim, n_simulations, seed_seq, progress_callback, **simulation_kwargs
+                )
+                prof.step()
 
             logger.info("Profiling complete. Results saved to: %s", self._config.output_dir)
             return results
@@ -351,34 +350,33 @@ class ProfiledTorchBackend:  # pragma: no cover
 
         results_list = []
         completed = 0
-        with mps_ctx:
-            with self._create_profiler() as prof:
-                for i, chunk_seed in enumerate(chunk_seeds):
-                    # Calculate chunk size (last chunk may be smaller)
-                    current_chunk_size = min(chunk_size, n_simulations - completed)
+        with mps_ctx, self._create_profiler() as prof:
+            for i, chunk_seed in enumerate(chunk_seeds):
+                # Calculate chunk size (last chunk may be smaller)
+                current_chunk_size = min(chunk_size, n_simulations - completed)
 
-                    # Run this chunk
-                    chunk_results = self._backend.run(
-                        sim,
-                        current_chunk_size,
-                        chunk_seed,
-                        None,  # Don't pass progress callback to chunks
-                        **simulation_kwargs,
-                    )
+                # Run this chunk
+                chunk_results = self._backend.run(
+                    sim,
+                    current_chunk_size,
+                    chunk_seed,
+                    None,  # Don't pass progress callback to chunks
+                    **simulation_kwargs,
+                )
 
-                    results_list.append(chunk_results)
-                    completed += current_chunk_size
+                results_list.append(chunk_results)
+                completed += current_chunk_size
 
-                    # Report progress
-                    if progress_callback:
-                        progress_callback(completed, n_simulations)
+                # Report progress
+                if progress_callback:
+                    progress_callback(completed, n_simulations)
 
-                    # Step the profiler after each chunk
-                    prof.step()
+                # Step the profiler after each chunk
+                prof.step()
 
-                    logger.debug(
-                        "Completed chunk %d/%d (%d/%d simulations)", i + 1, n_chunks, completed, n_simulations
-                    )
+                logger.debug(
+                    "Completed chunk %d/%d (%d/%d simulations)", i + 1, n_chunks, completed, n_simulations
+                )
 
         # Combine all chunks
         results = np.concatenate(results_list)
