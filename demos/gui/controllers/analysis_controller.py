@@ -15,8 +15,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
-from mcframework.sims import BlackScholesPathSimulation, BlackScholesSimulation
 from PySide6.QtCore import QObject, Signal
+
+from mcframework.sims import BlackScholesPathSimulation, BlackScholesSimulation
 
 from ..models.state import (
     GreeksResult,

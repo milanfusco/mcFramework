@@ -30,8 +30,9 @@ import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import numpy as np
-from mcframework.sims import BlackScholesPathSimulation, BlackScholesSimulation
 from scipy.stats import norm
+
+from mcframework.sims import BlackScholesPathSimulation, BlackScholesSimulation
 
 # Try to import yfinance, provide helpful message if not available
 try:

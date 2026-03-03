@@ -16,7 +16,6 @@ license = "MIT"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
     "numpy>=1.26",
-    "matplotlib>=3.7",
     "scipy>=1.10",
 ]
 [project.urls]
@@ -54,9 +53,13 @@ cuda = [
     "torch>=2.9.1",
     "cupy-cuda12x>=12.0.0",  # CUDA 12.x support for cuRAND backend
 ]
+viz = [
+    "matplotlib>=3.7",
+]
 gui = [
     "PySide6>=6.5",
     "yfinance>=1.0",
+    "matplotlib>=3.7",
 ]
 
 
