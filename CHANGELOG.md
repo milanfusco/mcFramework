@@ -7,8 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [Unreleased]
+### Bug Fixes
+- Correct P0 bugs in simulation engine and bump to v0.2.0
+
 ### Features
+- Benchmark --quick mode and visualization overhaul
+- Curand_batch API, batch chunking, and backend hardening
 - Cursor Cloud setup notes in AGENTS.md (#55)
+
+### Maintenance
+- Enhance bootstrap means function for memory efficiency
+- Add Codecov configuration and update CI for coverage reporting
+- Update installation instructions and dependencies for PyTorch support
+- Update .gitignore and enhance Pylint configuration
+- Update .gitignore, add matplotlib dependency, and enhance documentation
+- [**breaking**] Remove internal backward-compat aliases and fix platform detection
+- [**breaking**] Remove deprecated parallel parameter and parallel_backend alias
+- [**breaking**] Remove cupy_batch shim and curand_batch legacy fallback
+- Harden CI checks and fix Windows test extras
+- Apply expanded ruff rules (UP, B, SIM) across codebase
+- Tighten packaging metadata and linter config
+- Dependency cleanup, imports, and code formatting
+
+### Testing
+- Achieve 100% coverage on all M1-reachable modules
 
 ## [0.2.0] – 2026-02-27
 ### Bug Fixes
