@@ -93,6 +93,20 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
 
+[tool.coverage.run]
+branch = true
+# Only measure the package; never demos, tests, or other repo files.
+source = ["src/mcframework"]
+omit = [
+    "*/demos/*",
+    "*/tests/*",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+]
+
 [tool.pylint.main]
 # Make src importable when running from project root
 init-hook = 'import sys, os; sys.path.insert(0, os.path.abspath("src"))'

@@ -146,7 +146,7 @@ def make_torch_generator(
 def make_curand_generator(
     device_id: int,
     seed_seq: np.random.SeedSequence | None,
-):
+):  # pragma: no cover - requires NVIDIA GPU + CuPy, unavailable on CI runners
     r"""
     Create an explicit cuRAND generator seeded from a SeedSequence.
 

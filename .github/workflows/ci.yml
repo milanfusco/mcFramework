@@ -59,7 +59,7 @@ jobs:
       
       - name: Run tests with coverage
         run: |
-          pytest --cov --cov-branch --cov-report=xml 
+          pytest --cov=src/mcframework --cov-branch --cov-report=xml
       
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
@@ -89,7 +89,16 @@ jobs:
       
       - name: Run Torch backend tests
         run: |
-          pytest tests/test_torch_cpu.py tests/test_torch_mps.py tests/test_torch_utils.py -v --tb=short
+          pytest tests/test_torch_cpu.py tests/test_torch_mps.py tests/test_torch_utils.py -v --tb=short --cov=src/mcframework --cov-branch --cov-report=xml
+
+      - name: Upload MPS coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: gpu
+          name: codecov-gpu
+          fail_ci_if_error: false
 
   test-multiplatform:
     name: Test on ${{ matrix.os }}
