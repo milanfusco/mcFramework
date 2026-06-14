@@ -16,6 +16,10 @@ htmlcov/
 .env
 .env.*
 
+# Python packaging artifacts
+*.egg-info/
+dist/
+
 # Python bytecode
 *.pyc
 *.pyo

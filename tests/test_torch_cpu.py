@@ -359,4 +359,3 @@ class TestTorchCPUBackendDirect:
         assert len(calls) == 4
         assert calls[-1] == (3_500, 3_500)
         assert all(calls[i][0] < calls[i + 1][0] for i in range(len(calls) - 1))
-

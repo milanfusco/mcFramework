@@ -24,7 +24,7 @@ class TestDistributionFreeMetrics:
         """[FR-15, USA-4] Test raises ValueError when eps not provided."""
         ctx = {"confidence": 0.95}
         with pytest.raises(ValueError, match=r"chebyshev_required_n requires ctx\.eps"):
-                chebyshev_required_n(sample_data, ctx)
+            chebyshev_required_n(sample_data, ctx)
 
     def test_markov_error_prob(self):
         """[FR-16] Test Markov inequality error probability."""

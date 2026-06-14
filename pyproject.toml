@@ -88,6 +88,9 @@ addopts = "--cov=src/mcframework --cov-report=term-missing --cov-report=xml"
 testpaths = [
     "tests",
 ]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
 
 [tool.pylint.main]
 # Make src importable when running from project root

@@ -221,6 +221,7 @@ class TorchBackend:
         self.device_type = device
 
         # Create device-specific backend with appropriate kwargs
+        self._backend: TorchCPUBackend | TorchMPSBackend | TorchCUDABackend
         if device == "cpu":
             if device_kwargs:
                 logger.warning(

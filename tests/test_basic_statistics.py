@@ -95,4 +95,3 @@ class TestBasicStatistics:
         ctx = StatsContext(n=len(data))
         result = kurtosis(data, ctx)
         assert result == 0.0
-

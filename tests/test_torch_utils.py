@@ -328,4 +328,3 @@ def test_torch_backend_raises_when_torch_missing(monkeypatch):
     monkeypatch.setattr(ilu, "find_spec", lambda _name: None)
     with pytest.raises(ImportError, match="Torch backend requires PyTorch"):
         TorchBackend(device="cpu")
-

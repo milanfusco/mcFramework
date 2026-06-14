@@ -286,4 +286,3 @@ class TestMPSDeterminism:
 
         # Verify metadata shows seed was used
         assert result.metadata["seed_entropy"] == 42
-

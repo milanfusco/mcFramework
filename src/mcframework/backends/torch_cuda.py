@@ -54,7 +54,7 @@ Examples
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -399,11 +399,9 @@ class TorchCUDABackend:
         try:
             if self.use_curand:
                 # cuRAND probe
-                # Note: _make_curand_generator will be added to torch_base.py
                 # pylint: disable=import-outside-toplevel,import-error
                 import cupy as cp
 
-                from .torch_base import _make_curand_generator  # noqa: F401
                 cp.cuda.Device(self.device_id).use()
                 child_seed = seed_seq.spawn(1)[0] if seed_seq else None
                 if child_seed:
@@ -605,6 +603,7 @@ class TorchCUDABackend:
         completed = 0
 
         # Spawn seed sequences for each batch
+        batch_seeds: Sequence[np.random.SeedSequence | None]
         if seed_seq:
             n_batches = (n_simulations + batch_size - 1) // batch_size
             batch_seeds = seed_seq.spawn(n_batches)

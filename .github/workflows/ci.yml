@@ -31,7 +31,8 @@ jobs:
       
       - name: Run Pylint
         run: |
-          pylint src/mcframework tests/ || pylint-exit $?
+          pylint src/mcframework || pylint-exit $?
+          pylint tests/ --rcfile=tests/.pylintrc || pylint-exit $?
 
   test:
     name: Test Python ${{ matrix.python-version }}

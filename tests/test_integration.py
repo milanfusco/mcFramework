@@ -51,7 +51,7 @@ class TestIntegration:
             percentiles=[5, 95],
             eps=0.05,
         )
-        
+
 
         assert result.n_simulations == 500
         assert result.mean > 0

@@ -176,8 +176,8 @@ class ProfiledTorchBackend:  # pragma: no cover
             total simulations and profiler schedule.
         """
         try:
-            import torch
-            import torch.profiler
+            import torch  # pylint: disable=import-outside-toplevel
+            import torch.profiler  # pylint: disable=import-outside-toplevel
         except ImportError as err:
             raise ImportError(
                 "PyTorch profiler requires PyTorch. Install with: pip install mcframework[gpu]"
@@ -412,8 +412,8 @@ def profile_simulation(
     ...     results = sim.run(10000)  # doctest: +SKIP
     """
     try:
-        import torch
-        import torch.profiler
+        import torch  # pylint: disable=import-outside-toplevel
+        import torch.profiler  # pylint: disable=import-outside-toplevel
     except ImportError:
         logger.warning("PyTorch not available, profiling disabled")
         yield

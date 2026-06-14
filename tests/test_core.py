@@ -835,14 +835,14 @@ def test_compute_stats_with_none_engine():
     from unittest.mock import patch
 
     from mcframework.core import MonteCarloSimulation
-    
+
     class SimpleSim(MonteCarloSimulation):
         def single_simulation(self, _rng=None):
             return 1.0
-    
+
     sim = SimpleSim()
     sim.set_seed(42)
-    
+
     # Patch DEFAULT_ENGINE to be None
     with patch('mcframework.simulation.DEFAULT_ENGINE', None):
         stats, percentiles = sim._compute_stats_with_engine(
@@ -1007,5 +1007,3 @@ def test_version_fallback_when_package_not_found():
         assert mcframework.__version__ == "0.0.0+unknown"
 
     importlib.reload(mcframework)
-
-
