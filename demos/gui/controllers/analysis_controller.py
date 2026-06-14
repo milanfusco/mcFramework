@@ -15,8 +15,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
-from mcframework.sims import BlackScholesPathSimulation, BlackScholesSimulation
 from PySide6.QtCore import QObject, Signal
+
+from mcframework.sims import BlackScholesPathSimulation, BlackScholesSimulation
 
 from ..models.state import (
     GreeksResult,
@@ -559,7 +560,7 @@ class TickerAnalysisController(QObject):
                 sigma=params.volatility,
                 option_type="call",
                 exercise_type="european",
-                parallel=True,
+                backend="auto",
             )
             
             # Calculate put Greeks
@@ -572,7 +573,7 @@ class TickerAnalysisController(QObject):
                 sigma=params.volatility,
                 option_type="put",
                 exercise_type="european",
-                parallel=True,
+                backend="auto",
             )
             
             call_greeks = GreeksResult.from_dict(call_greeks_dict)

@@ -114,4 +114,3 @@ class TestPortfolioSimulation:
         )
         # With zero volatility, all outcomes should be similar
         assert result.std < 100  # Very low variance
-

@@ -27,7 +27,7 @@ python -c "import torch; print(f'MPS: {torch.backends.mps.is_available() and tor
 ## Installation
 
 ```bash
-pip install -e ".[gpu]"
+pip install -e ".[torch]"
 ```
 
 This installs PyTorch with MPS support. The backend is automatically available on compatible systems.

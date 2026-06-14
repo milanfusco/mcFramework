@@ -13,10 +13,44 @@ import numpy as np
 import pytest
 import torch
 
+from mcframework.backends.torch_mps import is_mps_available, validate_mps_device
 from mcframework.core import MonteCarloSimulation
 from mcframework.sims import PiEstimationSimulation
 
 MPS_AVAILABLE = torch.backends.mps.is_available() and torch.backends.mps.is_built()
+
+
+def test_is_mps_available_false_when_not_built(monkeypatch):
+    """is_mps_available() returns False when MPS is available but not built."""
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
+    monkeypatch.setattr(torch.backends.mps, "is_built", lambda: False)
+    assert not is_mps_available()
+
+
+def test_validate_mps_device_raises_when_not_built(monkeypatch):
+    """validate_mps_device() raises RuntimeError when MPS is not built."""
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
+    monkeypatch.setattr(torch.backends.mps, "is_built", lambda: False)
+    with pytest.raises(RuntimeError, match="not built with MPS support"):
+        validate_mps_device()
+
+
+def test_is_mps_available_false_when_torch_missing(monkeypatch):
+    """is_mps_available() returns False when torch cannot be imported."""
+    from mcframework.backends import torch_mps
+
+    def _no_torch():
+        raise ImportError("no torch")
+
+    monkeypatch.setattr(torch_mps, "import_torch", _no_torch)
+    assert not is_mps_available()
+
+
+def test_validate_mps_device_raises_when_not_available(monkeypatch):
+    """validate_mps_device() raises RuntimeError when MPS is not available."""
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
+    with pytest.raises(RuntimeError, match="MPS device requested but not available"):
+        validate_mps_device()
 
 
 @pytest.mark.skipif(not MPS_AVAILABLE, reason="MPS not available")
@@ -83,6 +117,32 @@ class TestTorchMPSBackendDirect:
 
         with pytest.raises(ValueError, match="does not support Torch batch execution"):
             backend.run(sim, 100, sim.seed_seq, None)
+
+    def test_mps_backend_rejects_non_positive_max_batch_size(self):
+        """TorchMPSBackend rejects invalid max_batch_size values."""
+        from mcframework.backends import TorchMPSBackend
+
+        with pytest.raises(ValueError, match="max_batch_size must be a positive integer"):
+            TorchMPSBackend(max_batch_size=0)
+        with pytest.raises(ValueError, match="max_batch_size must be a positive integer"):
+            TorchMPSBackend(max_batch_size=-1)
+
+    def test_mps_backend_chunked_progress_callback_monotonic(self):
+        """Chunked MPS runs report monotonic progress and final completion."""
+        from mcframework.backends import TorchMPSBackend
+
+        backend = TorchMPSBackend(max_batch_size=1_000)
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+        calls = []
+
+        results = backend.run(sim, 3_500, sim.seed_seq, lambda c, t: calls.append((c, t)))
+
+        assert len(results) == 3_500
+        assert results.dtype == np.float64
+        assert len(calls) == 4
+        assert calls[-1] == (3_500, 3_500)
+        assert all(calls[i][0] < calls[i + 1][0] for i in range(len(calls) - 1))
 
 
 @pytest.mark.skipif(not MPS_AVAILABLE, reason="MPS not available")
@@ -226,4 +286,3 @@ class TestMPSDeterminism:
 
         # Verify metadata shows seed was used
         assert result.metadata["seed_entropy"] == 42
-

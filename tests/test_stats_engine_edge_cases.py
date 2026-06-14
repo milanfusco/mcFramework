@@ -64,7 +64,7 @@ def test_stats_context_validation_errors(kwargs, message):
 
 def test_stats_context_missing_required_field():
     with pytest.raises(TypeError):
-        StatsContext()   # missing required argument n
+        StatsContext()  # pylint: disable=no-value-for-parameter  # missing required argument n
 
 
 def test_stats_engine_available_and_select_branch():
@@ -326,7 +326,7 @@ def test_compute_result_repr():
         skipped=[("metric1", "reason1"), ("metric2", "reason2")],
         errors=[("metric3", "error message")]
     )
-    
+
     # Test that repr generates the multiline formatted output
     repr_str = repr(result)
     assert "ComputeResult" in repr_str
@@ -369,7 +369,7 @@ def test_value_error_handling_for_missing_context_keys():
 
 def test_value_error_without_missing_keys_is_raised():
     """Test that ValueError without 'Missing required context keys' is re-raised"""
-    
+
     def metric_raising_other_value_error(x, ctx):
         raise ValueError("Some other error message")
 
@@ -377,7 +377,7 @@ def test_value_error_without_missing_keys_is_raised():
         FnMetric("value_error_metric", metric_raising_other_value_error),
     ]
     engine = StatsEngine(metrics)
-    
+
     # This should raise the ValueError since it doesn't contain "Missing required context keys"
     with pytest.raises(ValueError, match="Some other error message"):
         engine.compute(np.array([1, 2, 3]), n=3)
@@ -386,14 +386,13 @@ def test_value_error_without_missing_keys_is_raised():
 def test_ci_mean_chebyshev_with_none_mean_or_std():
     """Test that ci_mean_chebyshev returns None when mean or std is None"""
     from unittest.mock import patch
-    
+
     # Create data with enough elements to pass the n_eff >= 2 check
     # but mock std to return None
     data = np.array([1.0, 2.0, 3.0, 4.0])
     ctx = StatsContext(n=4, confidence=0.95)
-    
+
     # Mock std to return None while keeping mean working
     with patch('mcframework.stats_engine.std', return_value=None):
         result = ci_mean_chebyshev(data, ctx)
         assert result is None
-

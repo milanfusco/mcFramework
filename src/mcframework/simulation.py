@@ -36,13 +36,16 @@ from __future__ import annotations
 import logging
 import multiprocessing as mp
 import time
-import warnings
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .backends import ProcessBackend, SequentialBackend, ThreadBackend
+from .backends import ProcessBackend, SequentialBackend, ThreadBackend, is_windows_platform
+from .stats_engine import (
+    _PCTS as _ENGINE_PCTS,
+)
 from .stats_engine import (
     DEFAULT_ENGINE,
     CIMethod,
@@ -99,8 +102,7 @@ class MonteCarloSimulation(ABC):
     ``result.metadata["requested_percentiles"]`` and enforced by
     :meth:`MonteCarloFramework.compare_results` for percentile metrics.
     """
-    # Default percentiles for stats engine
-    _PCTS = (5, 25, 50, 75, 95)
+    _PCTS = _ENGINE_PCTS
     # Minimum simulations to use parallel execution (soft limit)
     _PARALLEL_THRESHOLD = 20_000
     # Number of chunks per worker for load balancing (ensures dynamic work distribution)
@@ -115,8 +117,8 @@ class MonteCarloSimulation(ABC):
         """
         Whether this simulation supports batch GPU execution.
 
-        Subclasses that implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` 
-        or :meth:`~mcframework.core.MonteCarloSimulation.cupy_batch`  should set this to 
+        Subclasses that implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch`
+        or :meth:`~mcframework.core.MonteCarloSimulation.curand_batch` should set this to
         ``True`` either as a class attribute or by setting ``self.supports_batch = True``.
 
         Returns
@@ -166,23 +168,20 @@ class MonteCarloSimulation(ABC):
         ...     rng = self._rng(_rng, self.rng)
         ...     return float(rng.normal())
         """
-        return rng if rng is not None else default  # type: ignore[return-value]
+        if rng is not None:
+            return rng
+        if default is not None:
+            return default
+        raise ValueError(
+            "No RNG available: both the per-worker generator and the "
+            "simulation-level fallback are None. Call set_seed() first."
+        )
 
     def __init__(self, name: str = "Simulation"):
         self.name = name
         self.seed_seq: np.random.SeedSequence | None = None
         self.rng = np.random.default_rng()
         self.backend: str = "auto"
-
-    @property
-    def parallel_backend(self) -> str:
-        """Legacy alias for :attr:`backend` (deprecated)."""
-        return self.backend
-
-    @parallel_backend.setter
-    def parallel_backend(self, value: str) -> None:
-        """Legacy alias for :attr:`backend` (deprecated)."""
-        self.backend = value
 
     def __getstate__(self):
         """Avoid pickling the RNG (not pickleable)."""
@@ -218,9 +217,9 @@ class MonteCarloSimulation(ABC):
         self,
         n: int,
         *,
-        device: "torch.device",
-        generator: "torch.Generator",
-    ) -> "torch.Tensor":
+        device: torch.device,
+        generator: torch.Generator,
+    ) -> torch.Tensor:
         """
         Optional vectorized Torch implementation.
 
@@ -282,21 +281,22 @@ class MonteCarloSimulation(ABC):
         """
         raise NotImplementedError
 
-    def cupy_batch(
-        self, n: int, *, device: "torch.device", rng: cupy.random.RandomState) -> "cupy.ndarray":
+    def curand_batch(
+        self, n: int, device_id: int, rng: cupy.random.RandomState) -> cupy.ndarray:
         """
         Optional vectorized cuRAND implementation using CuPy.
 
-        Override this method in subclasses to enable GPU-accelerated batch execution.
-        When implemented alongside ``supports_batch = True``, the framework will use
-        this method instead of repeated ``single_simulation`` calls.
+        Override this method in subclasses to enable GPU-accelerated batch execution
+        via cuRAND. When implemented alongside ``supports_batch = True`` and
+        ``use_curand=True``, the CUDA backend will call this method instead of
+        :meth:`torch_batch`.
 
         Parameters
         ----------
         n : int
             Number of simulation draws.
-        device : torch.device
-            Device to use for the simulation (``"cuda"``).
+        device_id : int
+            CUDA device index.
         rng : cupy.random.RandomState
             cuRAND generator for reproducible random sampling.
 
@@ -393,12 +393,10 @@ class MonteCarloSimulation(ABC):
                 ci_method=ci_method_enum,
             )
 
-        # Compute stats
         try:
             result = eng.compute(results, ctx)
-            # Extract metrics from ComputeResult
             stats = result.metrics if hasattr(result, "metrics") else {}
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except (ValueError, TypeError, ArithmeticError, RuntimeError) as e:
             logger.error("Stats engine failed: %s", e)
             stats = {}
 
@@ -461,7 +459,6 @@ class MonteCarloSimulation(ABC):
         cuda_use_curand: bool = False,
         cuda_batch_size: int | None = None,
         cuda_use_streams: bool = True,
-        parallel: bool | None = None,  # Deprecated, use backend instead
         n_workers: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
         percentiles: Iterable[int] | None = None,
@@ -471,7 +468,7 @@ class MonteCarloSimulation(ABC):
         ci_method: str = "auto",
         extra_context: Mapping[str, Any] | None = None,
         **simulation_kwargs: Any,
-    ) -> "SimulationResult":
+    ) -> SimulationResult:
         r"""
         Run the Monte Carlo simulation.
 
@@ -506,10 +503,6 @@ class MonteCarloSimulation(ABC):
             estimates optimal batch size based on available GPU memory.
         cuda_use_streams : bool, default True
             Use CUDA streams for overlapped execution. Recommended for performance.
-        parallel : bool, optional
-            **Deprecated.** Use ``backend`` instead. If provided, ``parallel=True`` maps to
-            ``backend="auto"`` with parallel preference, ``parallel=False`` maps to
-            ``backend="sequential"``.
         n_workers : int, optional
             Worker count for parallel backends. Defaults to CPU count.
         progress_callback : callable, optional
@@ -548,32 +541,6 @@ class MonteCarloSimulation(ABC):
         --------
         :meth:`~mcframework.core.MonteCarloFramework.run_simulation` : Run a registered simulation by name.
         """
-        # Handle deprecated parallel parameter
-        if parallel is not None:
-            # Check if user also explicitly provided backend (not using default)
-            if backend != "auto":
-                # User provided both - warn and ignore the deprecated parameter
-                warnings.warn(
-                    f"Both 'parallel' and 'backend' parameters provided. "
-                    f"The deprecated 'parallel={parallel}' is ignored; using backend='{backend}'.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-            else:
-                # Only parallel provided - apply deprecated behavior with warning
-                warnings.warn(
-                    "The 'parallel' parameter is deprecated. Use 'backend' instead: "
-                    "backend='sequential' for parallel=False, "
-                    "backend='thread' or 'process' for parallel=True.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                if parallel:
-                    # parallel=True -> let auto-resolution handle small-job fallback
-                    backend = "auto"
-                else:
-                    backend = "sequential"
-
         # Validate parameters
         self._validate_run_params(n_simulations, n_workers, confidence, ci_method, backend)
 
@@ -638,10 +605,6 @@ class MonteCarloSimulation(ABC):
         * ``"process"`` on Windows where threads tend to serialize under the GIL.
         Invalid values fall back to ``"auto"`` and are then resolved.
         """
-        # Import from core for backward compatibility with tests that monkeypatch
-        # mcframework.core._is_windows_platform
-        from . import core as _core  # pylint: disable=import-outside-toplevel
-
         backend = requested or self.backend
         if backend not in self._VALID_BACKENDS:
             logger.warning(
@@ -652,7 +615,7 @@ class MonteCarloSimulation(ABC):
             backend = "auto"
 
         if backend == "auto":
-            on_windows = _core._is_windows_platform()  # pylint: disable=protected-access
+            on_windows = is_windows_platform()
             resolved = "process" if on_windows else "thread"
             if on_windows:
                 logger.info("Parallel backend 'auto' resolved to 'process' on Windows platform.")
@@ -795,18 +758,6 @@ class MonteCarloSimulation(ABC):
             self, n_simulations, self.seed_seq, progress_callback, **simulation_kwargs
         )
 
-    # Backward compatibility aliases
-    def _resolve_parallel_backend(self, requested: str | None = None) -> str:
-        """Deprecated: Use _resolve_backend_type instead."""
-        return self._resolve_backend_type(requested)
-
-    def _create_parallel_backend(self, n_workers: int) -> ThreadBackend | ProcessBackend:
-        """Deprecated: Use _create_backend instead."""
-        backend_type = self._resolve_backend_type()
-        if backend_type == "thread":
-            return ThreadBackend(n_workers=n_workers)
-        return ProcessBackend(n_workers=n_workers)
-
     @staticmethod
     def _percentiles(arr: np.ndarray, ps: Iterable[int]) -> dict[int, float]:
         """Return a ``{percentile: value}`` map computed via :func:`numpy.percentile`."""
@@ -858,7 +809,7 @@ class MonteCarloSimulation(ABC):
         if vals_arr.size != len(req):
             msg = "pct() must return as many values as requested percentiles"
             raise ValueError(msg)
-        return {float(q): float(v) for q, v in zip(req, vals_arr)}
+        return {float(q): float(v) for q, v in zip(req, vals_arr, strict=True)}
 
     def _create_result(
         self,
@@ -869,7 +820,7 @@ class MonteCarloSimulation(ABC):
         stats: dict[str, Any],
         requested_percentiles: list[int],
         engine_defaults_used: bool,
-    ) -> "SimulationResult":
+    ) -> SimulationResult:
         r"""
         Assemble a :class:`SimulationResult` and merge any stats-engine percentiles.
 

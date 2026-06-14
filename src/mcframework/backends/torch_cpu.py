@@ -25,7 +25,8 @@ Notes
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -66,9 +67,18 @@ class TorchCPUBackend:
 
     device_type: str = "cpu"
 
-    def __init__(self):
+    _MAX_BATCH: int = 10_000_000
+
+    def __init__(self, max_batch_size: int | None = None):
         """
         Initialize Torch CPU backend.
+
+        Parameters
+        ----------
+        max_batch_size : int or None, default None
+            Maximum number of simulations per batch.  If *None* the
+            class default ``_MAX_BATCH`` (10 M) is used.  Workloads larger
+            than this are split into batches to keep memory bounded.
 
         Raises
         ------
@@ -77,10 +87,16 @@ class TorchCPUBackend:
         """
         th = import_torch()
         self.device = th.device("cpu")
+        if max_batch_size is None:
+            self._max_batch = self._MAX_BATCH
+        elif max_batch_size <= 0:
+            raise ValueError("max_batch_size must be a positive integer")
+        else:
+            self._max_batch = max_batch_size
 
     def run(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None = None,
@@ -92,7 +108,7 @@ class TorchCPUBackend:
         Parameters
         ----------
         sim : MonteCarloSimulation
-            The simulation instance to run. Must have 
+            The simulation instance to run. Must have
             :attr:`~mcframework.simulation.MonteCarloSimulation.supports_batch` = ``True``
             and implement :meth:`~mcframework.core.MonteCarloSimulation.torch_batch`.
         n_simulations : int
@@ -118,30 +134,35 @@ class TorchCPUBackend:
         """
         th = import_torch()
 
-        # Validate simulation supports batch execution
         if not getattr(sim, "supports_batch", False):
             raise ValueError(
                 f"Simulation '{sim.name}' does not support Torch batch execution. "
                 "Set supports_batch = True and implement torch_batch()."
             )
 
-        # Create explicit generator from SeedSequence (never use global RNG)
-        generator = make_torch_generator(self.device, seed_seq)
-
         logger.info(
             "Computing %d simulations using Torch CPU batch...",
-            n_simulations
+            n_simulations,
         )
 
-        # Execute the vectorized batch with explicit generator
-        samples = sim.torch_batch(n_simulations, device=self.device, generator=generator)
+        if n_simulations <= self._max_batch:
+            generator = make_torch_generator(self.device, seed_seq)
+            samples = sim.torch_batch(n_simulations, device=self.device, generator=generator)
+            samples = samples.detach().to(th.float64)
+            if progress_callback:
+                progress_callback(n_simulations, n_simulations)
+            return samples.numpy()
 
-        # Ensure float64 for stats engine precision
-        samples = samples.detach().to(th.float64)
-
-        # Report completion (batch execution is atomic)
-        if progress_callback:
-            progress_callback(n_simulations, n_simulations)
-
-        # Convert to NumPy for stats engine compatibility
-        return samples.numpy()
+        n_batches = (n_simulations + self._max_batch - 1) // self._max_batch
+        batch_seeds = seed_seq.spawn(n_batches) if seed_seq else [None] * n_batches
+        parts: list[np.ndarray] = []
+        completed = 0
+        for bs in batch_seeds:
+            batch_n = min(self._max_batch, n_simulations - completed)
+            generator = make_torch_generator(self.device, bs)
+            samples = sim.torch_batch(batch_n, device=self.device, generator=generator)
+            parts.append(samples.detach().to(th.float64).numpy())
+            completed += batch_n
+            if progress_callback:
+                progress_callback(completed, n_simulations)
+        return np.concatenate(parts)

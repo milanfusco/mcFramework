@@ -54,7 +54,8 @@ Examples
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -137,8 +138,8 @@ class TorchCUDABackend:
 
     CUDA backend with adaptive batch sizing, dual RNG modes,
     and native float64 support. Requires simulations to implement
-    :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` (or 
-    :meth:`~mcframework.core.MonteCarloSimulation.cupy_batch` for cuRAND mode) 
+    :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` (or
+    :meth:`~mcframework.core.MonteCarloSimulation.curand_batch` for cuRAND mode)
     and set ``supports_batch = True``.
 
     Parameters
@@ -148,8 +149,8 @@ class TorchCUDABackend:
         check available devices.
     use_curand : bool, default False
         Use cuRAND (via CuPy) instead of torch.Generator for RNG.
-        Requires CuPy installation and simulation to 
-        implement :meth:`~mcframework.core.MonteCarloSimulation.cupy_batch`.
+        Requires CuPy installation and simulation to
+        implement :meth:`~mcframework.core.MonteCarloSimulation.curand_batch`.
     batch_size : int or None, default None
         Fixed batch size for simulation execution. If None, automatically
         estimates optimal batch size based on available GPU memory.
@@ -182,9 +183,9 @@ class TorchCUDABackend:
     optimal batch size to use ~75% of available GPU memory.
 
     **Native float64**: CUDA fully supports float64 tensors. If simulation's
-    :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` or 
-    :meth:`~mcframework.core.MonteCarloSimulation.cupy_batch` returns float64, 
-    the backend uses it directly with zero conversion overhead. If float32, it 
+    :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` or
+    :meth:`~mcframework.core.MonteCarloSimulation.curand_batch` returns float64,
+    the backend uses it directly with zero conversion overhead. If float32, it
     converts to float64 on GPU before moving to CPU for stats engine compatibility.
 
     **CUDA streams**: When ``use_streams=True``, executes each batch in a
@@ -273,7 +274,7 @@ class TorchCUDABackend:
 
     def _validate_simulation_compatible(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
     ) -> None:
         """
         Validate that simulation supports batch execution with required methods.
@@ -318,7 +319,7 @@ class TorchCUDABackend:
         # Check 3: Required batch method exists and is overridden
         if self.use_curand:
             # cuRAND mode requires curand_batch method
-            if not hasattr(sim, 'curand_batch') or not callable(getattr(sim, 'curand_batch')):
+            if not hasattr(sim, 'curand_batch') or not callable(sim.curand_batch):
                 raise NotImplementedError(
                     f"Simulation '{sim.__class__.__name__}' requested cuRAND mode "
                     f"but does not implement curand_batch() method. "
@@ -357,7 +358,7 @@ class TorchCUDABackend:
 
     def _estimate_batch_size(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
     ) -> int:
@@ -398,11 +399,9 @@ class TorchCUDABackend:
         try:
             if self.use_curand:
                 # cuRAND probe
-                # Note: _make_curand_generator will be added to torch_base.py
                 # pylint: disable=import-outside-toplevel,import-error
                 import cupy as cp
 
-                from .torch_base import _make_curand_generator  # noqa: F401
                 cp.cuda.Device(self.device_id).use()
                 child_seed = seed_seq.spawn(1)[0] if seed_seq else None
                 if child_seed:
@@ -444,10 +443,10 @@ class TorchCUDABackend:
 
     def _run_single_batch(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         batch_size: int,
         seed_seq: np.random.SeedSequence | None,
-    ) -> "torch.Tensor":
+    ) -> torch.Tensor:
         """
         Execute a single batch of simulations.
 
@@ -521,7 +520,7 @@ class TorchCUDABackend:
 
     def run(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None = None,
@@ -604,6 +603,7 @@ class TorchCUDABackend:
         completed = 0
 
         # Spawn seed sequences for each batch
+        batch_seeds: Sequence[np.random.SeedSequence | None]
         if seed_seq:
             n_batches = (n_simulations + batch_size - 1) // batch_size
             batch_seeds = seed_seq.spawn(n_batches)

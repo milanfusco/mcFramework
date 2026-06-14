@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import logging
 import multiprocessing as mp
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -29,8 +30,25 @@ __all__ = [
     "ProcessBackend",
 ]
 
-# Default configuration constants
-_CHUNKS_PER_WORKER = 8  # Number of chunks per worker for load balancing
+_CHUNKS_PER_WORKER = 8
+
+
+def _prepare_blocks(
+    n_simulations: int,
+    n_workers: int,
+    chunks_per_worker: int,
+    seed_seq: np.random.SeedSequence | None,
+) -> tuple[list[tuple[int, int]], list[np.random.SeedSequence]]:
+    """Partition work into blocks and spawn independent random seeds."""
+    block_size = max(1, n_simulations // (n_workers * chunks_per_worker))
+    blocks = make_blocks(n_simulations, block_size)
+
+    if seed_seq is not None:
+        child_seqs = seed_seq.spawn(len(blocks))
+    else:
+        child_seqs = [np.random.SeedSequence() for _ in range(len(blocks))]
+
+    return blocks, child_seqs
 
 
 class ThreadBackend:
@@ -59,7 +77,7 @@ class ThreadBackend:
 
     def run(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None,
@@ -86,7 +104,9 @@ class ThreadBackend:
         np.ndarray
             Array of simulation results with shape ``(n_simulations,)``.
         """
-        blocks, child_seqs = self._prepare_blocks(n_simulations, seed_seq)
+        blocks, child_seqs = _prepare_blocks(
+            n_simulations, self.n_workers, self.chunks_per_worker, seed_seq,
+        )
         results = np.empty(n_simulations, dtype=float)
         completed = 0
         max_workers = min(self.n_workers, len(blocks))
@@ -100,7 +120,7 @@ class ThreadBackend:
             return (a, b), out
 
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futs = [ex.submit(_work, (blk, ss)) for blk, ss in zip(blocks, child_seqs)]
+            futs = [ex.submit(_work, (blk, ss)) for blk, ss in zip(blocks, child_seqs, strict=True)]
             for f in as_completed(futs):
                 (i, j), arr = f.result()
                 results[i:j] = arr
@@ -109,20 +129,6 @@ class ThreadBackend:
                     progress_callback(completed, n_simulations)  # pragma: no cover
 
         return results
-
-    def _prepare_blocks(
-        self, n_simulations: int, seed_seq: np.random.SeedSequence | None
-    ) -> tuple[list[tuple[int, int]], list[np.random.SeedSequence]]:
-        """Prepare work blocks and independent random seeds."""
-        block_size = max(1, n_simulations // (self.n_workers * self.chunks_per_worker))
-        blocks = make_blocks(n_simulations, block_size)
-
-        if seed_seq is not None:
-            child_seqs = seed_seq.spawn(len(blocks))
-        else:
-            child_seqs = [np.random.SeedSequence() for _ in range(len(blocks))]
-
-        return blocks, child_seqs
 
 
 class ProcessBackend:
@@ -155,7 +161,7 @@ class ProcessBackend:
 
     def run(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None,
@@ -182,7 +188,9 @@ class ProcessBackend:
         np.ndarray
             Array of simulation results with shape ``(n_simulations,)``.
         """
-        blocks, child_seqs = self._prepare_blocks(n_simulations, seed_seq)
+        blocks, child_seqs = _prepare_blocks(
+            n_simulations, self.n_workers, self.chunks_per_worker, seed_seq,
+        )
         results = np.empty(n_simulations, dtype=float)
         completed = 0
         max_workers = min(self.n_workers, len(blocks))
@@ -192,7 +200,7 @@ class ProcessBackend:
             mp_context=mp.get_context("spawn"),
         ) as ex:
             futs = []
-            for (i, j), ss in zip(blocks, child_seqs):
+            for (i, j), ss in zip(blocks, child_seqs, strict=True):
                 f = ex.submit(worker_run_chunk, sim, j - i, ss, dict(simulation_kwargs))
                 f.blk = (i, j)  # type: ignore[attr-defined]
                 futs.append(f)
@@ -210,17 +218,3 @@ class ProcessBackend:
                 raise
 
         return results
-
-    def _prepare_blocks(
-        self, n_simulations: int, seed_seq: np.random.SeedSequence | None
-    ) -> tuple[list[tuple[int, int]], list[np.random.SeedSequence]]:
-        """Prepare work blocks and independent random seeds."""
-        block_size = max(1, n_simulations // (self.n_workers * self.chunks_per_worker))
-        blocks = make_blocks(n_simulations, block_size)
-
-        if seed_seq is not None:
-            child_seqs = seed_seq.spawn(len(blocks))
-        else:
-            child_seqs = [np.random.SeedSequence() for _ in range(len(blocks))]
-
-        return blocks, child_seqs

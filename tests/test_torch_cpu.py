@@ -324,3 +324,38 @@ class TestTorchCPUBackendDirect:
         with pytest.raises(ValueError, match="does not support Torch batch execution"):
             backend.run(sim, 100, sim.seed_seq, None)
 
+    def test_cpu_backend_rejects_non_positive_max_batch_size(self):
+        """TorchCPUBackend rejects invalid max_batch_size values."""
+        from mcframework.backends import TorchCPUBackend
+
+        with pytest.raises(ValueError, match="max_batch_size must be a positive integer"):
+            TorchCPUBackend(max_batch_size=0)
+        with pytest.raises(ValueError, match="max_batch_size must be a positive integer"):
+            TorchCPUBackend(max_batch_size=-1)
+
+    def test_cpu_backend_chunked_run_is_deterministic(self):
+        """Chunked CPU runs are deterministic with the same seed sequence."""
+        from mcframework.backends import TorchCPUBackend
+
+        backend = TorchCPUBackend(max_batch_size=1_000)
+        sim = PiEstimationSimulation()
+
+        r1 = backend.run(sim, 3_500, np.random.SeedSequence(77), None)
+        r2 = backend.run(sim, 3_500, np.random.SeedSequence(77), None)
+
+        np.testing.assert_array_equal(r1, r2)
+
+    def test_cpu_backend_chunked_progress_callback_monotonic(self):
+        """Chunked CPU runs report monotonic progress and final completion."""
+        from mcframework.backends import TorchCPUBackend
+
+        backend = TorchCPUBackend(max_batch_size=1_000)
+        sim = PiEstimationSimulation()
+        sim.set_seed(42)
+        calls = []
+
+        backend.run(sim, 3_500, sim.seed_seq, lambda c, t: calls.append((c, t)))
+
+        assert len(calls) == 4
+        assert calls[-1] == (3_500, 3_500)
+        assert all(calls[i][0] < calls[i + 1][0] for i in range(len(calls) - 1))

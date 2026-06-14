@@ -56,4 +56,3 @@ class TestStatsEngine:
         result = engine.compute(np.array([1, 2, 3]), n=3, confidence=0.95, target=0.0, eps=0.05)
         assert isinstance(result, ComputeResult)
         assert "bias_to_target" not in result.metrics
-

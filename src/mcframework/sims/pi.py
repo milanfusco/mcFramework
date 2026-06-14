@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.random import Generator
@@ -54,7 +54,7 @@ class PiEstimationSimulation(MonteCarloSimulation):
     supports_batch: bool = True
     """
     Set whether this simulation supports batch GPU execution.
-    Did you implement .torch_batch() or .cupy_batch()? If so, set to True.
+    Did you implement .torch_batch() or .curand_batch()? If so, set to True.
     """
 
 
@@ -65,7 +65,7 @@ class PiEstimationSimulation(MonteCarloSimulation):
         self,
         n_points: int = 10_000,
         antithetic: bool = False,
-        _rng: Optional[Generator] = None,
+        _rng: Generator | None = None,
         **kwargs,
     ) -> float:
         r"""
@@ -92,7 +92,7 @@ class PiEstimationSimulation(MonteCarloSimulation):
             the unit disk.
         """
         rng = self._rng(_rng, self.rng)
-        if not antithetic:  # pragma: no cover
+        if not antithetic:
             pts = rng.uniform(-1.0, 1.0, (n_points, 2))
             inside = np.sum(np.sum(pts * pts, axis=1) <= 1.0)
             return float(4.0 * inside / n_points)
@@ -110,9 +110,9 @@ class PiEstimationSimulation(MonteCarloSimulation):
         self,
         n: int,
         *,
-        device: "torch.device",
-        generator: "torch.Generator",
-    ) -> "torch.Tensor":
+        device: torch.device,
+        generator: torch.Generator,
+    ) -> torch.Tensor:
         r"""
         Vectorized Torch implementation for GPU-accelerated Pi estimation.
 

@@ -1,0 +1,47 @@
+# Pylint configuration scoped to the test suite.
+#
+# Tests intentionally use patterns that pylint flags as warnings in production
+# code: simplified signature overrides on simulation stubs, accessing protected
+# members to assert internal behavior, lazy/conditional torch imports inside
+# test bodies, and pytest's fixture-as-argument convention. These are disabled
+# here while src/ stays strict (see [tool.pylint] in pyproject.toml).
+#
+# Run via: pylint tests/ --rcfile=tests/.pylintrc
+
+[MAIN]
+init-hook = 'import sys, os; sys.path.insert(0, os.path.abspath("src"))'
+py-version = 3.12
+jobs = 1
+load-plugins = pylint.extensions.docparams
+
+[MESSAGES CONTROL]
+disable =
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    too-few-public-methods,
+    duplicate-code,
+    fixme,
+    no-name-in-module,
+    import-outside-toplevel,
+    arguments-differ,
+    unused-argument,
+    protected-access,
+    redefined-outer-name,
+    reimported,
+    invalid-name,
+    consider-using-dict-items,
+    use-implicit-booleaness-not-comparison
+
+[FORMAT]
+max-line-length = 110
+
+[DESIGN]
+max-args = 15
+max-locals = 35
+max-attributes = 15
+max-positional-arguments = 15
+max-module-lines = 2000
+
+[BASIC]
+good-names = i, j, k, x, y, n, df, ps, B, K, T, S, Z, X, r, q

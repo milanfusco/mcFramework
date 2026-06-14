@@ -46,26 +46,15 @@ from typing import Any
 
 import numpy as np
 
-# Re-export backend utilities for backward compatibility
-from .backends import is_windows_platform, make_blocks
-from .backends.base import worker_run_chunk as _worker_run_chunk
-
-# Re-export MonteCarloSimulation from simulation module for backward compatibility
+from .backends import make_blocks
 from .simulation import MonteCarloSimulation
-
-# Re-export stats_engine symbols for backward compatibility with tests
 from .utils import autocrit
-
-# Backward compatibility alias
-_is_windows_platform = is_windows_platform
-
 
 __all__ = [
     "SimulationResult",
     "MonteCarloSimulation",
     "MonteCarloFramework",
     "make_blocks",
-    "_worker_run_chunk",
 ]
 
 
@@ -85,7 +74,7 @@ class SimulationResult:
     mean : float
         Sample mean :math:`\bar X`.
     std : float
-        Sample standard deviation with ``ddof=1`` (default for NumPy's :func:`numpy.std`).
+        Sample standard deviation with ``ddof=1`` (Bessel correction).
     percentiles : dict[int, float]
         Dictionary of computed percentiles, e.g. ``{5: 0.05, 50: 0.50, 95: 0.95}``.
     stats : dict
@@ -112,7 +101,7 @@ class SimulationResult:
         r"""
          Pretty, human-readable summary of the result.
 
-        Prints the dictionary attributes in a readable format.
+        Format result attributes as a human-readable string.
 
         Parameters
         ----------
@@ -136,7 +125,7 @@ class SimulationResult:
 
         where :math:`c` is either a z or t critical value depending on ``method``.
         """
-        print("=" * 20 + " SIM RESULTS " + "=" * 20)
+        header = "=" * 20 + " SIM RESULTS " + "=" * 20
         if simulation_name := self.metadata.get("simulation_name"):
             title = f"Results for simulation '{simulation_name}':"
         else:
@@ -147,6 +136,7 @@ class SimulationResult:
         lo = self.mean - crit * se
         hi = self.mean + crit * se
         lines = [
+            header,
             title,
             f"  Number of simulations: {self.n_simulations}",
             f"  Execution time: {self.execution_time:.2f} seconds",
@@ -158,7 +148,9 @@ class SimulationResult:
         for p in sorted(self.percentiles):
             lines.append(f"    {p}th: {self.percentiles[p]:.5f}")
         ci = self.stats.get("ci_mean")
-        if isinstance(ci, (tuple, list)) and len(ci) == 2 and all(isinstance(x, (int, float)) for x in ci):
+        if isinstance(ci, dict) and "low" in ci and "high" in ci:
+            lines.append(f"  (engine) CI: [{ci['low']:.5f}, {ci['high']:.5f}]")
+        elif isinstance(ci, (tuple, list)) and len(ci) == 2 and all(isinstance(x, (int, float)) for x in ci):
             lines.append(f"  (engine) CI: [{ci[0]:.5f}, {ci[1]:.5f}]")
         if self.stats:
             lines.append("Additional Stats:")

@@ -230,7 +230,7 @@ The framework supports multiple execution backends via the ``backend`` parameter
    result = sim.run(100_000, backend="process", n_workers=4)
    result = sim.run(100_000, backend="auto")  # Platform default
 
-   # GPU backends (requires pip install mcframework[gpu])
+   # Torch backend (requires pip install mcframework[torch])
    result = sim.run(1_000_000, backend="torch", torch_device="cpu")
    result = sim.run(1_000_000, backend="torch", torch_device="mps")   # Apple Silicon
    result = sim.run(1_000_000, backend="torch", torch_device="cuda")  # NVIDIA GPU

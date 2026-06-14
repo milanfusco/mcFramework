@@ -37,7 +37,8 @@ Example
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -132,8 +133,8 @@ class TorchBackend:
     Notes
     -----
     **Delegation model.** This class delegates all execution to the
-    device-specific backend. It exists to provide a unified interface
-    and for backward compatibility.
+    device-specific backend. It provides a unified dispatch interface
+    across CPU, MPS, and CUDA devices.
 
     **Device selection.** The backend is selected at construction time
     based on the ``device`` parameter. Device availability is validated
@@ -211,7 +212,7 @@ class TorchBackend:
 
         if importlib.util.find_spec("torch") is None:
             raise ImportError(
-                "Torch backend requires PyTorch. Install with: pip install mcframework[gpu]"
+                "Torch backend requires PyTorch. Install with: pip install mcframework[torch]"
             )
 
         # Validate device type and availability
@@ -220,6 +221,7 @@ class TorchBackend:
         self.device_type = device
 
         # Create device-specific backend with appropriate kwargs
+        self._backend: TorchCPUBackend | TorchMPSBackend | TorchCUDABackend
         if device == "cpu":
             if device_kwargs:
                 logger.warning(
@@ -256,7 +258,7 @@ class TorchBackend:
 
     def run(
         self,
-        sim: "MonteCarloSimulation",
+        sim: MonteCarloSimulation,
         n_simulations: int,
         seed_seq: np.random.SeedSequence | None,
         progress_callback: Callable[[int, int], None] | None = None,

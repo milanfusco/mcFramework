@@ -60,7 +60,7 @@ def import_torch():
         return th
     except ImportError as e:
         raise ImportError(
-            "Torch backend requires PyTorch. Install with: pip install mcframework[gpu]"
+            "Torch backend requires PyTorch. Install with: pip install mcframework[torch]"
         ) from e
 
 
@@ -77,9 +77,9 @@ def validate_torch_available() -> None:
 
 
 def make_torch_generator(
-    device: "torch.device",
+    device: torch.device,
     seed_seq: np.random.SeedSequence | None,
-) -> "torch.Generator":
+) -> torch.Generator:
     r"""
     Create an explicit Torch generator seeded from a SeedSequence.
 
@@ -146,7 +146,7 @@ def make_torch_generator(
 def make_curand_generator(
     device_id: int,
     seed_seq: np.random.SeedSequence | None,
-):
+):  # pragma: no cover - requires NVIDIA GPU + CuPy, unavailable on CI runners
     r"""
     Create an explicit cuRAND generator seeded from a SeedSequence.
 

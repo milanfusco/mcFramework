@@ -1,5 +1,7 @@
 """mcframework package public API."""
 
+from importlib.metadata import PackageNotFoundError, version
+
 # Profiling submodule (imported as submodule, not exposed at top level)
 from . import profiling
 from .core import MonteCarloFramework, MonteCarloSimulation, SimulationResult
@@ -30,4 +32,7 @@ __all__ = [
     "profiling",
 ]
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("mcframework")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"

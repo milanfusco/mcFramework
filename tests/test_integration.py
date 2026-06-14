@@ -51,7 +51,7 @@ class TestIntegration:
             percentiles=[5, 95],
             eps=0.05,
         )
-        
+
 
         assert result.n_simulations == 500
         assert result.mean > 0
@@ -114,7 +114,7 @@ class TestIntegration:
             confidence=0.95,
             extra_context={"target": float(np.pi), "eps": 0.01}
         )
-        ci = getattr(result, "stats")["ci_mean"]
+        ci = result.stats["ci_mean"]
         low, high = ci["low"], ci["high"]
         ci_width = high - low
 

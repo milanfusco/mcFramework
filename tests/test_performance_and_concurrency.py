@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from mcframework.core import _worker_run_chunk
+from mcframework.backends.base import worker_run_chunk
 
 
 class TestPerformance:
@@ -30,13 +30,13 @@ class TestPerformance:
 
     def test_auto_backend_resolves_per_platform(self, simple_simulation, monkeypatch):
         """[NFR-7] Auto backend should prefer processes on Windows, threads elsewhere."""
-        simple_simulation.parallel_backend = "auto"
+        simple_simulation.backend = "auto"
 
-        monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: True)
-        assert simple_simulation._resolve_parallel_backend() == "process"
+        monkeypatch.setattr("mcframework.simulation.is_windows_platform", lambda: True)
+        assert simple_simulation._resolve_backend_type() == "process"
 
-        monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: False)
-        assert simple_simulation._resolve_parallel_backend() == "thread"
+        monkeypatch.setattr("mcframework.simulation.is_windows_platform", lambda: False)
+        assert simple_simulation._resolve_backend_type() == "thread"
 
 
     def test_memory_efficiency_streaming(self, simple_simulation):
@@ -53,6 +53,6 @@ class TestPerformance:
     def test_worker_run_chunk(self, simple_simulation):
         """[FR-3] Test worker function directly."""
         seed_seq = np.random.SeedSequence(42)
-        results = _worker_run_chunk(simple_simulation, 100, seed_seq, {})
+        results = worker_run_chunk(simple_simulation, 100, seed_seq, {})
         assert len(results) == 100
         assert all(isinstance(r, float) for r in results)

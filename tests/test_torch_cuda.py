@@ -25,7 +25,7 @@ CUDA_AVAILABLE = torch.cuda.is_available()
 def _cupy_available() -> bool:
     """Check if CuPy is installed."""
     try:
-        import cupy as cp  # noqa: F401
+        import cupy as cp  # noqa: F401  # pylint: disable=unused-import
         return True
     except ImportError:
         return False
@@ -364,4 +364,3 @@ class TestCUDAPerformance:
         # CI should contain pi
         ci = result.stats["ci_mean"]
         assert ci["low"] < np.pi < ci["high"]
-

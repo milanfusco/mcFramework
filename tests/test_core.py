@@ -123,6 +123,22 @@ class TestSimulationResult:
         assert "custom_metric" in summary
         assert "note" in summary
 
+    def test_result_to_string_with_dict_ci_mean(self):
+        """result_to_string handles ci_mean as a dict (engine output format)."""
+        results = np.array([2.0, 4.0, 6.0, 8.0])
+        stats = {"ci_mean": {"low": 3.0, "high": 7.0, "confidence": 0.95, "method": "z"}}
+        result = SimulationResult(
+            results=results,
+            n_simulations=len(results),
+            execution_time=0.5,
+            mean=float(np.mean(results)),
+            std=float(np.std(results, ddof=1)),
+            percentiles={},
+            stats=stats,
+        )
+        summary = result.result_to_string()
+        assert "(engine) CI: [3.00000, 7.00000]" in summary
+
 
 class TestMonteCarloSimulation:
     """[FR-1] Test MonteCarloSimulation abstract base class."""
@@ -197,8 +213,8 @@ class TestMonteCarloSimulation:
             eps=0.05,
         )
 
-        mean = getattr(result, "mean")
-        std = getattr(result, "std")
+        mean = result.mean
+        std = result.std
         assert mean is not None
         assert std is not None
 
@@ -284,60 +300,6 @@ class TestMonteCarloSimulation:
         with pytest.raises(ValueError, match="does not support Torch batch"):
             simple_simulation.run(5, backend="torch")
 
-    def test_deprecated_parallel_parameter_warns(self, simple_simulation):
-        """[DEPRECATION] Using parallel= should emit DeprecationWarning."""
-        import warnings
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = simple_simulation.run(5, parallel=False, compute_stats=False)
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "parallel" in str(w[0].message)
-            assert result.n_simulations == 5
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = simple_simulation.run(5, parallel=True, compute_stats=False)
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert result.n_simulations == 5
-
-    def test_deprecated_parallel_with_explicit_backend_uses_backend(self, simple_simulation):
-        """[DEPRECATION] When both parallel and backend provided, backend wins."""
-        import warnings
-
-        # When user provides both, the explicit backend should be used
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            # parallel=True would normally map to "auto", but backend="sequential" is explicit
-            result = simple_simulation.run(
-                5,
-                parallel=True,
-                backend="sequential",
-                compute_stats=False
-            )
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            # Warning should mention that parallel is ignored
-            assert "ignored" in str(w[0].message).lower()
-            assert "backend='sequential'" in str(w[0].message)
-            assert result.n_simulations == 5
-
-        # Same for parallel=False with explicit backend="thread"
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = simple_simulation.run(
-                5,
-                parallel=False,
-                backend="thread",
-                compute_stats=False
-            )
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "ignored" in str(w[0].message).lower()
-            assert result.n_simulations == 5
-
     def test_run_handles_invalid_extra_context(self, simple_simulation):
         """[NFR-4] Extra context with invalid keys should fall back to defaults."""
         result = simple_simulation.run(
@@ -347,12 +309,6 @@ class TestMonteCarloSimulation:
         )
         assert result.n_simulations == 10
         assert result.stats
-
-    def test_resolve_parallel_backend_unknown_value_defaults(self, simple_simulation):
-        """[NFR-7] Unknown backend values should coerce to auto/thread."""
-        simple_simulation.backend = "unknown"
-        backend = simple_simulation._resolve_parallel_backend()
-        assert backend in {"thread", "process"}
 
     def test_compute_stats_block_handles_empty_array(self):
         """[NFR-4] _compute_stats_block should return NaNs for empty input."""
@@ -726,18 +682,6 @@ class TestThreadBackendExecution:
         assert hasattr(sim, "backend")
         assert sim.backend == "auto"
 
-    def test_parallel_backend_legacy_alias(self):
-        """[COMPAT] Test parallel_backend legacy alias works bidirectionally."""
-        sim = PiEstimationSimulation()
-
-        # Getter: parallel_backend should reflect backend
-        assert sim.parallel_backend == sim.backend == "auto"
-
-        # Setter: setting parallel_backend should update backend
-        sim.parallel_backend = "thread"
-        assert sim.backend == "thread"
-        assert sim.parallel_backend == "thread"
-
     def test_thread_backend_with_large_job(self):
         """[FR-3] Test thread backend with job large enough to avoid fallback."""
         sim = PiEstimationSimulation()
@@ -891,14 +835,14 @@ def test_compute_stats_with_none_engine():
     from unittest.mock import patch
 
     from mcframework.core import MonteCarloSimulation
-    
+
     class SimpleSim(MonteCarloSimulation):
         def single_simulation(self, _rng=None):
             return 1.0
-    
+
     sim = SimpleSim()
     sim.set_seed(42)
-    
+
     # Patch DEFAULT_ENGINE to be None
     with patch('mcframework.simulation.DEFAULT_ENGINE', None):
         stats, percentiles = sim._compute_stats_with_engine(
@@ -950,6 +894,26 @@ def test_run_with_backend_auto_large_job():
     assert result.n_simulations == 25000
 
 
+def test_resolve_backend_type_warns_on_invalid(caplog):
+    """[NFR-7] _resolve_backend_type warns and falls back for an unknown backend value."""
+    import logging
+
+    from mcframework.core import MonteCarloSimulation
+
+    class SimpleSim(MonteCarloSimulation):
+        def single_simulation(self, _rng=None):
+            return 1.0
+
+    sim = SimpleSim()
+    sim.backend = "bogus"
+
+    with caplog.at_level(logging.WARNING, logger="mcframework.simulation"):
+        resolved = sim._resolve_backend_type()
+
+    assert resolved in ("thread", "process")
+    assert "Defaulting to 'auto'" in caplog.text
+
+
 def test_resolve_backend_unknown_backend_warning():
     """[NFR-7] Test _resolve_backend warns and defaults to auto for unknown backends."""
     from mcframework.backends.parallel import ProcessBackend, ThreadBackend
@@ -962,9 +926,7 @@ def test_resolve_backend_unknown_backend_warning():
     sim = SimpleSim()
     sim.backend = "invalid_backend"  # Unknown backend
 
-    # Unknown backend should log a warning and default to auto (thread on non-Windows)
-    backend = sim._create_parallel_backend(n_workers=2)
-    # Should return either ThreadBackend or ProcessBackend (depending on platform)
+    backend = sim._create_backend("auto", n_workers=2)
     assert isinstance(backend, (ThreadBackend, ProcessBackend))
 
 
@@ -980,25 +942,68 @@ def test_resolve_backend_auto_on_windows(monkeypatch):
     sim = SimpleSim()
     sim.backend = "auto"
 
-    # Mock Windows platform
-    monkeypatch.setattr("mcframework.core._is_windows_platform", lambda: True)
+    monkeypatch.setattr("mcframework.simulation.is_windows_platform", lambda: True)
 
-    backend = sim._create_parallel_backend(n_workers=2)
+    backend = sim._create_backend("auto", n_workers=2)
     assert isinstance(backend, ProcessBackend)
 
 
-def test_process_backend_prepare_blocks_without_seed():
-    """[NFR-7] Test ProcessBackend._prepare_blocks generates random seeds when seed_seq is None."""
-    from mcframework.backends.parallel import ProcessBackend
+def test_prepare_blocks_without_seed():
+    """[NFR-7] Module-level _prepare_blocks generates random seeds when seed_seq is None."""
+    from mcframework.backends.parallel import _prepare_blocks
 
-    backend = ProcessBackend(n_workers=2)
-    blocks, child_seqs = backend._prepare_blocks(100, seed_seq=None)
+    blocks, child_seqs = _prepare_blocks(100, n_workers=2, chunks_per_worker=8, seed_seq=None)
 
-    # Should generate random seed sequences
     assert len(blocks) > 0
     assert len(child_seqs) == len(blocks)
-    # All should be SeedSequence instances
     import numpy as np
     assert all(isinstance(s, np.random.SeedSequence) for s in child_seqs)
 
 
+def test_supports_batch_setter():
+    """Setting supports_batch via the property stores the value on the instance."""
+    class Dummy(MonteCarloSimulation):
+        def single_simulation(self, **kw):
+            return 0.0
+
+    sim = Dummy(name="d")
+    assert not sim.supports_batch
+    sim.supports_batch = True
+    assert sim.supports_batch
+    sim.supports_batch = False
+    assert not sim.supports_batch
+
+
+def test_create_backend_torch_raises():
+    """_create_backend('torch') must raise RuntimeError (torch uses a separate path)."""
+    class Dummy(MonteCarloSimulation):
+        def single_simulation(self, **kw):
+            return 0.0
+
+    sim = Dummy(name="d")
+    with pytest.raises(RuntimeError, match="Torch backend should be dispatched"):
+        sim._create_backend("torch", n_workers=2)
+
+
+def test_prepare_blocks_with_seed():
+    """Module-level _prepare_blocks partitions work and spawns deterministic seeds."""
+    from mcframework.backends.parallel import _prepare_blocks
+
+    blocks, seeds = _prepare_blocks(100, n_workers=2, chunks_per_worker=8, seed_seq=np.random.SeedSequence(0))
+    assert sum(end - start for start, end in blocks) == 100
+    assert len(seeds) == len(blocks)
+    assert all(isinstance(s, np.random.SeedSequence) for s in seeds)
+
+
+def test_version_fallback_when_package_not_found():
+    """__version__ falls back to '0.0.0+unknown' when metadata is missing."""
+    import importlib
+    from importlib.metadata import PackageNotFoundError
+    from unittest.mock import patch
+
+    with patch("importlib.metadata.version", side_effect=PackageNotFoundError("mcframework")):
+        import mcframework
+        importlib.reload(mcframework)
+        assert mcframework.__version__ == "0.0.0+unknown"
+
+    importlib.reload(mcframework)

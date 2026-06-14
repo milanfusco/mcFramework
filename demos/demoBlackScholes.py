@@ -28,11 +28,12 @@ matplotlib.use('Agg')  # Use non-interactive backend for headless environments
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FFMpegWriter, FuncAnimation
-from mcframework.core import MonteCarloFramework, SimulationResult
-from mcframework.sims import BlackScholesPathSimulation, BlackScholesSimulation
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from numpy.typing import NDArray
 from scipy.stats import norm
+
+from mcframework.core import MonteCarloFramework, SimulationResult
+from mcframework.sims import BlackScholesPathSimulation, BlackScholesSimulation
 
 # =============================================================================
 # Configuration Constants
@@ -549,7 +550,7 @@ def calculate_greeks(sim: BlackScholesSimulation) -> dict[str, float]:
         n_simulations=N_SIMULATIONS_GREEKS,
         S0=100.0, K=100.0, T=1.0, r=0.05, sigma=0.20,
         option_type="call", exercise_type="european",
-        parallel=True
+        backend="auto"
     )
 
 

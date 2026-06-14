@@ -4,8 +4,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 from numpy.random import Generator
 
@@ -186,10 +184,11 @@ def _american_exercise_lsm(
         exercise_times[early_exercise_indices] = t
         cash_flows[early_exercise_indices, t] = intrinsic[early_exercise_indices, t]
 
-    option_values = np.zeros(n_paths)
-    for i in range(n_paths):
-        t_ex = exercise_times[i]
-        option_values[i] = cash_flows[i, t_ex] * np.exp(-r * dt * t_ex)
+    path_indices = np.arange(n_paths)
+    option_values = (
+        cash_flows[path_indices, exercise_times]
+        * np.exp(-r * dt * exercise_times)
+    )
     return float(np.mean(option_values))
 
 
@@ -221,7 +220,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
         option_type: str = "call",
         exercise_type: str = "european",
         n_steps: int = 252,
-        _rng: Optional[Generator] = None,
+        _rng: Generator | None = None,
         **kwargs,
     ) -> float:
         r"""
@@ -244,10 +243,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
 
         path = _simulate_gbm_path(S0, r, sigma, T, n_steps, rng)
         dt = T / n_steps
-        if option_type == "call":
-            intrinsic = np.maximum(path - K, 0.0)
-        else:
-            intrinsic = np.maximum(K - path, 0.0)
+        intrinsic = np.maximum(path - K, 0.0) if option_type == "call" else np.maximum(K - path, 0.0)
 
         time_steps = np.arange(n_steps + 1)
         discount_factors = np.exp(-r * dt * time_steps)
@@ -326,7 +322,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
         vega = (res_vol_up.mean - res_vol_down.mean) / (2 * dsigma) * 0.01
 
         dT = time_bump_days / 365.0
-        if T > dT:
+        if dT < T:
             self.set_seed(42)
             res_time = self.run(
                 n_simulations,
@@ -390,7 +386,7 @@ class BlackScholesPathSimulation(MonteCarloSimulation):
         sigma: float = 0.20,
         T: float = 1.0,
         n_steps: int = 252,
-        _rng: Optional[Generator] = None,
+        _rng: Generator | None = None,
         **kwargs,
     ) -> float:
         r"""
@@ -412,7 +408,12 @@ class BlackScholesPathSimulation(MonteCarloSimulation):
         r"""
         Generate :math:`n_{\text{paths}}` independent GBM paths.
         """
-        paths = np.zeros((n_paths, n_steps + 1))
-        for i in range(n_paths):
-            paths[i] = _simulate_gbm_path(S0, r, sigma, T, n_steps, self.rng)
-        return paths
+        dt = T / n_steps
+        Z = self.rng.standard_normal((n_paths, n_steps))
+        log_returns = (r - 0.5 * sigma * sigma) * dt + sigma * np.sqrt(dt) * Z
+        log_S0 = np.log(S0)
+        log_paths = np.concatenate(
+            [np.full((n_paths, 1), log_S0), log_S0 + np.cumsum(log_returns, axis=1)],
+            axis=1,
+        )
+        return np.exp(log_paths)

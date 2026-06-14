@@ -1,0 +1,33 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 80%
+        threshold: 5%
+
+# Carry forward per-flag coverage so a commit that only re-runs one job
+# (e.g. the CPU matrix) does not drop coverage for flags it did not upload.
+flag_management:
+  default_rules:
+    carryforward: true
+  individual_flags:
+    - name: unittests
+      carryforward: true
+    - name: gpu
+      carryforward: true
+
+# Exclude code that cannot be exercised on GitHub-hosted runners.
+# torch_cuda.py requires an NVIDIA GPU; no free CI runner provides one.
+# (The cuRAND path in torch_base.py is excluded in-source via `# pragma: no cover`.)
+ignore:
+  - "src/mcframework/backends/torch_cuda.py"
+  - "demos/**"
+  - "tests/**"
+
+comment:
+  layout: "reach, diff, flags, files"
+  require_changes: false

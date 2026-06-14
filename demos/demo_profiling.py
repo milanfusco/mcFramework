@@ -5,7 +5,8 @@ Note: Currently only PiEstimationSimulation supports torch_batch execution.
 """
 
 import numpy as np
-from mcframework.backends import TorchCPUBackend, TorchBackend
+
+from mcframework.backends import TorchBackend, TorchCPUBackend
 from mcframework.profiling import ProfiledTorchBackend, TorchProfilerConfig
 from mcframework.sims import PiEstimationSimulation
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 from numpy.random import Generator
 
@@ -43,7 +41,7 @@ class PortfolioSimulation(MonteCarloSimulation):
         volatility: float = 0.20,
         years: int = 10,
         use_gbm: bool = True,
-        _rng: Optional[Generator] = None,
+        _rng: Generator | None = None,
         **kwargs,
     ) -> float:
         r"""

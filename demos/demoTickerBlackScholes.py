@@ -30,8 +30,9 @@ import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import numpy as np
-from mcframework.sims import BlackScholesPathSimulation, BlackScholesSimulation
 from scipy.stats import norm
+
+from mcframework.sims import BlackScholesPathSimulation, BlackScholesSimulation
 
 # Try to import yfinance, provide helpful message if not available
 try:
@@ -853,7 +854,7 @@ def analyze_ticker(
         n_simulations=n_simulations,
         S0=S0, K=K, T=T_option, r=RISK_FREE_RATE, sigma=sigma,
         option_type="call", exercise_type="european",
-        parallel=True
+        backend="auto"
     )
     
     print(f"  Delta: {greeks['delta']:.4f}")

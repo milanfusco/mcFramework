@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77.0.3", "wheel"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "mcframework"
@@ -12,11 +12,19 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
+keywords = [
+    "monte-carlo",
+    "simulation",
+    "finance",
+    "statistics",
+    "pytorch",
+    "apple-silicon",
+    "gpu",
+]
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
     "numpy>=1.26",
-    "matplotlib>=3.7",
     "scipy>=1.10",
 ]
 [project.urls]
@@ -46,22 +54,31 @@ test = [
     "pytest>=7.2",
     "pytest-cov>=4.0",
     "coverage>=7.2",
+    "matplotlib>=3.7",
+    "torch>=2.9.1",
 ]
-gpu = [
+torch = [
     "torch>=2.9.1",
 ]
 cuda = [
     "torch>=2.9.1",
     "cupy-cuda12x>=12.0.0",  # CUDA 12.x support for cuRAND backend
 ]
+viz = [
+    "matplotlib>=3.7",
+]
 gui = [
     "PySide6>=6.5",
     "yfinance>=1.0",
+    "matplotlib>=3.7",
 ]
 
 
 [tool.setuptools]
 package-dir = { "" = "src" }
+
+[tool.setuptools.package-data]
+mcframework = ["py.typed"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -71,6 +88,23 @@ minversion = "6.0"
 addopts = "--cov=src/mcframework --cov-report=term-missing --cov-report=xml"
 testpaths = [
     "tests",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.coverage.run]
+branch = true
+# Only measure the package; never demos, tests, or other repo files.
+source = ["src/mcframework"]
+omit = [
+    "*/demos/*",
+    "*/tests/*",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
 ]
 
 [tool.pylint.main]
@@ -116,7 +150,7 @@ good-names = ["i", "j", "k", "x", "y", "n", "df", "ps", "B", "K", "T", "S", "Z",
 
 [tool.ruff]
 line-length = 110
-target-version = "py312"
+target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]     # pycodestyle/pyflakes/imports
+select = ["E", "F", "I", "UP", "B", "SIM"]

@@ -150,6 +150,23 @@ class TestTorchBaseUtilities:
         assert hasattr(th, "Tensor")
         assert hasattr(th, "Generator")
 
+    def test_import_torch_raises_when_missing(self, monkeypatch):
+        """import_torch() raises ImportError with install hint when torch is absent."""
+        import builtins
+
+        from mcframework.backends import torch_base
+
+        real_import = builtins.__import__
+
+        def _block_torch(name, *args, **kwargs):
+            if name == "torch":
+                raise ImportError("No module named 'torch'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", _block_torch)
+        with pytest.raises(ImportError, match="Torch backend requires PyTorch"):
+            torch_base.import_torch()
+
 
 class TestTorchBackendFactory:
     """[GPU-09] Test TorchBackend factory class."""
@@ -301,3 +318,13 @@ class TestTorchDeviceValidation:
         with pytest.raises(RuntimeError, match="CUDA device requested but not available"):
             sim.run(100, backend="torch", torch_device="cuda")
 
+
+def test_torch_backend_raises_when_torch_missing(monkeypatch):
+    """TorchBackend.__init__ raises ImportError when PyTorch is not installed."""
+    import importlib.util as ilu
+
+    from mcframework.backends.torch import TorchBackend
+
+    monkeypatch.setattr(ilu, "find_spec", lambda _name: None)
+    with pytest.raises(ImportError, match="Torch backend requires PyTorch"):
+        TorchBackend(device="cpu")
