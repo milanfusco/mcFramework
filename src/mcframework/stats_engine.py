@@ -1029,13 +1029,29 @@ def _bootstrap_means(
     -----
     When the full index matrix ``(n_resamples, n)`` would exceed
     ``_BOOTSTRAP_CHUNK_LIMIT`` elements (~400 MB), the resampling is
-    performed in chunks to keep peak memory bounded.
+    performed in row chunks to keep peak memory bounded. When a single
+    resample's index vector (``n`` elements) already exceeds the limit,
+    each resample's sum is accumulated over column chunks instead, so no
+    intermediate allocation exceeds ``_BOOTSTRAP_CHUNK_LIMIT`` elements.
     """
     n = arr.size
     total_elements = n_resamples * n
     if total_elements <= _BOOTSTRAP_CHUNK_LIMIT:
         idx = rng.integers(0, n, size=(n_resamples, n), endpoint=False)
         return arr[idx].mean(axis=1)
+
+    if n > _BOOTSTRAP_CHUNK_LIMIT:
+        means = np.empty(n_resamples, dtype=float)
+        for i in range(n_resamples):
+            acc = 0.0
+            drawn = 0
+            while drawn < n:
+                cols = min(_BOOTSTRAP_CHUNK_LIMIT, n - drawn)
+                idx = rng.integers(0, n, size=cols, endpoint=False)
+                acc += float(arr[idx].sum())
+                drawn += cols
+            means[i] = acc / n
+        return means
 
     chunk_rows = max(1, _BOOTSTRAP_CHUNK_LIMIT // n)
     means = np.empty(n_resamples, dtype=float)
