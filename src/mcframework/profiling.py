@@ -180,7 +180,7 @@ class ProfiledTorchBackend:  # pragma: no cover
             import torch.profiler  # pylint: disable=import-outside-toplevel
         except ImportError as err:
             raise ImportError(
-                "PyTorch profiler requires PyTorch. Install with: pip install mcframework[gpu]"
+                "PyTorch profiler requires PyTorch. Install with: pip install mcframework[torch]"
             ) from err
 
         self._backend = backend

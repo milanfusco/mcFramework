@@ -11,7 +11,7 @@ This demo compares the execution speed of different backends on Apple Silicon:
 
 Requirements:
   - Apple Silicon Mac (M1/M2/M3/M4)
-  - mcframework with GPU extras: pip install mcframework[gpu]
+  - mcframework with Torch extra: pip install mcframework[torch]
 
 Usage:
   python demo_apple_silicon_benchmark.py
@@ -671,7 +671,7 @@ def main(argv: list[str] | None = None):
             print("MPS not available - skipping torch-mps benchmark\n")
     else:
         print("PyTorch not installed - skipping torch benchmarks")
-        print("   Install with: pip install mcframework[gpu]\n")
+        print("   Install with: pip install mcframework[torch]\n")
     
     # Run benchmark suite
     print("\n" + "=" * 70)

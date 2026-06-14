@@ -41,7 +41,7 @@ pip install -e .
 
 ```bash
 # All extras
-pip install -e ".[viz,dev,test,docs,gui,gpu,cuda]"
+pip install -e ".[viz,dev,test,docs,gui,torch,cuda]"
 
 # Individual extras
 pip install -e ".[viz]"   # Visualization (Matplotlib)
@@ -49,7 +49,7 @@ pip install -e ".[dev]"   # Linting (ruff, pylint)
 pip install -e ".[test]"  # Testing (pytest, coverage)
 pip install -e ".[docs]"  # Documentation (Sphinx, themes)
 pip install -e ".[gui]"   # GUI application (PySide6)
-pip install -e ".[gpu]"   # PyTorch GPU backends (MPS, CUDA)
+pip install -e ".[torch]"  # PyTorch backend (CPU, plus MPS/CUDA when available)
 pip install -e ".[cuda]"  # PyTorch + CuPy for cuRAND
 ```
 
@@ -197,7 +197,7 @@ mcframework/
 
 ## GPU Acceleration
 
-Simulations that implement `torch_batch()` can run on NVIDIA CUDA or Apple Silicon MPS devices with significant speedups over CPU. Install PyTorch via the `gpu` or `cuda` extras (see [Optional Dependencies](#optional-dependencies)).
+Simulations that implement `torch_batch()` run on PyTorch — on CPU everywhere, and on NVIDIA CUDA or Apple Silicon MPS devices with significant speedups when available. Install PyTorch via the `torch` or `cuda` extras (see [Optional Dependencies](#optional-dependencies)).
 
 ### PyTorch Quick Start
 

@@ -97,11 +97,11 @@ Installation
 
 .. code-block:: bash
 
-   # GPU acceleration (PyTorch)
-   pip install mcframework[gpu]
+   # PyTorch backend (CPU, plus MPS/CUDA when available)
+   pip install mcframework[torch]
 
-   # All dependencies (dev, test, docs, gui, gpu)
-   pip install -e ".[dev,test,docs,gui,gpu]"
+   # All dependencies (dev, test, docs, gui, torch)
+   pip install -e ".[dev,test,docs,gui,torch]"
 
    # Just testing
    pip install -e ".[test]"
@@ -189,7 +189,7 @@ The ``backend`` parameter controls execution strategy:
    result = sim.run(100_000, backend="thread", n_workers=8)
    result = sim.run(100_000, backend="process", n_workers=4)
 
-   # GPU backends (requires pip install mcframework[gpu])
+   # Torch backend (requires pip install mcframework[torch])
    result = sim.run(1_000_000, backend="torch", torch_device="cpu")   # Vectorized CPU
    result = sim.run(1_000_000, backend="torch", torch_device="mps")   # Apple Silicon
    result = sim.run(1_000_000, backend="torch", torch_device="cuda")  # NVIDIA GPU

@@ -55,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[test,gpu]"
+          pip install -e ".[test]"
       
       - name: Run tests with coverage
         run: |
@@ -85,7 +85,7 @@ jobs:
       - name: Install dependencies with GPU support
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[test,gpu]"
+          pip install -e ".[test]"
       
       - name: Run Torch backend tests
         run: |

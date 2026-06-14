@@ -60,7 +60,7 @@ def import_torch():
         return th
     except ImportError as e:
         raise ImportError(
-            "Torch backend requires PyTorch. Install with: pip install mcframework[gpu]"
+            "Torch backend requires PyTorch. Install with: pip install mcframework[torch]"
         ) from e
 
 

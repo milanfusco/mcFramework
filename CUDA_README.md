@@ -27,7 +27,7 @@ python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, Devices: {to
 
 ### Basic GPU Support (Recommended)
 ```bash
-pip install -e ".[gpu]"
+pip install -e ".[torch]"
 ```
 
 This installs PyTorch with CUDA support. The default `torch.Generator` RNG mode works out of the box.

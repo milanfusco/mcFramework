@@ -212,7 +212,7 @@ class TorchBackend:
 
         if importlib.util.find_spec("torch") is None:
             raise ImportError(
-                "Torch backend requires PyTorch. Install with: pip install mcframework[gpu]"
+                "Torch backend requires PyTorch. Install with: pip install mcframework[torch]"
             )
 
         # Validate device type and availability

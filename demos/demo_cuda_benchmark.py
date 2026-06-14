@@ -13,7 +13,7 @@ This demo compares the execution speed of different backends on NVIDIA GPUs:
 Requirements:
   - NVIDIA GPU with CUDA support
   - PyTorch with CUDA: pip install torch
-  - mcframework with GPU extras: pip install mcframework[gpu]
+  - mcframework with Torch extra: pip install mcframework[torch]
   - Optional: CuPy for cuRAND mode: pip install mcframework[cuda]
 
 Usage:

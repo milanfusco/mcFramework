@@ -162,7 +162,7 @@ implement the :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` method.
 
    .. code-block:: bash
 
-      pip install mcframework[gpu]
+      pip install mcframework[torch]
 
 TorchBackend (Unified)
 ~~~~~~~~~~~~~~~~~~~~~~
