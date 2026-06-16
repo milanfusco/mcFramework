@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cursor Cloud setup notes in AGENTS.md (#55)
 
 ### Maintenance
+- Bump version to 0.3.0
 - Enhance bootstrap means function for memory efficiency
 - Add Codecov configuration and update CI for coverage reporting
 - Update installation instructions and dependencies for PyTorch support
