@@ -283,7 +283,7 @@ Functions
 See Also
 --------
 
-- :doc:`backends` — Execution backends (sequential, parallel, GPU)
-- :doc:`stats_engine` — Statistical metrics and confidence intervals
-- :doc:`sims` — Built-in simulation implementations (Pi, Portfolio, Black-Scholes)
-- :doc:`utils` — Critical value utilities
+- :doc:`backends`: Execution backends (sequential, parallel, GPU)
+- :doc:`stats_engine`: Statistical metrics and confidence intervals
+- :doc:`sims`: Built-in simulation implementations (Pi, Portfolio, Black-Scholes)
+- :doc:`utils`: Critical value utilities

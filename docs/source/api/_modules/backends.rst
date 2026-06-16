@@ -528,6 +528,6 @@ Torch CUDA Backend (NVIDIA)
 See Also
 --------
 
-- :doc:`core` — Base simulation class and framework
-- :doc:`stats_engine` — Statistical analysis of results
-- ``demos/demo_apple_silicon_benchmark.py`` — Benchmark script for Apple Silicon
+- :doc:`core`: Base simulation class and framework
+- :doc:`stats_engine`: Statistical analysis of results
+- ``demos/demo_apple_silicon_benchmark.py``: Benchmark script for Apple Silicon

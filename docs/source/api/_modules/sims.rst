@@ -259,7 +259,7 @@ These low-level functions power the Black-Scholes simulations:
 See Also
 --------
 
-- :doc:`core` — Base classes and framework
-- :doc:`backends` — Execution backends (sequential, parallel, GPU)
-- :doc:`stats_engine` — Statistical analysis of results
-- ``demos/gui/`` — Interactive Black-Scholes GUI application
+- :doc:`core`: Base classes and framework
+- :doc:`backends`: Execution backends (sequential, parallel, GPU)
+- :doc:`stats_engine`: Statistical analysis of results
+- ``demos/gui/``: Interactive Black-Scholes GUI application
