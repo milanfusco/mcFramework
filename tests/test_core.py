@@ -1,9 +1,4 @@
-"""
-Tests for the mcframework.core module.
-
-Fuctional requirements (FR), Non-functional requirements (NFR), and Usability requirements (USA)
-can be found at https://milanfusco.github.io/mcFramework/PROJECT_PLAN.html.
-"""
+"""Tests for the mcframework.core module."""
 
 import numpy as np
 import pytest

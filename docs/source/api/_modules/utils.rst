@@ -17,9 +17,9 @@ When constructing a two-sided confidence interval for the mean:
 
 the critical value :math:`c` determines the interval width. This module provides:
 
-- :func:`z_crit` — Normal distribution critical values
-- :func:`t_crit` — Student's t-distribution critical values  
-- :func:`autocrit` — Automatic selection based on sample size
+- :func:`z_crit`: Normal distribution critical values
+- :func:`t_crit`: Student's t-distribution critical values
+- :func:`autocrit`: Automatic selection based on sample size
 
 
 Critical Values
@@ -176,6 +176,6 @@ Functions
 See Also
 --------
 
-- :doc:`stats_engine` — Uses these utilities for confidence intervals
-- :func:`~mcframework.stats_engine.ci_mean` — Parametric CI for the mean
-- :func:`~mcframework.stats_engine.ci_mean_chebyshev` — Distribution-free alternative
+- :doc:`stats_engine`: Uses these utilities for confidence intervals
+- :func:`~mcframework.stats_engine.ci_mean`: Parametric CI for the mean
+- :func:`~mcframework.stats_engine.ci_mean_chebyshev`: Distribution-free alternative

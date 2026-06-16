@@ -340,5 +340,5 @@ Create custom metrics with :class:`FnMetric`:
 See Also
 --------
 
-- :doc:`core` — Simulation classes that use this engine
-- :doc:`utils` — Critical value utilities (z_crit, t_crit)
+- :doc:`core`: Simulation classes that use this engine
+- :doc:`utils`: Critical value utilities (z_crit, t_crit)

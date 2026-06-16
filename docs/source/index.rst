@@ -31,7 +31,7 @@ mcframework
 
    .. grid-item-card:: Extensible Architecture
       
-      Simple base class design—implement :meth:`~mcframework.core.MonteCarloSimulation.single_simulation` for scalar execution
+      Simple base class design: implement :meth:`~mcframework.core.MonteCarloSimulation.single_simulation` for scalar execution
       or :meth:`~mcframework.core.MonteCarloSimulation.torch_batch` for hardware-accelerated vectorized tensor operations. The framework
       handles execution, statistics, and result management.
 
@@ -66,7 +66,7 @@ Quick Example
    π ≈ 3.141592
    95% CI: [3.140821, 3.142363]
 
-**GPU-Accelerated Example (17,000x faster):**
+**GPU-Accelerated Example:**
 
 .. code-block:: python
 
@@ -197,16 +197,17 @@ The ``backend`` parameter controls execution strategy:
 
 .. toctree::
    :maxdepth: 2
-   :caption: Guides
+   :caption: User Guide
 
    getting-started
+   guides/cuda
+   guides/mps
 
 .. toctree::
    :maxdepth: 2
-   :caption: Project Documentation
+   :caption: Architecture
 
-   ../PROJECT_PLAN
-   ../SYSTEM_DESIGN
+   architecture
 
 .. toctree::
    :maxdepth: 2
