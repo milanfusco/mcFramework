@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug Fixes
 - Correct P0 bugs in simulation engine and bump to v0.2.0
 
+### Documentation
+- Professionalize front-door and remove coursework artifacts
+- Consolidate backend guides into Sphinx site
+
 ### Features
 - Benchmark --quick mode and visualization overhaul
 - Curand_batch API, batch chunking, and backend hardening
