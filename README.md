@@ -251,8 +251,8 @@ class MySimulation(MonteCarloSimulation):
 
 For detailed usage, configuration, and troubleshooting, see the dedicated backend guides:
 
-- **[CUDA Backend Guide](CUDA_README.md)** — adaptive batching, cuRAND, streams, multi-GPU
-- **[MPS Backend Guide](MPS_README.md)** — Apple Silicon setup, float32 handling, determinism
+- **[CUDA Backend Guide](https://milanfusco.github.io/mcFramework/guides/cuda.html)**: adaptive batching, cuRAND, streams, multi-GPU
+- **[MPS Backend Guide](https://milanfusco.github.io/mcFramework/guides/mps.html)**: Apple Silicon setup, float32 handling, determinism
 
 ---
 

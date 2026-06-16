@@ -66,7 +66,7 @@ Quick Example
    π ≈ 3.141592
    95% CI: [3.140821, 3.142363]
 
-**GPU-Accelerated Example (17,000x faster):**
+**GPU-Accelerated Example:**
 
 .. code-block:: python
 
@@ -197,9 +197,11 @@ The ``backend`` parameter controls execution strategy:
 
 .. toctree::
    :maxdepth: 2
-   :caption: Guides
+   :caption: User Guide
 
    getting-started
+   guides/cuda
+   guides/mps
 
 .. toctree::
    :maxdepth: 2
