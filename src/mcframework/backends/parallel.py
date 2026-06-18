@@ -199,21 +199,20 @@ class ProcessBackend:
             max_workers=max_workers,
             mp_context=mp.get_context("spawn"),
         ) as ex:
-            futs = []
-            for (i, j), ss in zip(blocks, child_seqs, strict=True):
-                f = ex.submit(worker_run_chunk, sim, j - i, ss, dict(simulation_kwargs))
-                f.blk = (i, j)  # type: ignore[attr-defined]
-                futs.append(f)
+            fut_to_block = {
+                ex.submit(worker_run_chunk, sim, j - i, ss, dict(simulation_kwargs)): (i, j)
+                for (i, j), ss in zip(blocks, child_seqs, strict=True)
+            }
             try:
-                for f in as_completed(futs):
-                    i, j = f.blk  # type: ignore[attr-defined]
+                for f in as_completed(fut_to_block):
+                    i, j = fut_to_block[f]
                     chunk = f.result()
                     results[i:j] = chunk
                     completed += j - i
                     if progress_callback:
                         progress_callback(completed, n_simulations)  # pragma: no cover
             except KeyboardInterrupt:  # pragma: no cover
-                for f in futs:
+                for f in fut_to_block:
                     f.cancel()
                 raise
 

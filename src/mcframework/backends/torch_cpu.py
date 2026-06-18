@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .torch_base import import_torch, make_torch_generator
+from .torch_base import ensure_torch_batch_overridden, import_torch, make_torch_generator
 
 if TYPE_CHECKING:
     from ..simulation import MonteCarloSimulation
@@ -139,6 +139,7 @@ class TorchCPUBackend:
                 f"Simulation '{sim.name}' does not support Torch batch execution. "
                 "Set supports_batch = True and implement torch_batch()."
             )
+        ensure_torch_batch_overridden(sim)
 
         logger.info(
             "Computing %d simulations using Torch CPU batch...",

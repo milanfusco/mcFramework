@@ -40,6 +40,10 @@ __all__ = [
 # Valid Torch device types
 VALID_TORCH_DEVICES = ("cpu", "mps", "cuda")
 
+# Guard so the "no seed" warning fires once per process instead of once per
+# batch (make_torch_generator is called for every batch in the chunked paths).
+_UNSEEDED_WARNED = False
+
 
 def import_torch():
     """
@@ -74,6 +78,35 @@ def validate_torch_available() -> None:
         If PyTorch is not installed.
     """
     import_torch()
+
+
+def ensure_torch_batch_overridden(sim) -> None:
+    """
+    Validate that a batch-capable simulation actually implements ``torch_batch``.
+
+    Mirrors the defensive check in the CUDA backend so the CPU and MPS backends
+    fail with the same friendly message instead of a raw ``NotImplementedError``
+    from the abstract base stub.
+
+    Parameters
+    ----------
+    sim : MonteCarloSimulation
+        Simulation instance to validate.
+
+    Raises
+    ------
+    NotImplementedError
+        If ``sim`` has ``supports_batch = True`` but did not override
+        :meth:`~mcframework.simulation.MonteCarloSimulation.torch_batch`.
+    """
+    from ..simulation import MonteCarloSimulation  # pylint: disable=import-outside-toplevel
+
+    if sim.__class__.torch_batch is MonteCarloSimulation.torch_batch:
+        raise NotImplementedError(
+            f"Simulation '{sim.__class__.__name__}' has supports_batch = True but does not "
+            "implement torch_batch(). Implement torch_batch(n, *, device, generator) to use "
+            "the Torch backend."
+        )
 
 
 def make_torch_generator(
@@ -135,10 +168,13 @@ def make_torch_generator(
         seed_int = int(child_seed.generate_state(1, dtype=np.uint64)[0])
         generator.manual_seed(seed_int)
     else:
-        logger.warning(
-            "No seed set for Torch backend; results will not be reproducible. "
-            "Call set_seed() before run() for deterministic simulations."
-        )
+        global _UNSEEDED_WARNED  # pylint: disable=global-statement
+        if not _UNSEEDED_WARNED:
+            logger.warning(
+                "No seed set for Torch backend; results will not be reproducible. "
+                "Call set_seed() before run() for deterministic simulations."
+            )
+            _UNSEEDED_WARNED = True
 
     return generator
 
