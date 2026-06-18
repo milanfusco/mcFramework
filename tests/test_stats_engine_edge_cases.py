@@ -263,9 +263,11 @@ def test_stats_context_cross_field_validations():
     with pytest.raises(ValueError, match="ess must be positive"):
         StatsContext(n=10, ess=0)
 
-    # Test n_bootstrap < 100 raises error
-    with pytest.raises(ValueError, match="n_bootstrap .* should be >= 100"):
-        StatsContext(n=10, n_bootstrap=50)
+    # n_bootstrap <= 0 is invalid and raises
+    with pytest.raises(ValueError, match="n_bootstrap must be > 0"):
+        StatsContext(n=10, n_bootstrap=0)
+    # n_bootstrap < 100 is a quality concern: it warns but does not raise
+    assert StatsContext(n=10, n_bootstrap=50).n_bootstrap == 50
 
     # Valid cases should not raise
     ctx = StatsContext(n=100, ess=50, n_bootstrap=1000)

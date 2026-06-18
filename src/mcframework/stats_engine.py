@@ -359,9 +359,11 @@ class StatsContext:
             if self.ess <= 0:
                 raise ValueError(f"ess must be positive, got {self.ess}")
 
-        # Warn about small bootstrap samples (but don't fail)
+        # Warn about small bootstrap samples (a quality concern, not invalid input)
         if self.n_bootstrap < 100:
-            raise ValueError(f"n_bootstrap ({self.n_bootstrap}) should be >= 100 for reliable estimates")
+            logger.warning(
+                "n_bootstrap (%d) should be >= 100 for reliable estimates", self.n_bootstrap
+            )
 
 
 @dataclass(frozen=True)
