@@ -56,7 +56,6 @@ from .stats_engine import (
     mean,
     std,
 )
-from .stats_engine import percentiles as pct
 
 if TYPE_CHECKING:
     import cupy
@@ -789,28 +788,6 @@ class MonteCarloSimulation(ABC):
             "crit": float(ci["crit"]),
         }
 
-    @staticmethod
-    def _compute_percentiles_block(results: np.ndarray, ctx) -> dict[float, float]:
-        """
-        Build the percentiles dict from whatever is requested in ctx.
-        Accepts either ctx.percentiles or ctx.requested_percentiles.
-        Returns {q: value} with q as float (e.g., 5.0, 50.0, 95.0).
-        """
-        ctx = _ensure_ctx(ctx, results)
-        results = np.asarray(results, dtype=float).ravel()
-        req = getattr(ctx, "percentiles", None) or getattr(ctx, "requested_percentiles", None) or []
-        req = list(req)
-        if not req:
-            return {}
-        vals = pct(results, ctx)  # aligned to req
-        if isinstance(vals, Mapping):
-            return {float(q): float(vals[q]) for q in req}
-        vals_arr = np.asarray(vals, dtype=float).ravel()
-        if vals_arr.size != len(req):
-            msg = "pct() must return as many values as requested percentiles"
-            raise ValueError(msg)
-        return {float(q): float(v) for q, v in zip(req, vals_arr, strict=True)}
-
     def _create_result(
         self,
         results: np.ndarray,
@@ -833,11 +810,26 @@ class MonteCarloSimulation(ABC):
         # Import here to avoid circular dependency
         from .core import SimulationResult  # pylint: disable=import-outside-toplevel
 
-        mean_val = float(np.mean(results))
-        std_sample = float(np.std(results, ddof=1)) if results.size > 1 else 0.0
         stats = dict(stats) if stats else {}
 
-        # If the stats engine also returned percentiles merge once.
+        # Reuse the mean/std the stats engine already computed (it runs the same
+        # ddof=1 sample estimators); only fall back to recomputing when stats are
+        # absent (compute_stats=False) or non-finite.
+        mean_val = stats.get("mean")
+        if mean_val is None or not np.isfinite(mean_val):
+            mean_val = float(np.mean(results)) if results.size else float("nan")
+        else:
+            mean_val = float(mean_val)
+
+        std_sample = stats.get("std")
+        if std_sample is None or not np.isfinite(std_sample):
+            std_sample = float(np.std(results, ddof=1)) if results.size > 1 else 0.0
+        else:
+            std_sample = float(std_sample)
+
+        # Defensive: if a caller hands us stats that still carry a "percentiles"
+        # entry (the run() path strips it upstream, but _create_result is also a
+        # public entry point), merge it into the percentile map exactly once.
         if "percentiles" in stats:
             stats_percentiles = stats.pop("percentiles")
             for k, v in stats_percentiles.items():
