@@ -4,10 +4,14 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from numpy.random import Generator
 
 from ..core import MonteCarloSimulation
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "_european_payoff",
@@ -196,9 +200,23 @@ class BlackScholesSimulation(MonteCarloSimulation):
     r"""
     Monte Carlo simulation for Black-Scholes option pricing.
 
-    Supports European and American options (calls and puts) with Greeks
-    calculation capabilities. Uses Geometric Brownian Motion for stock price
-    dynamics and the Longstaff-Schwartz LSM algorithm for American options.
+    Uses Geometric Brownian Motion for stock price dynamics and supports
+    European and American options (calls and puts) with Greeks calculation.
+
+    Exercise handling
+    -----------------
+    - **European** (``exercise_type="european"``): unbiased discounted terminal
+      payoff via :meth:`single_simulation`.
+    - **American**: there are two paths, and they are *not* equivalent:
+
+      * :meth:`single_simulation` with ``exercise_type="american"`` returns a
+        **high-biased upper bound** (perfect-foresight maximum of discounted
+        intrinsic value along a single path). It assumes knowledge of the whole
+        path when choosing the exercise time, so it systematically overprices.
+        It is cheap and useful as a sanity ceiling, not as a fair price.
+      * :meth:`price_american` returns a proper, look-ahead-free price using the
+        Longstaff-Schwartz (LSM) regression across a batch of paths. Prefer this
+        for actual American option valuation.
 
     Parameters
     ----------
@@ -208,6 +226,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
 
     def __init__(self, name: str = "Black-Scholes Option Pricing"):
         super().__init__(name)
+        self._american_bias_warned = False
 
     def single_simulation(  # pylint: disable=arguments-differ
         self,
@@ -225,6 +244,13 @@ class BlackScholesSimulation(MonteCarloSimulation):
     ) -> float:
         r"""
         Price a single option instance under Black–Scholes dynamics.
+
+        Notes
+        -----
+        For ``exercise_type="american"`` this returns the **perfect-foresight
+        upper bound** (the maximum discounted intrinsic value along the path),
+        which is a high-biased estimator, not a fair price. Use
+        :meth:`price_american` for a look-ahead-free Longstaff-Schwartz price.
         """
         rng = self._rng(_rng, self.rng)
 
@@ -241,6 +267,18 @@ class BlackScholesSimulation(MonteCarloSimulation):
             payoff = _european_payoff(S_T, K, option_type)
             return float(payoff * np.exp(-r * T))
 
+        # American via single_simulation is a perfect-foresight UPPER BOUND, not a
+        # fair price (it picks the best exercise time with full knowledge of the
+        # path). Warn once and steer callers to price_american() for true LSM.
+        if not self._american_bias_warned:
+            logger.warning(
+                "%s: single_simulation(exercise_type='american') returns a high-biased "
+                "perfect-foresight upper bound, not a fair price. Use price_american() "
+                "for a look-ahead-free Longstaff-Schwartz estimate.",
+                self.name,
+            )
+            self._american_bias_warned = True
+
         path = _simulate_gbm_path(S0, r, sigma, T, n_steps, rng)
         dt = T / n_steps
         intrinsic = np.maximum(path - K, 0.0) if option_type == "call" else np.maximum(K - path, 0.0)
@@ -249,6 +287,70 @@ class BlackScholesSimulation(MonteCarloSimulation):
         discount_factors = np.exp(-r * dt * time_steps)
         discounted_intrinsic = intrinsic * discount_factors
         return float(np.max(discounted_intrinsic))
+
+    def price_american(
+        self,
+        n_paths: int,
+        *,
+        S0: float = 100.0,
+        K: float = 100.0,
+        T: float = 1.0,
+        r: float = 0.05,
+        sigma: float = 0.20,
+        option_type: str = "call",
+        n_steps: int = 50,
+        _rng: Generator | None = None,
+    ) -> float:
+        r"""
+        Price an American option with the Longstaff-Schwartz (LSM) algorithm.
+
+        Unlike :meth:`single_simulation` with ``exercise_type="american"`` (which
+        is a high-biased perfect-foresight bound), this simulates a *batch* of GBM
+        paths jointly and regresses continuation values across paths, so the
+        exercise decision uses no future information. This is the estimator to use
+        for actual American option valuation.
+
+        Parameters
+        ----------
+        n_paths : int
+            Number of Monte Carlo paths to simulate. LSM regression quality
+            improves with more paths.
+        S0, K, T, r, sigma : float
+            Standard Black-Scholes parameters (spot, strike, maturity in years,
+            risk-free rate, volatility).
+        option_type : {"call", "put"}, default ``"call"``
+            Payoff family. Early exercise matters mainly for puts (and dividend
+            -paying calls, not modeled here).
+        n_steps : int, default 50
+            Number of exercise opportunities (time steps) along each path.
+        _rng : numpy.random.Generator, optional
+            Explicit generator. Falls back to ``self.rng`` (set via
+            :meth:`~mcframework.simulation.MonteCarloSimulation.set_seed`).
+
+        Returns
+        -------
+        float
+            Estimated arbitrage-free American option price.
+        """
+        if option_type not in ("call", "put"):
+            raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
+        if n_paths <= 0:
+            raise ValueError("n_paths must be positive")
+
+        rng = self._rng(_rng, self.rng)
+        dt = T / n_steps
+
+        # Vectorized batch of GBM paths, shape (n_paths, n_steps + 1).
+        Z = rng.standard_normal((n_paths, n_steps))
+        log_returns = (r - 0.5 * sigma * sigma) * dt + sigma * np.sqrt(dt) * Z
+        log_S0 = np.log(S0)
+        log_paths = np.concatenate(
+            [np.full((n_paths, 1), log_S0), log_S0 + np.cumsum(log_returns, axis=1)],
+            axis=1,
+        )
+        paths = np.exp(log_paths)
+
+        return _american_exercise_lsm(paths, K, r, dt, option_type)
 
     def calculate_greeks(
         self,
@@ -268,7 +370,12 @@ class BlackScholesSimulation(MonteCarloSimulation):
         r"""
         Estimate primary Greeks via finite differences.
         """
+        # Preserve the caller's RNG *and* seed sequence: the finite-difference
+        # bumps below repeatedly call set_seed(42) for common random numbers,
+        # which overwrites both self.rng and self.seed_seq. Restore both at the
+        # end so the simulation is left exactly as the caller had it.
         original_seed = self.rng.bit_generator.state if self.rng else None
+        original_seed_seq = self.seed_seq
         sim_kwargs = {
             "K": K,
             "T": T,
@@ -357,6 +464,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
         )
         rho = (res_rate_up.mean - res_rate_down.mean) / (2 * dr) * 0.01
 
+        self.seed_seq = original_seed_seq
         if original_seed is not None and self.rng is not None:
             self.rng.bit_generator.state = original_seed
 

@@ -298,6 +298,46 @@ class TestBlackScholesSimulation:
         assert result.mean > 0
         assert len(result.results) == 1000
 
+    def test_price_american_below_perfect_foresight_bound(self):
+        """price_american() (LSM) must be a real price below the high-biased
+        perfect-foresight upper bound returned by single_simulation()."""
+        params = {"S0": 90.0, "K": 100.0, "T": 1.0, "r": 0.05, "sigma": 0.20, "n_steps": 50}
+
+        sim = BlackScholesSimulation()
+        sim.set_seed(7)
+        lsm_price = sim.price_american(4000, option_type="put", **params)
+
+        # Perfect-foresight upper bound: mean of the look-ahead single_simulation.
+        ub_sim = BlackScholesSimulation()
+        ub_sim.set_seed(7)
+        upper_bound = ub_sim.run(
+            4000, option_type="put", exercise_type="american", compute_stats=False, **params
+        ).mean
+
+        assert lsm_price > 0.0
+        # LSM removes the look-ahead bias, so it must be meaningfully below the bound.
+        assert lsm_price < 0.95 * upper_bound
+
+    def test_price_american_reproducible(self):
+        """Same seed must give the same LSM price."""
+        params = {"S0": 90.0, "K": 100.0, "T": 1.0, "r": 0.05, "sigma": 0.20, "n_steps": 50}
+        a = BlackScholesSimulation()
+        a.set_seed(11)
+        b = BlackScholesSimulation()
+        b.set_seed(11)
+        assert a.price_american(2000, option_type="put", **params) == (
+            b.price_american(2000, option_type="put", **params)
+        )
+
+    def test_price_american_invalid_args(self):
+        """price_american validates its arguments."""
+        sim = BlackScholesSimulation()
+        sim.set_seed(1)
+        with pytest.raises(ValueError, match="option_type must be"):
+            sim.price_american(100, option_type="bad")
+        with pytest.raises(ValueError, match="n_paths must be positive"):
+            sim.price_american(0, option_type="put")
+
     def test_reproducibility(self):
         """Test that same seed produces same results."""
         sim1 = BlackScholesSimulation()
