@@ -8,6 +8,7 @@ import logging
 
 import numpy as np
 from numpy.random import Generator
+from scipy.stats import norm  # type: ignore[import-untyped]
 
 from ..core import MonteCarloSimulation
 
@@ -224,9 +225,49 @@ class BlackScholesSimulation(MonteCarloSimulation):
         Simulation name. Defaults to "Black-Scholes Option Pricing".
     """
 
+    reference_source = "Black-Scholes-Merton (1973), closed-form European price"
+
     def __init__(self, name: str = "Black-Scholes Option Pricing"):
         super().__init__(name)
         self._american_bias_warned = False
+
+    def analytic_reference(
+        self,
+        *,
+        S0: float = 100.0,
+        K: float = 100.0,
+        T: float = 1.0,
+        r: float = 0.05,
+        sigma: float = 0.20,
+        option_type: str = "call",
+        exercise_type: str = "european",
+        **params,
+    ) -> float | None:
+        r"""
+        Closed-form Black-Scholes-Merton price (the oracle for European exercise).
+
+        .. math::
+           C = S_0\,\Phi(d_1) - K e^{-rT}\,\Phi(d_2), \qquad
+           P = K e^{-rT}\,\Phi(-d_2) - S_0\,\Phi(-d_1),
+
+        with :math:`d_1 = \frac{\ln(S_0/K) + (r + \tfrac12\sigma^2)T}{\sigma\sqrt T}`
+        and :math:`d_2 = d_1 - \sigma\sqrt T`.
+
+        Returns ``None`` for ``exercise_type="american"``: an American option has no
+        closed-form price, so it is deliberately not convergence-validated. That
+        absence is itself the governance signal.
+        """
+        if exercise_type != "european":
+            return None
+        if option_type not in ("call", "put"):
+            raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
+        sqrt_t = sigma * np.sqrt(T)
+        d1 = (np.log(S0 / K) + (r + 0.5 * sigma * sigma) * T) / sqrt_t
+        d2 = d1 - sqrt_t
+        disc_k = K * np.exp(-r * T)
+        if option_type == "call":
+            return float(S0 * norm.cdf(d1) - disc_k * norm.cdf(d2))
+        return float(disc_k * norm.cdf(-d2) - S0 * norm.cdf(-d1))
 
     def single_simulation(  # pylint: disable=arguments-differ
         self,
@@ -483,8 +524,21 @@ class BlackScholesPathSimulation(MonteCarloSimulation):
     Simulate stock price paths under Black-Scholes dynamics.
     """
 
+    reference_source = "Risk-neutral GBM: E[S_T] = S0 * exp(r * T)"
+
     def __init__(self, name: str = "Black-Scholes Path Simulation"):
         super().__init__(name)
+
+    def analytic_reference(
+        self,
+        *,
+        S0: float = 100.0,
+        r: float = 0.05,
+        T: float = 1.0,
+        **params,
+    ) -> float:
+        r"""Oracle: under the risk-neutral measure :math:`\mathbb{E}[S_T] = S_0 e^{rT}`."""
+        return float(S0 * np.exp(r * T))
 
     def single_simulation(  # pylint: disable=arguments-differ
         self,

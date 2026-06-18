@@ -30,8 +30,31 @@ class PortfolioSimulation(MonteCarloSimulation):
         Default registry label ``"Portfolio Simulation"``.
     """
 
+    reference_source = "Risk-neutral GBM expectation: E[V_T] = V_0 * exp(mu * T)"
+
     def __init__(self):
         super().__init__("Portfolio Simulation")
+
+    def analytic_reference(
+        self,
+        *,
+        initial_value: float = 10_000.0,
+        annual_return: float = 0.07,
+        years: int = 10,
+        use_gbm: bool = True,
+        **params,
+    ) -> float | None:
+        r"""
+        Oracle for the GBM branch: :math:`\mathbb{E}[V_T] = V_0 e^{\mu T}`.
+
+        Although each path applies the drift :math:`(\mu - \tfrac12\sigma^2)\,dt`, the
+        log-normal correction makes the *expected* terminal wealth grow at the raw
+        drift :math:`\mu`. Returns ``None`` for the arithmetic-returns branch
+        (``use_gbm=False``), which has no clean closed form here.
+        """
+        if not use_gbm:
+            return None
+        return float(initial_value * np.exp(annual_return * years))
 
     def single_simulation(  # pylint: disable=arguments-differ
         self,
