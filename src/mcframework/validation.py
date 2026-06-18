@@ -178,12 +178,12 @@ def validate_convergence(
     se = float(res.std) / np.sqrt(max(1, n))
 
     bounds = _ci_bounds(res.stats.get("ci_mean"))
+    ci_low: float | None = None
+    ci_high: float | None = None
+    within_ci = False
     if bounds is not None:
         ci_low, ci_high = bounds
         within_ci = ci_low <= oracle <= ci_high
-    else:
-        ci_low = ci_high = None
-        within_ci = False
 
     within_tol = abs_error <= sigma_tol * se
 
