@@ -218,6 +218,7 @@ The ``backend`` parameter controls execution strategy:
    api/_modules/stats_engine
    api/_modules/sims
    api/_modules/utils
+   api/_modules/validation
 
 
 Indices and tables

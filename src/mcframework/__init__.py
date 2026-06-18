@@ -13,6 +13,7 @@ from .sims import (
 )
 from .stats_engine import DEFAULT_ENGINE, FnMetric, StatsContext, StatsEngine
 from .utils import autocrit, t_crit, z_crit
+from .validation import ConvergenceReport, validate_convergence
 
 __all__ = [
     "SimulationResult",
@@ -26,6 +27,8 @@ __all__ = [
     "StatsContext",
     "FnMetric",
     "DEFAULT_ENGINE",
+    "ConvergenceReport",
+    "validate_convergence",
     "z_crit",
     "t_crit",
     "autocrit",
