@@ -125,6 +125,32 @@ print(result.result_to_string())
 - Portfolio simulation (geometric Brownian motion wealth dynamics).
 - Black-Scholes European and American option pricing with Greeks.
 
+**Validation**
+
+- Oracle hook (`analytic_reference`) so a simulation can declare its known answer.
+- `validate_convergence()` asserts the Monte Carlo estimate converges to that oracle (CI-gated).
+
+## Validation & convergence
+
+Every built-in simulation with a closed-form answer declares it as an *oracle*, and
+`validate_convergence()` proves the Monte Carlo estimate converges to it — turning
+correctness into a CI-enforced test rather than a vibe:
+
+```python
+from mcframework import validate_convergence, BlackScholesSimulation
+
+report = validate_convergence(BlackScholesSimulation(), 50_000, seed=0, option_type="call")
+print(report.status, report.estimate, report.oracle)  # "pass" 10.45... 10.4506...
+```
+
+`demos/demo_convergence_gallery.py` sweeps each oracle-backed simulation over increasing
+`n`; the absolute error tracks the theoretical `1/√n` rate and stays inside the `5·SE`
+pass band:
+
+![Monte Carlo convergence to known answers](https://raw.githubusercontent.com/milanfusco/mcFramework/main/demos/convergence_gallery.png)
+
+See the [Oracles and Benchmarks guide](docs/source/guides/validation.md) for details.
+
 ## Execution Backends
 
 `MonteCarloSimulation.run()` selects an execution strategy via the `backend` parameter:

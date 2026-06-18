@@ -78,6 +78,8 @@ class ConvergenceReport:
         Confidence level used for the interval.
     reference_source : str
         Citation for the oracle, copied from the simulation.
+    reference_kind : str
+        Kind of reference: ``"closed-form"``, ``"benchmark"``, ``"limit"``, or ``""``.
     """
 
     status: str
@@ -94,6 +96,7 @@ class ConvergenceReport:
     sigma_tol: float = 5.0
     confidence: float = 0.99
     reference_source: str = ""
+    reference_kind: str = ""
 
 
 def _ci_bounds(ci: Any) -> tuple[float, float] | None:
@@ -153,6 +156,7 @@ def validate_convergence(
     """
     oracle = sim.analytic_reference(**params)
     reference_source = getattr(sim, "reference_source", "")
+    reference_kind = getattr(sim, "reference_kind", "")
 
     if oracle is None:
         return ConvergenceReport(
@@ -161,6 +165,7 @@ def validate_convergence(
             sigma_tol=sigma_tol,
             confidence=confidence,
             reference_source=reference_source,
+            reference_kind=reference_kind,
         )
 
     oracle = float(oracle)
@@ -202,4 +207,5 @@ def validate_convergence(
         sigma_tol=sigma_tol,
         confidence=confidence,
         reference_source=reference_source,
+        reference_kind=reference_kind,
     )

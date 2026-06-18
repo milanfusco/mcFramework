@@ -200,6 +200,7 @@ The ``backend`` parameter controls execution strategy:
    :caption: User Guide
 
    getting-started
+   guides/validation
    guides/cuda
    guides/mps
 
