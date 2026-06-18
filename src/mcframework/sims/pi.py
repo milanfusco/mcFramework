@@ -59,6 +59,7 @@ class PiEstimationSimulation(MonteCarloSimulation):
     """
 
     reference_source = "Closed form: 4 * P(X^2 + Y^2 <= 1) = pi"
+    reference_kind = "closed-form"
 
 
     def __init__(self):

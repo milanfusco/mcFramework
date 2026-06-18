@@ -113,6 +113,23 @@ pytest tests/test_core.py -v
 - `test_errors_and_edge_cases.py` - Error handling
 - `test_integration.py` - End-to-end tests
 
+## Adding a Simulation
+
+New simulations must be *validatable*. Before a simulation is advertised as
+production-ready (added to the built-in gallery or recommended in the docs), it must
+declare a checkable ground truth — **either an analytic oracle or a cited benchmark**:
+
+- Implement `analytic_reference(self, **params)` to return the known expected value of a
+  single draw, set `reference_source` (citation) and `reference_kind`
+  (`"closed-form"`, `"benchmark"`, or `"limit"`).
+- Add a convergence regression to `tests/test_oracles.py` asserting
+  `validate_convergence(...).within_tol` at a fixed seed.
+
+A simulation with no checkable reference is research: leave `analytic_reference`
+returning `None` (its reports read `no-oracle`) and label it as draft. See the
+[Oracles and Benchmarks guide](docs/source/guides/validation.md) for the benchmark
+template (cite the source, reproduce the value, show convergence).
+
 ## Code Quality
 
 ### Linting

@@ -49,6 +49,13 @@ class WrongOracleSim(UniformMeanSim):
         return 5.0
 
 
+class BenchmarkSim(UniformMeanSim):
+    """A simulation validated against a cited benchmark rather than a closed form."""
+
+    reference_source = "Made-up benchmark, Author et al. (2026)"
+    reference_kind = "benchmark"
+
+
 def test_pass_within_tolerance():
     report = validate_convergence(UniformMeanSim(), 20_000, seed=0)
     assert isinstance(report, ConvergenceReport)
@@ -84,6 +91,18 @@ def test_reproducible_at_fixed_seed():
     b = validate_convergence(UniformMeanSim(), 5_000, seed=123)
     assert a.estimate == b.estimate
     assert a.se == b.se
+
+
+def test_reference_kind_is_surfaced():
+    # Default (closed-form) and benchmark kinds both propagate into the report,
+    # including on the no-oracle short-circuit path.
+    closed = validate_convergence(UniformMeanSim(), 2_000, seed=0)
+    assert closed.reference_kind == ""  # UniformMeanSim leaves kind unset
+    bench = validate_convergence(BenchmarkSim(), 2_000, seed=0)
+    assert bench.reference_kind == "benchmark"
+    assert bench.reference_source == "Made-up benchmark, Author et al. (2026)"
+    no_oracle = validate_convergence(NoOracleSim(), 100)
+    assert no_oracle.reference_kind == ""
 
 
 def test_rel_error_and_se_are_consistent():

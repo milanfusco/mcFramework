@@ -31,6 +31,7 @@ class PortfolioSimulation(MonteCarloSimulation):
     """
 
     reference_source = "Risk-neutral GBM expectation: E[V_T] = V_0 * exp(mu * T)"
+    reference_kind = "closed-form"
 
     def __init__(self):
         super().__init__("Portfolio Simulation")

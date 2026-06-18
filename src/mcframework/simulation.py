@@ -115,6 +115,13 @@ class MonteCarloSimulation(ABC):
     #: ``"Black-Scholes-Merton (1973)"``. Empty when no oracle is declared.
     reference_source: str = ""
 
+    #: Kind of reference returned by :meth:`analytic_reference`. One of
+    #: ``"closed-form"`` (an exact analytic answer), ``"benchmark"`` (a published,
+    #: cited reference value), or ``"limit"`` (a known asymptotic/limiting value).
+    #: Empty when no oracle is declared. Used by the validation layer for reporting
+    #: and as the governance signal for promoting a simulation out of draft.
+    reference_kind: str = ""
+
     @property
     def supports_batch(self) -> bool:
         """

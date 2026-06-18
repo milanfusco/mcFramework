@@ -104,6 +104,70 @@ assert report.status == "pass"
 so the oracle can depend on configuration (strike, drift, etc.). Keep the reference a
 genuine closed form or a cited benchmark — never a second Monte Carlo estimate.
 
+## Kinds of reference
+
+Not every credible reference is a closed form. Set `reference_kind` to record which
+flavour of ground truth you are checking against; it is surfaced on every
+{class}`~mcframework.validation.ConvergenceReport`:
+
+| `reference_kind` | Meaning | Example |
+| --- | --- | --- |
+| `"closed-form"` | An exact analytic answer | Black-Scholes-Merton price; $V_0 e^{\mu T}$ |
+| `"benchmark"` | A published, cited reference value | A criticality benchmark $k_\text{eff}$ from a standard suite |
+| `"limit"` | A known asymptotic / limiting value | A large-$n$ or zero-variance limit |
+
+A `"benchmark"` reference lets a domain simulation be validated even when no closed form
+exists: `analytic_reference` returns the published constant and `reference_source`
+carries the citation. The validation machinery is identical — only the provenance of the
+oracle differs.
+
+## Promoting a simulation out of draft
+
+> **Rule:** a simulation may not leave *draft* status (be advertised as production-ready,
+> added to the built-in gallery, or recommended in docs) until it has **either an
+> analytic oracle or a cited benchmark**, wired through `analytic_reference` and pinned
+> by a convergence test in `tests/test_oracles.py`.
+
+This is the governance signal the whole system exists to provide. A simulation with no
+checkable ground truth is research: keep `analytic_reference` returning `None` (its
+reports read `no-oracle`) and label it as draft until a reference exists.
+
+### Benchmark template
+
+When there is no closed form, validate against a published benchmark in three steps:
+
+1. **Cite the source.** Put the full reference in `reference_source` and set
+   `reference_kind = "benchmark"`.
+2. **Reproduce the value.** Have `analytic_reference` return the published constant for
+   the matching parameters (and `None` for any configuration the benchmark does not
+   cover).
+3. **Show convergence.** Add a `tests/test_oracles.py` case asserting
+   `validate_convergence(...).within_tol` at a fixed seed, and (optionally) add the sim
+   to the convergence gallery.
+
+#### Worked example: reactor-physics criticality (not implemented here)
+
+A neutron-transport simulation has no elementary closed form, but the field publishes
+*criticality benchmarks* — configurations with an accepted reference $k_\text{eff}$
+(e.g. the ICSBEP handbook, or an analytic infinite-medium $k_\infty = \nu\Sigma_f /
+\Sigma_a$). The pattern would be:
+
+```python
+class CriticalityBenchmarkSim(MonteCarloSimulation):
+    reference_source = "ICSBEP HEU-MET-FAST-001 (Godiva), k_eff = 1.0000 +/- 0.0010"
+    reference_kind = "benchmark"
+
+    def analytic_reference(self, *, config="godiva", **params):
+        return 1.0000 if config == "godiva" else None  # only the cited config
+
+    def single_simulation(self, _rng=None, **kwargs):
+        ...  # neutron transport estimating k_eff
+```
+
+`mcframework` ships **no** neutron-transport implementation: that remains a separate
+domain effort. What it now provides is the gate — such a simulation is only credible
+once its `k_eff` estimate is shown to converge to the cited benchmark.
+
 ## The convergence gallery
 
 `demos/demo_convergence_gallery.py` sweeps every oracle-backed simulation over
