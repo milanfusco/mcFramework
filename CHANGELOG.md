@@ -8,11 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Bug Fixes
+- **validation**: Annotate CI bounds as float | None for mypy
 - **black-scholes**: Correct American pricing and Greeks seed handling
 - **stats**: Warn instead of raise on small n_bootstrap
 
 ### Documentation
 - Clarify backend/threshold reproducibility caveat
+
+### Features
+- **validation**: Add oracle convergence harness and analytic_reference hook
 
 ### Maintenance
 - Framework cleanups from src code review
