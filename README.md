@@ -136,6 +136,18 @@ print(result.result_to_string())
 | `"process"` | `backend="process"` (Windows default) | `ProcessPoolExecutor`, avoids GIL serialization |
 | `"torch"` | `backend="torch", torch_device="cpu"|"mps"|"cuda"` | Vectorized batching on CPU, Apple Silicon, or NVIDIA GPU |
 
+### Reproducibility note
+
+Determinism is **per-(backend, block-layout)**, not absolute. The sequential
+backend draws all samples from a single spawned stream, while the thread/process
+backends spawn one stream per work block (block count depends on `n_workers`,
+`n_simulations`, and the chunk factor). Since `backend="auto"` switches from
+sequential to parallel once `n_simulations` crosses `20_000`, the same `seed`
+can yield different draws above vs. below that threshold, and sequential and
+parallel runs are not bitwise identical. Pin `backend` and `n_workers` for
+run-to-run reproducible numbers; statistical properties (mean, variance, CI
+coverage) hold regardless.
+
 ## Performance
 
 ![Backend performance comparison on Apple Silicon](https://raw.githubusercontent.com/milanfusco/mcFramework/main/demos/apple_silicon_benchmark.png)
