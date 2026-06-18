@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -57,9 +58,15 @@ class PiEstimationSimulation(MonteCarloSimulation):
     Did you implement .torch_batch() or .curand_batch()? If so, set to True.
     """
 
+    reference_source = "Closed form: 4 * P(X^2 + Y^2 <= 1) = pi"
+
 
     def __init__(self):
         super().__init__("Pi Estimation")
+
+    def analytic_reference(self, **params) -> float:
+        r"""Oracle: :math:`\mathbb{E}[\widehat\pi] = \pi` for every batch size."""
+        return math.pi
 
     def single_simulation(  # pylint: disable=arguments-differ
         self,
