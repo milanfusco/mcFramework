@@ -321,7 +321,27 @@ class MonteCarloSimulation(ABC):
         -----
         The framework spawns independent child sequences per worker/chunk via
         :meth:`numpy.random.SeedSequence.spawn`, ensuring deterministic parallel
-        streams given the same ``seed`` and block layout.
+        streams given the same ``seed`` *and the same block layout*.
+
+        .. warning::
+
+           Reproducibility is per-(backend, block-layout), **not** absolute. The
+           number of spawned child streams depends on the resolved backend and
+           the work partition:
+
+           - The sequential backend spawns **one** child stream and draws every
+             sample from it.
+           - The thread/process backends spawn **one child stream per block**,
+             where the block count depends on ``n_workers``, ``n_simulations``,
+             and ``_CHUNKS_PER_WORKER``.
+
+           Because ``backend="auto"`` switches from sequential to parallel once
+           ``n_simulations`` crosses :attr:`_PARALLEL_THRESHOLD`
+           (``20_000``), the *same* ``seed`` can produce different draws above vs.
+           below that threshold, and sequential vs. parallel results are not
+           bitwise identical. For run-to-run reproducible numbers, pin the
+           backend and ``n_workers`` explicitly. Statistical properties (mean,
+           variance, CI coverage) are unaffected.
         """
         self.seed_seq = np.random.SeedSequence(seed)
         self.rng = np.random.default_rng(self.seed_seq)
