@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **black-scholes**: Correct American pricing and Greeks seed handling
 - **stats**: Warn instead of raise on small n_bootstrap
 
+### Maintenance
+- Framework cleanups from src code review
+
 ## [0.3.0] – 2026-06-16
 ### Bug Fixes
 - Correct P0 bugs in simulation engine and bump to v0.2.0
