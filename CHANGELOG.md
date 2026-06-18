@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Bug Fixes
+- **black-scholes**: Correct American pricing and Greeks seed handling
 - **stats**: Warn instead of raise on small n_bootstrap
 
 ## [0.3.0] – 2026-06-16
