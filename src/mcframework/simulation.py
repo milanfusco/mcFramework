@@ -111,6 +111,10 @@ class MonteCarloSimulation(ABC):
     #: Override in subclass by setting ``supports_batch = True``.
     _supports_batch: bool = False
 
+    #: Citation for the simulation's analytic reference / oracle, e.g.
+    #: ``"Black-Scholes-Merton (1973)"``. Empty when no oracle is declared.
+    reference_source: str = ""
+
     @property
     def supports_batch(self) -> bool:
         """
@@ -305,6 +309,40 @@ class MonteCarloSimulation(ABC):
             A 1D array of length ``n`` containing simulation results.
         """
         raise NotImplementedError
+
+    def analytic_reference(self, **params: Any) -> float | None:
+        r"""
+        Known expected value of :meth:`single_simulation` ("oracle"), if one exists.
+
+        Override in subclasses that have a closed-form or otherwise-known answer for
+        :math:`\mathbb{E}[\texttt{single\_simulation}]` under the given parameters.
+        The value is consumed by :func:`mcframework.validation.validate_convergence`
+        to assert that the Monte Carlo estimate converges to ground truth.
+
+        Parameters
+        ----------
+        **params : Any
+            The same keyword parameters passed to :meth:`single_simulation` / :meth:`run`,
+            so the reference can depend on the configuration.
+
+        Returns
+        -------
+        float or None
+            The oracle value, or ``None`` (default) when no reference exists. Returning
+            ``None`` signals that the simulation has no oracle and cannot be convergence
+            -validated (it is research, not a verifiable demo).
+
+        Examples
+        --------
+        >>> import math
+        >>> class PiSim(MonteCarloSimulation):
+        ...     reference_source = "Closed form: pi"
+        ...     def single_simulation(self, _rng=None):
+        ...         ...
+        ...     def analytic_reference(self, **params):
+        ...         return math.pi
+        """
+        return None
 
     def set_seed(self, seed: int | None) -> None:
         r"""
