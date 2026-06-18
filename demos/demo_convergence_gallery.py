@@ -67,9 +67,11 @@ def sweep_convergence(
 def build_markdown_table(label: str, reports: list[ConvergenceReport]) -> str:
     """Render a Markdown convergence table for one simulation's sweep."""
     source = reports[0].reference_source if reports else ""
+    kind = reports[0].reference_kind if reports else ""
+    kind_label = f" ({kind})" if kind else ""
     lines = [
         f"### {label}",
-        f"*Oracle source: {source}*",
+        f"*Oracle source{kind_label}: {source}*",
         "",
         "| n | estimate | oracle | abs error | abs error / SE | status |",
         "| ---: | ---: | ---: | ---: | ---: | :---: |",

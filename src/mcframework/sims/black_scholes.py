@@ -226,6 +226,7 @@ class BlackScholesSimulation(MonteCarloSimulation):
     """
 
     reference_source = "Black-Scholes-Merton (1973), closed-form European price"
+    reference_kind = "closed-form"
 
     def __init__(self, name: str = "Black-Scholes Option Pricing"):
         super().__init__(name)
@@ -525,6 +526,7 @@ class BlackScholesPathSimulation(MonteCarloSimulation):
     """
 
     reference_source = "Risk-neutral GBM: E[S_T] = S0 * exp(r * T)"
+    reference_kind = "closed-form"
 
     def __init__(self, name: str = "Black-Scholes Path Simulation"):
         super().__init__(name)

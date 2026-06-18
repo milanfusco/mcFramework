@@ -43,6 +43,7 @@ def test_builtin_sims_converge_to_oracle(factory, params, n):
     )
     assert report.within_tol
     assert report.reference_source  # every oracle-backed sim cites its source
+    assert report.reference_kind == "closed-form"  # built-ins are all closed-form
 
 
 def test_pi_oracle_value():
