@@ -104,6 +104,21 @@ assert report.status == "pass"
 so the oracle can depend on configuration (strike, drift, etc.). Keep the reference a
 genuine closed form or a cited benchmark — never a second Monte Carlo estimate.
 
+## The convergence gallery
+
+`demos/demo_convergence_gallery.py` sweeps every oracle-backed simulation over
+increasing sample sizes and renders the result two ways: a Markdown convergence table
+and a log-log error-vs-`n` plot. The absolute error tracks the theoretical
+$1/\sqrt{n}$ rate and stays inside the `5·SE` pass band — correctness you can see.
+
+```bash
+# Full sweep (interactive), or headless with a saved figure:
+python demos/demo_convergence_gallery.py
+MPLBACKEND=Agg python demos/demo_convergence_gallery.py --quick --save gallery.png
+```
+
+![Monte Carlo convergence to known answers](../../../demos/convergence_gallery.png)
+
 ```{seealso}
 {doc}`../api/_modules/validation` for the full API reference.
 ```
