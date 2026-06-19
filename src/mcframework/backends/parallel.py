@@ -126,7 +126,7 @@ class ThreadBackend:
                 results[i:j] = arr
                 completed += j - i
                 if progress_callback:
-                    progress_callback(completed, n_simulations)  # pragma: no cover
+                    progress_callback(completed, n_simulations)
 
         return results
 

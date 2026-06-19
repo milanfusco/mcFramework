@@ -2,6 +2,29 @@
 import numpy as np
 
 from mcframework.backends.base import worker_run_chunk
+from mcframework.backends.parallel import ThreadBackend
+
+
+def test_thread_backend_invokes_progress_callback(simple_simulation):
+    """[NFR-7] ThreadBackend reports progress per completed block and reaches the total."""
+    simple_simulation.set_seed(42)
+    seed_seq = np.random.SeedSequence(42)
+    calls: list[tuple[int, int]] = []
+
+    backend = ThreadBackend(n_workers=2)
+    results = backend.run(
+        simple_simulation,
+        n_simulations=100,
+        seed_seq=seed_seq,
+        progress_callback=lambda done, total: calls.append((done, total)),
+    )
+
+    assert results.shape == (100,)
+    assert calls, "progress_callback was never invoked"
+    assert all(total == 100 for _, total in calls)
+    # Progress is monotonically non-decreasing and ends at the total.
+    assert [done for done, _ in calls] == sorted(done for done, _ in calls)
+    assert calls[-1][0] == 100
 
 
 class TestPerformance:
