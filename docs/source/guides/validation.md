@@ -21,13 +21,13 @@ Two complementary checks are reported:
 - **`within_ci`** — the oracle lies inside the computed confidence interval.
 - **`within_tol`** — the absolute error is within `sigma_tol` standard errors:
 
-```{math}
+```math
 \left| \widehat{\theta}_n - \theta \right| \le k \cdot \mathrm{SE},
 \qquad \mathrm{SE} = \frac{s}{\sqrt{n}}, \quad k = \texttt{sigma\_tol}.
 ```
 
 `within_tol` at a fixed seed is the recommended CI gate: it is statistically principled,
-essentially never flaky (a 5σ false failure is a ~1-in-1.7-million event), yet a real
+essentially never flaky (a $5\sigma$ false failure is a ~1-in-1.7-million event), yet a real
 implementation bug lands many standard errors away and fails loudly.
 
 ## Quick start
@@ -64,7 +64,7 @@ These ship validated and are pinned by `tests/test_oracles.py`:
 
 The Black-Scholes-Merton closed form for a European option is
 
-```{math}
+```math
 C = S_0\,\Phi(d_1) - K e^{-rT}\,\Phi(d_2), \qquad
 P = K e^{-rT}\,\Phi(-d_2) - S_0\,\Phi(-d_1),
 ```
