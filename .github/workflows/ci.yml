@@ -62,7 +62,7 @@ jobs:
           pytest --cov=src/mcframework --cov-branch --cov-report=xml
       
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
@@ -92,7 +92,7 @@ jobs:
           pytest tests/test_torch_cpu.py tests/test_torch_mps.py tests/test_torch_utils.py -v --tb=short --cov=src/mcframework --cov-branch --cov-report=xml
 
       - name: Upload MPS coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
