@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from .backends import ProcessBackend, SequentialBackend, ThreadBackend, is_windows_platform
+from .backends.parallel import _CHUNKS_PER_WORKER as _DEFAULT_CHUNKS_PER_WORKER
 from .stats_engine import (
     _PCTS as _ENGINE_PCTS,
 )
@@ -104,8 +105,9 @@ class MonteCarloSimulation(ABC):
     _PCTS = _ENGINE_PCTS
     # Minimum simulations to use parallel execution (soft limit)
     _PARALLEL_THRESHOLD = 20_000
-    # Number of chunks per worker for load balancing (ensures dynamic work distribution)
-    _CHUNKS_PER_WORKER = 8
+    # Number of chunks per worker for load balancing (ensures dynamic work distribution).
+    # Single source of truth lives in mcframework.backends.parallel.
+    _CHUNKS_PER_WORKER = _DEFAULT_CHUNKS_PER_WORKER
 
     #: Whether this simulation supports batch GPU execution.
     #: Override in subclass by setting ``supports_batch = True``.
@@ -421,18 +423,21 @@ class MonteCarloSimulation(ABC):
         ci_method: str,
         stats_engine: StatsEngine | None,
         extra_context: Mapping[str, Any] | None,
-    ) -> tuple[dict[str, Any], dict[int, float]]:
+    ) -> tuple[dict[str, Any], dict[int, float], dict[str, list[tuple[str, str]]]]:
         """
         Compute statistics using the stats engine.
 
         Returns
         -------
-        tuple[dict[str, Any], dict[int, float]]
-            (stats dict, percentiles dict)
+        tuple[dict[str, Any], dict[int, float], dict[str, list[tuple[str, str]]]]
+            ``(stats dict, percentiles dict, diagnostics)`` where ``diagnostics``
+            carries the engine's ``skipped`` and ``errors`` so swallowed metric
+            failures remain visible in the assembled result.
         """
+        diagnostics: dict[str, list[tuple[str, str]]] = {"skipped": [], "errors": []}
         eng = stats_engine or DEFAULT_ENGINE
         if eng is None:
-            return {}, {}
+            return {}, {}, diagnostics
 
         engine_defaults = self._PCTS
 
@@ -460,9 +465,18 @@ class MonteCarloSimulation(ABC):
         try:
             result = eng.compute(results, ctx)
             stats = result.metrics if hasattr(result, "metrics") else {}
+            diagnostics["skipped"] = list(getattr(result, "skipped", []))
+            diagnostics["errors"] = list(getattr(result, "errors", []))
+            if diagnostics["errors"]:
+                logger.warning(
+                    "Stats engine reported %d errored metric(s): %s",
+                    len(diagnostics["errors"]),
+                    [name for name, _ in diagnostics["errors"]],
+                )
         except (ValueError, TypeError, ArithmeticError, RuntimeError) as e:
             logger.error("Stats engine failed: %s", e)
             stats = {}
+            diagnostics["errors"] = [("<engine>", str(e))]
 
         # Merge engine stats with baseline (engine wins on collisions)
         baseline = self._compute_stats_block(results, ctx)
@@ -477,7 +491,7 @@ class MonteCarloSimulation(ABC):
 
         percentile_map = {int(k): float(v) for k, v in engine_perc.items()}
 
-        return stats, percentile_map
+        return stats, percentile_map, diagnostics
 
     def _handle_percentiles(
         self,
@@ -625,9 +639,10 @@ class MonteCarloSimulation(ABC):
         # Compute stats and percentiles
         stats: dict[str, Any] = {}
         percentile_map: dict[int, float] = {}
+        diagnostics: dict[str, list[tuple[str, str]]] = {"skipped": [], "errors": []}
 
         if compute_stats:
-            stats, percentile_map = self._compute_stats_with_engine(
+            stats, percentile_map, diagnostics = self._compute_stats_with_engine(
                 results, n_simulations, confidence, ci_method, stats_engine, extra_context
             )
 
@@ -643,6 +658,7 @@ class MonteCarloSimulation(ABC):
             stats,
             requested_percentiles,
             engine_defaults_used,
+            diagnostics,
         )
 
     def _resolve_backend_type(self, requested: str | None = None) -> str:
@@ -862,6 +878,7 @@ class MonteCarloSimulation(ABC):
         stats: dict[str, Any],
         requested_percentiles: list[int],
         engine_defaults_used: bool,
+        diagnostics: Mapping[str, list[tuple[str, str]]] | None = None,
     ) -> SimulationResult:
         r"""
         Assemble a :class:`SimulationResult` and merge any stats-engine percentiles.
@@ -870,7 +887,10 @@ class MonteCarloSimulation(ABC):
         -----
         Preserves the user's requested percentiles in
         ``metadata["requested_percentiles"]`` and whether engine defaults were used
-        in ``metadata["engine_defaults_used"]``.
+        in ``metadata["engine_defaults_used"]``. Any engine metrics that were
+        skipped or errored are surfaced in ``metadata["stats_skipped"]`` /
+        ``metadata["stats_errors"]`` (only when non-empty) so silent failures stay
+        visible in the returned result, not only in logs.
         """
         # Import here to avoid circular dependency
         from .core import SimulationResult  # pylint: disable=import-outside-toplevel
@@ -909,6 +929,14 @@ class MonteCarloSimulation(ABC):
             "requested_percentiles": requested_percentiles,
             "engine_defaults_used": engine_defaults_used,
         }
+
+        # Surface engine diagnostics only when there is something to report, so the
+        # common all-succeeded case doesn't clutter metadata / printed summaries.
+        if diagnostics:
+            if diagnostics.get("skipped"):
+                meta["stats_skipped"] = list(diagnostics["skipped"])
+            if diagnostics.get("errors"):
+                meta["stats_errors"] = list(diagnostics["errors"])
 
         return SimulationResult(
             results=results,

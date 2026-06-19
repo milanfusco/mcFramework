@@ -1,5 +1,6 @@
 """mcframework package public API."""
 
+import logging
 from importlib.metadata import PackageNotFoundError, version
 
 # Profiling submodule (imported as submodule, not exposed at top level)
@@ -14,6 +15,11 @@ from .sims import (
 from .stats_engine import DEFAULT_ENGINE, FnMetric, StatsContext, StatsEngine
 from .utils import autocrit, t_crit, z_crit
 from .validation import ConvergenceReport, validate_convergence
+
+# Library logging best practice: attach a no-op handler to the package root so
+# importing mcframework never emits "No handlers could be found" warnings and
+# never imposes logging configuration on the host application.
+logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 __all__ = [
     "SimulationResult",
