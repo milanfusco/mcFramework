@@ -776,7 +776,7 @@ def test_compute_stats_with_none_engine():
 
     # Patch DEFAULT_ENGINE to be None
     with patch('mcframework.simulation.DEFAULT_ENGINE', None):
-        stats, percentiles = sim._compute_stats_with_engine(
+        stats, percentiles, diagnostics = sim._compute_stats_with_engine(
             results=np.array([1.0, 2.0, 3.0]),
             n_simulations=3,
             confidence=0.95,
@@ -786,6 +786,7 @@ def test_compute_stats_with_none_engine():
         )
         assert stats == {}
         assert percentiles == {}
+        assert diagnostics == {"skipped": [], "errors": []}
 
 
 def test_resolve_backend_type_explicit_thread():
