@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **validation**: Add oracle convergence harness and analytic_reference hook
 
 ### Maintenance
+- **deps**: Bump actions/upload-pages-artifact from 4 to 5
 - Framework cleanups from src code review
 
 ## [0.3.0] – 2026-06-16
