@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Bug Fixes
+- Math formatting in validation.md
 - **stats**: Correct sample-mean MSE/Markov bound and freeze StatsContext
 - **validation**: Annotate CI bounds as float | None for mypy
 - **validation**: Annotate CI bounds as float | None for mypy
