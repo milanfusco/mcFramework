@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Bug Fixes
+- **stats**: Correct sample-mean MSE/Markov bound and freeze StatsContext
 - **validation**: Annotate CI bounds as float | None for mypy
 - **validation**: Annotate CI bounds as float | None for mypy
 - **black-scholes**: Correct American pricing and Greeks seed handling
@@ -17,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clarify backend/threshold reproducibility caveat
 
 ### Features
+- **stats**: Surface engine diagnostics and add library NullHandler
 - **oracle-benchmarks**: Cited-benchmark support and validation governance
 - **oracle-gallery**: Convergence gallery demo, smoke test, and docs embed
 - **oracle-sims**: Backfill closed-form oracles and regression tests
@@ -26,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **deps**: Bump codecov/codecov-action from 5 to 7
 - **deps**: Bump actions/upload-pages-artifact from 4 to 5
 - Framework cleanups from src code review
+
+### Testing
+- **backends**: Cover ThreadBackend progress callback
 
 ## [0.3.0] – 2026-06-16
 ### Bug Fixes
