@@ -154,7 +154,7 @@ class BootstrapMethod(str, Enum):
 
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class StatsContext:
     r"""
     Shared, explicit configuration for statistic and CI computations.
@@ -205,8 +205,6 @@ class StatsContext:
         Number of bootstrap resamples for :func:`ci_mean_bootstrap`.
     bootstrap : {"percentile", "bca"}, default "percentile"
         Bootstrap flavor for :func:`ci_mean_bootstrap`.
-    block_size : int, optional
-        Reserved for future block bootstrap support.
 
     Notes
     -----
@@ -1411,11 +1409,15 @@ def markov_error_prob(x: np.ndarray, ctx: StatsContext) -> float:
     Markov bound on error probability for target :math:`\theta`.
 
     Using the squared error of the sample mean,
-    :math:`\mathrm{MSE}(\bar X) \approx \frac{s^2}{n} + \text{Bias}^2`, Markov gives
+    :math:`\mathrm{MSE}(\bar X) \approx \frac{s^2}{n_\text{eff}} + \text{Bias}^2`,
+    Markov gives
 
     .. math::
        \Pr\!\left(\,|\bar X - \theta| \ge \varepsilon\,\right)
-       \;\le\; \frac{\mathrm{MSE}}{\varepsilon^2}.
+       \;\le\; \frac{\mathrm{MSE}(\bar X)}{\varepsilon^2}.
+
+    The :math:`\mathrm{MSE}(\bar X)` term is delegated to :func:`mse_to_target`
+    so the two metrics share a single definition of estimator MSE.
 
     Parameters
     ----------
@@ -1423,14 +1425,13 @@ def markov_error_prob(x: np.ndarray, ctx: StatsContext) -> float:
         Input sample.
     ctx : StatsContext or Mapping
         Requires :attr:`~mcframework.stats_engine.StatsContext.target` and
-        :attr:`~mcframework.stats_engine.StatsContext.eps`. The declared
-        :attr:`~mcframework.stats_engine.StatsContext.n` influences the context but does not enter
-        directly into the bound.
+        :attr:`~mcframework.stats_engine.StatsContext.eps`. The effective sample
+        size enters the bound through the :math:`s^2/n_\text{eff}` variance term.
 
     Returns
     -------
     float
-        Upper bound in :math:`[0, 1]`.
+        Upper bound (non-negative; can exceed 1 when the bound is vacuous).
     """
     ctx = _ensure_ctx(ctx, x)
     if ctx.target is None:
@@ -1439,9 +1440,7 @@ def markov_error_prob(x: np.ndarray, ctx: StatsContext) -> float:
         raise MissingContextError("markov_error_prob requires ctx.eps")
     if ctx.eps <= 0:
         raise ValueError("ctx.eps must be positive")
-    arr, _ = _clean(x, ctx)
-    mse = float(np.mean((arr - ctx.target) ** 2))
-    return mse / (ctx.eps**2)
+    return mse_to_target(x, ctx) / (ctx.eps**2)
 
 
 def bias_to_target(x: np.ndarray, ctx: StatsContext) -> float:
@@ -1473,10 +1472,15 @@ def mse_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     r"""
     Mean squared error of :math:`\bar X` relative to a target :math:`\theta`.
 
-    Approximated by
+    Estimates the MSE of the sample mean :math:`\bar X` as an estimator of
+    :math:`\theta`:
 
     .. math::
-       \mathrm{MSE}(\bar X) \approx \frac{s^2}{n} + (\bar X - \theta)^2.
+       \mathrm{MSE}(\bar X) \approx \frac{s^2}{n_\text{eff}} + (\bar X - \theta)^2,
+
+    i.e. the variance of the sample mean plus the squared bias. When the
+    variance cannot be estimated (:math:`n_\text{eff} \le \texttt{ddof}`), only
+    the squared-bias term is returned.
 
     Parameters
     ----------
@@ -1488,13 +1492,22 @@ def mse_to_target(x: np.ndarray, ctx: StatsContext) -> float:
     Returns
     -------
     float
-        Estimated mean squared error relative to ``target``.
+        Estimated mean squared error of :math:`\bar X` relative to ``target``.
     """
     ctx = _ensure_ctx(ctx, x)
     if ctx.target is None:
         raise MissingContextError("mse_to_target requires ctx.target")
-    arr, _ = _clean(x, ctx)
-    return float(np.mean((arr - ctx.target) ** 2))
+    sample_mean = mean(x, ctx)
+    if sample_mean is None:
+        raise InsufficientDataError("mse_to_target requires non-empty data after cleaning")
+    bias = sample_mean - ctx.target
+    n_eff = _effective_sample_size(x, ctx)
+    sample_std = std(x, ctx)
+    # std() returns None when n_eff <= ddof (variance unestimable); fall back to
+    # the squared-bias term alone.
+    if sample_std is None or n_eff <= 0:
+        return float(bias**2)
+    return float(sample_std**2 / n_eff + bias**2)
 
 
 def build_default_engine(
