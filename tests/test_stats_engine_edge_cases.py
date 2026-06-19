@@ -398,3 +398,58 @@ def test_ci_mean_chebyshev_with_none_mean_or_std():
     with patch('mcframework.stats_engine.std', return_value=None):
         result = ci_mean_chebyshev(data, ctx)
         assert result is None
+
+
+def test_bca_acceleration_zero_for_symmetric_data():
+    """Acceleration factor a = 0 when the jackknife distribution is symmetric."""
+    from mcframework.stats_engine import _bca_acceleration
+
+    arr = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+    assert _bca_acceleration(arr) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_bca_bias_correction_zero_when_median_unbiased():
+    """Bias correction z0 = 0 when exactly half the bootstrap means fall below the mean."""
+    from mcframework.stats_engine import _bca_bias_correction
+
+    arr = np.array([0.0, 1.0, 2.0, 3.0])  # m_hat = 1.5
+    boot_means = np.array([1.0, 1.0, 2.0, 2.0])  # 2 of 4 below 1.5 => prop = 0.5
+    assert _bca_bias_correction(arr, boot_means) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_bca_matches_percentile_for_symmetric_sample():
+    """For symmetric data (z0~0, a~0), BCa should closely track the percentile CI."""
+    arr = np.linspace(-5.0, 5.0, num=201)
+    perc = ci_mean_bootstrap(
+        arr, StatsContext(n=arr.size, n_bootstrap=4000, rng=7, bootstrap="percentile")
+    )
+    bca = ci_mean_bootstrap(
+        arr, StatsContext(n=arr.size, n_bootstrap=4000, rng=7, bootstrap="bca")
+    )
+    width = perc["high"] - perc["low"]
+    assert bca["low"] == pytest.approx(perc["low"], abs=0.1 * width)
+    assert bca["high"] == pytest.approx(perc["high"], abs=0.1 * width)
+
+
+def test_bootstrap_means_row_chunking_branch(monkeypatch):
+    """total_elements > limit but n <= limit triggers the row-chunked path."""
+    import mcframework.stats_engine as se
+
+    monkeypatch.setattr(se, "_BOOTSTRAP_CHUNK_LIMIT", 50)
+    arr = np.arange(10, dtype=float)  # n=10 <= 50
+    rng = np.random.default_rng(0)
+    means = se._bootstrap_means(arr, n_resamples=100, rng=rng)  # total=1000 > 50
+    assert means.shape == (100,)
+    assert means.min() >= arr.min() and means.max() <= arr.max()
+
+
+def test_bootstrap_means_column_chunking_branch(monkeypatch):
+    """n > limit triggers the per-resample column-accumulation path."""
+    import mcframework.stats_engine as se
+
+    monkeypatch.setattr(se, "_BOOTSTRAP_CHUNK_LIMIT", 50)
+    arr = np.arange(100, dtype=float)  # n=100 > 50
+    rng = np.random.default_rng(0)
+    means = se._bootstrap_means(arr, n_resamples=5, rng=rng)
+    assert means.shape == (5,)
+    assert means.min() >= arr.min() and means.max() <= arr.max()
