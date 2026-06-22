@@ -201,6 +201,7 @@ The ``backend`` parameter controls execution strategy:
 
    getting-started
    guides/validation
+   guides/benchmarking
    guides/cuda
    guides/mps
 
@@ -220,6 +221,7 @@ The ``backend`` parameter controls execution strategy:
    api/_modules/sims
    api/_modules/utils
    api/_modules/validation
+   api/_modules/benchmark
 
 
 Indices and tables
