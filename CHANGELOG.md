@@ -16,9 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **stats**: Warn instead of raise on small n_bootstrap
 
 ### Documentation
+- **benchmark**: Add sample backend benchmark figure
+- **benchmark**: Add guide, API reference, and README update
 - Clarify backend/threshold reproducibility caveat
 
 ### Features
+- **benchmark-demo**: Add thin demo wrapper and remove legacy scripts
+- **benchmark**: Add core subsystem, public exports, and CLI entry
 - **stats**: Surface engine diagnostics and add library NullHandler
 - **oracle-benchmarks**: Cited-benchmark support and validation governance
 - **oracle-gallery**: Convergence gallery demo, smoke test, and docs embed
@@ -31,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Framework cleanups from src code review
 
 ### Testing
+- **benchmark**: Raise benchmark.py coverage to 100%
+- **benchmark**: Add subsystem tests and port quick-mode coverage
 - **backends**: Cover ThreadBackend progress callback
 
 ## [0.3.0] – 2026-06-16
