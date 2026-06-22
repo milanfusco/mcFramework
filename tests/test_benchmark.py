@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -24,6 +25,26 @@ def _res(backend: str, n: int, t: float) -> BenchmarkResult:
         backend=backend, device="cpu", n_simulations=n,
         execution_time=t, throughput=n / t, mean_estimate=3.14,
     )
+
+
+def _fake_sysinfo() -> dict:
+    return {
+        "torch_version": None, "mps_available": False, "cuda_available": False,
+        "platform": "t", "machine": "x", "processor": "x", "python": "3.13", "cpu_count": 1,
+    }
+
+
+def _minimal_report() -> BenchmarkReport:
+    return BenchmarkReport(results=[_res("sequential", 1000, 1.0)])
+
+
+def _stub_main(monkeypatch, *, run_suite_fn=None, backends=None):
+    monkeypatch.setattr(bm, "run_suite", run_suite_fn or (lambda *a, **k: _minimal_report()))
+    monkeypatch.setattr(
+        bm, "default_backends",
+        lambda **kw: backends if backends is not None else [BackendSpec("sequential", "sequential")],
+    )
+    monkeypatch.setattr(bm, "system_info", _fake_sysinfo)
 
 
 # --------------------------------------------------------------------------- #
@@ -271,3 +292,219 @@ def test_plot_benchmarks_raises_on_empty():
     pytest.importorskip("matplotlib")
     with pytest.raises(ValueError, match="no results"):
         bm.plot_benchmarks(BenchmarkReport())
+
+
+def test_best_none_when_size_has_no_candidates():
+    report = BenchmarkReport(results=[_res("thread", 1000, 1.0)])
+    assert report.best(n=2000) is None
+
+
+def test_summary_table_omits_speedup_section_without_baseline():
+    report = BenchmarkReport(results=[_res("thread", 1000, 1.0)])
+    table = report.summary_table()
+    assert "Speedup vs Sequential" not in table
+    assert "Best performer" in table
+
+
+def test_summary_table_includes_best_speedup_line():
+    report = BenchmarkReport(
+        results=[_res("sequential", 1000, 1.0), _res("thread", 1000, 0.5)],
+    )
+    table = report.summary_table()
+    assert "Speedup:" in table
+    assert "faster than sequential" in table
+
+
+def test_torch_version_none_when_import_fails(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "torch":
+            raise ImportError("no torch")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    assert bm._torch_version() is None
+
+
+def test_default_backends_respects_include_torch_false(monkeypatch):
+    monkeypatch.setattr(bm, "_torch_version", lambda: "2.9")
+    labels = [s.label for s in default_backends(include_torch=False)]
+    assert labels == ["sequential", "thread", "process"]
+
+
+def test_benchmark_run_infinite_throughput_on_zero_time(monkeypatch):
+    class _InstantSim:
+        def set_seed(self, seed):
+            pass
+
+        def run(self, n, *, backend, torch_device, n_workers, compute_stats):
+            return SimpleNamespace(mean=3.14)
+
+    monkeypatch.setattr(bm.time, "perf_counter", lambda: 0.0)
+    result = benchmark_run(_InstantSim(), 1000, BackendSpec("seq", "sequential"))
+    assert result is not None
+    assert result.throughput == float("inf")
+
+
+def test_benchmark_run_warmup_failure_is_silent(caplog):
+    sim = _FakeSim(fail=True)
+    with caplog.at_level(logging.WARNING, logger="mcframework.benchmark"):
+        assert benchmark_run(sim, 1000, BackendSpec("seq", "sequential"), warmup=True) is None
+    assert caplog.text == ""
+
+
+def test_run_suite_omits_failed_cells(monkeypatch):
+    def fake(sim, n, spec, *, n_workers=None, repeats=1, seed=42, warmup=False):
+        if warmup:
+            return None
+        return None if spec.backend == "thread" else _res(spec.label, n, 1.0)
+
+    monkeypatch.setattr(bm, "benchmark_run", fake)
+    specs = [BackendSpec("sequential", "sequential"), BackendSpec("thread", "thread")]
+    report = run_suite(object(), [1000], specs)
+    assert [r.backend for r in report.results] == ["sequential"]
+
+
+def test_color_map_assigns_fallback_for_unknown_labels():
+    colors = bm._color_map(["custom-a", "custom-b"])
+    assert colors["custom-a"] != colors["custom-b"]
+
+
+def test_format_system_info_lists_accelerators():
+    text = bm._format_system_info({"torch_version": "2.9", "mps_available": True, "cuda_available": True,
+                                     "platform": "Darwin", "machine": "arm64", "processor": "arm",
+                                     "python": "3.13", "cpu_count": 8})
+    assert "MPS, CUDA" in text
+
+
+def test_plot_benchmarks_hides_bar_without_non_baseline():
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg", force=True)
+    report = BenchmarkReport(results=[_res("sequential", 1000, 1.0), _res("sequential", 2000, 2.0)])
+    fig = bm.plot_benchmarks(report)
+    assert not fig.axes[2].get_visible()
+    matplotlib.pyplot.close(fig)
+
+
+def test_plot_benchmarks_hides_scale_with_single_speedup_point():
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg", force=True)
+    report = BenchmarkReport(
+        results=[_res("sequential", 1000, 1.0), _res("thread", 1000, 0.5)],
+        system={"machine": "test", "cpu_count": 4, "python": "3.13"},
+    )
+    fig = bm.plot_benchmarks(report)
+    assert not fig.axes[3].get_visible()
+    matplotlib.pyplot.close(fig)
+
+
+def test_plot_benchmarks_custom_subtitle():
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg", force=True)
+    report = BenchmarkReport(
+        results=[_res("sequential", 1000, 1.0), _res("thread", 1000, 0.5)],
+    )
+    fig = bm.plot_benchmarks(report, subtitle="custom subtitle")
+    assert fig is not None
+    matplotlib.pyplot.close(fig)
+
+
+def test_parse_args_defaults_and_overrides():
+    defaults = bm._parse_args([])
+    assert defaults.quick is False
+    assert defaults.repeats == 1
+    assert defaults.save is None
+
+    custom = bm._parse_args(["--quick", "--sizes", "1000,2000", "--json", "out.json", "--no-show"])
+    assert custom.quick is True
+    assert custom.sizes == "1000,2000"
+    assert custom.json == "out.json"
+    assert custom.no_show is True
+
+
+def test_main_default_sizes(monkeypatch):
+    captured: dict = {}
+
+    def capture_sizes(sim, sizes, specs, **kw):
+        captured["sizes"] = sizes
+        return BenchmarkReport()
+
+    _stub_main(monkeypatch, run_suite_fn=capture_sizes, backends=[])
+    bm.main(["--no-show"])
+    assert captured["sizes"] == list(bm._DEFAULT_SIZES)
+
+
+def test_main_quick_no_show(monkeypatch, capsys):
+    captured: dict = {}
+
+    def capture_sizes(sim, sizes, specs, **kw):
+        captured["sizes"] = sizes
+        return _minimal_report()
+
+    _stub_main(monkeypatch, run_suite_fn=capture_sizes)
+    rc = bm.main(["--quick", "--no-show"])
+    assert rc == 0
+    assert captured["sizes"] == list(bm._QUICK_SIZES)
+    assert "SYSTEM INFO" in capsys.readouterr().out
+
+
+def test_main_default_sizes_and_json(tmp_path, monkeypatch):
+    out = tmp_path / "report.json"
+    _stub_main(monkeypatch)
+    rc = bm.main(["--json", str(out), "--no-show"])
+    assert rc == 0
+    assert out.exists()
+
+
+def test_main_custom_sizes(monkeypatch):
+    captured: dict = {}
+
+    def capture_sizes(sim, sizes, specs, **kw):
+        captured["sizes"] = sizes
+        return BenchmarkReport()
+
+    _stub_main(monkeypatch, run_suite_fn=capture_sizes, backends=[])
+    bm.main(["--sizes", "1000,2000", "--no-show"])
+    assert captured["sizes"] == [1000, 2000]
+
+
+def test_main_plot_import_error(monkeypatch, capsys):
+    _stub_main(monkeypatch)
+
+    def _no_plot(*args, **kwargs):
+        raise ImportError("no matplotlib")
+
+    monkeypatch.setattr(bm, "plot_benchmarks", _no_plot)
+    rc = bm.main(["--save", "out.png"])
+    assert rc == 0
+    assert "[plot skipped]" in capsys.readouterr().out
+
+
+def test_main_show_without_save(monkeypatch):
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg", force=True)
+    shown = {"called": False}
+    _stub_main(monkeypatch)
+    monkeypatch.setattr(bm, "plot_benchmarks", lambda report: matplotlib.pyplot.figure())
+    monkeypatch.setattr(matplotlib.pyplot, "show", lambda: shown.__setitem__("called", True))
+    bm.main([])
+    assert shown["called"]
+
+
+def test_main_savefig_and_show(monkeypatch, tmp_path):
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg", force=True)
+    out = tmp_path / "bench.png"
+    fake_fig = matplotlib.pyplot.figure()
+    shown = {"called": False}
+
+    _stub_main(monkeypatch)
+    monkeypatch.setattr(bm, "plot_benchmarks", lambda report: fake_fig)
+    monkeypatch.setattr(matplotlib.pyplot, "show", lambda: shown.__setitem__("called", True))
+    bm.main(["--save", str(out)])
+    assert out.exists()
+    assert shown["called"]
+
