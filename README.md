@@ -176,9 +176,27 @@ coverage) hold regardless.
 
 ## Performance
 
-![Backend performance comparison on Apple Silicon](https://raw.githubusercontent.com/milanfusco/mcFramework/main/demos/apple_silicon_benchmark.png)
+![Backend performance comparison](https://raw.githubusercontent.com/milanfusco/mcFramework/main/demos/backend_benchmark.png)
 
-Execution time, throughput, and speedup across backends on Apple Silicon. Speedup is measured against single-sample sequential execution; the vectorized Torch and GPU backends benefit most at large simulation counts, where batching amortizes per-call overhead. Run `python demos/demo_apple_silicon_benchmark.py` to reproduce the figure on your own hardware.
+Benchmarking is a first-class subsystem (`mcframework.benchmark`): `run_suite()` times the same workload across every available backend and returns a structured, plottable, JSON-serializable report. Speedup is measured against sequential execution; the vectorized Torch and GPU backends benefit most at large simulation counts, where batching amortizes per-call overhead.
+
+```python
+from mcframework import PiEstimationSimulation, run_suite, default_backends
+from mcframework.benchmark import plot_benchmarks
+
+report = run_suite(PiEstimationSimulation(), [1_000, 10_000, 100_000, 1_000_000], default_backends())
+print(report.summary_table())
+fig = plot_benchmarks(report)
+```
+
+Or from the command line (installed as the `mcframework-benchmark` console script):
+
+```bash
+mcframework-benchmark --quick --save backend_benchmark.png        # reproduce the figure
+python demos/demo_backend_benchmark.py --sizes 1000,10000,100000  # same thing, via the demo
+```
+
+See the [Backend Benchmarking guide](docs/source/guides/benchmarking.md) for details.
 
 ## GPU Acceleration
 
