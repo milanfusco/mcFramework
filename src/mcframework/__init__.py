@@ -5,6 +5,14 @@ from importlib.metadata import PackageNotFoundError, version
 
 # Profiling submodule (imported as submodule, not exposed at top level)
 from . import profiling
+from .benchmark import (
+    BackendSpec,
+    BenchmarkReport,
+    BenchmarkResult,
+    default_backends,
+    run_suite,
+    system_info,
+)
 from .core import MonteCarloFramework, MonteCarloSimulation, SimulationResult
 from .sims import (
     BlackScholesPathSimulation,
@@ -35,6 +43,12 @@ __all__ = [
     "DEFAULT_ENGINE",
     "ConvergenceReport",
     "validate_convergence",
+    "BenchmarkResult",
+    "BenchmarkReport",
+    "BackendSpec",
+    "run_suite",
+    "default_backends",
+    "system_info",
     "z_crit",
     "t_crit",
     "autocrit",

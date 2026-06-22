@@ -27,6 +27,9 @@ dependencies = [
     "numpy>=1.26",
     "scipy>=1.10",
 ]
+[project.scripts]
+mcframework-benchmark = "mcframework.benchmark:main"
+
 [project.urls]
 Homepage = "https://github.com/milanfusco/mcFramework/"
 Docs = "https://milanfusco.github.io/mcFramework/"
